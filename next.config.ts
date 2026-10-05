@@ -1,7 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  output: "standalone",
+  experimental: {
+    authInterrupts: true,
+  },
+  serverExternalPackages: ["pg", "mysql2", "mssql"],
 };
 
 export default nextConfig;

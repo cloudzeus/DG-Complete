@@ -1,0 +1,242 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import {
+  Building2,
+  ChevronRight,
+  ChevronsUpDown,
+  Contact,
+  CreditCard,
+  Database,
+  LayoutDashboard,
+  LogOut,
+  PlugZap,
+  ReceiptText,
+  RefreshCcw,
+  Server,
+  ShieldCheck,
+  Settings,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
+import { authClient } from "@/lib/auth-client";
+import { DgLogo } from "@/components/brand/dg-logo";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+  SidebarRail,
+} from "@/components/ui/sidebar";
+import { cn } from "@/lib/utils";
+
+type Item = { href: string; label: string; icon: LucideIcon; exact?: boolean; superAdminOnly?: boolean };
+
+const MAIN: { label: string; items: Item[] }[] = [
+  { label: "Γενικά", items: [{ href: "/admin", label: "Επισκόπηση", icon: LayoutDashboard, exact: true }] },
+  {
+    label: "Πελάτες",
+    items: [
+      { href: "/admin/tenants", label: "Tenants", icon: Building2 },
+      { href: "/admin/customers", label: "Πελάτες SoftOne", icon: Contact },
+      { href: "/admin/payments", label: "Πληρωμές", icon: CreditCard },
+    ],
+  },
+];
+
+const SETTINGS: Item[] = [
+  { href: "/admin/settings/users", label: "Χρήστες", icon: Users },
+  { href: "/admin/settings/access", label: "Διαχείριση πρόσβασης", icon: ShieldCheck, superAdminOnly: true },
+  { href: "/admin/settings/softone", label: "SoftOne DGsoft", icon: PlugZap, superAdminOnly: true },
+  { href: "/admin/settings/sync", label: "Συγχρονισμοί", icon: RefreshCcw, superAdminOnly: true },
+  { href: "/admin/settings/billing", label: "Τιμολόγηση", icon: ReceiptText, superAdminOnly: true },
+  { href: "/admin/settings/cube", label: "Cube server", icon: Server, superAdminOnly: true },
+  { href: "/admin/settings/connections", label: "Συνδέσεις δεδομένων", icon: Database },
+];
+
+const ROLE_LABEL: Record<string, string> = { SUPER_ADMIN: "Super admin", ADMIN: "Admin", USER: "Χρήστης" };
+
+// White sidebar, DG Red icons; active item = soft red pill + red bar.
+const ITEM = cn(
+  "relative h-8 text-sm text-sidebar-foreground [&>svg]:text-dg-red-500",
+  "hover:bg-dg-red-50/70 hover:text-dg-red-700 active:bg-dg-red-50 dark:hover:bg-white/5 dark:hover:text-white",
+  "data-active:bg-dg-red-50 data-active:font-semibold data-active:text-dg-red-700 dark:data-active:bg-dg-red-900/40 dark:data-active:text-dg-red-200",
+  "data-active:before:absolute data-active:before:inset-y-1.5 data-active:before:-left-2 data-active:before:w-1 data-active:before:rounded-r-full data-active:before:bg-dg-red-500",
+);
+const SUB_ITEM = cn(
+  "h-7 text-sidebar-foreground [&>svg]:text-dg-red-400!",
+  "hover:bg-dg-red-50/70 hover:text-dg-red-700 dark:hover:bg-white/5",
+  "data-active:bg-dg-red-50 data-active:font-semibold data-active:text-dg-red-700 data-active:[&>svg]:text-dg-red-500! dark:data-active:bg-dg-red-900/40 dark:data-active:text-dg-red-200",
+);
+const GROUP_LABEL = "text-2xs font-semibold tracking-wider text-muted-foreground/80 uppercase";
+
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
+export function AppSidebar({ user }: { user: { name: string; email: string; platformRole: string } }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const isSuper = user.platformRole === "SUPER_ADMIN";
+  const visible = (i: Item) => !i.superAdminOnly || isSuper;
+  const isActive = (i: Item) => (i.exact ? pathname === i.href : pathname.startsWith(i.href));
+  const settingsItems = SETTINGS.filter(visible);
+  const settingsActive = settingsItems.some(isActive);
+
+  async function signOut() {
+    await authClient.signOut();
+    router.replace("/login");
+    router.refresh();
+  }
+
+  return (
+    <Sidebar collapsible="icon" className="border-r-0">
+      <SidebarHeader className="border-b border-sidebar-border pb-3">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" asChild className="hover:bg-transparent active:bg-transparent">
+              <Link href="/admin">
+                <DgLogo className="size-8 shrink-0 text-dg-red-500" title="DGsoft" />
+                <span className="flex flex-col leading-tight">
+                  <span className="text-sm font-bold tracking-tight">
+                    DGsmart <span className="text-dg-red-500">BI</span>
+                  </span>
+                  <span className="text-2xs tracking-wide text-muted-foreground uppercase">Admin console</span>
+                </span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
+
+      <SidebarContent className="gap-0">
+        {MAIN.map((group) => (
+          <SidebarGroup key={group.label} className="py-1">
+            <SidebarGroupLabel className={GROUP_LABEL}>
+              {group.label}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-0.5">
+                {group.items.filter(visible).map((item) => (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton asChild isActive={isActive(item)} tooltip={item.label} className={ITEM}>
+                      <Link href={item.href}>
+                        <item.icon />
+                        <span>{item.label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
+
+        {settingsItems.length > 0 && (
+          <SidebarGroup className="py-1">
+            <SidebarGroupLabel className={GROUP_LABEL}>
+              Διαχείριση
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {/* key resets the open state when navigating into/out of settings */}
+                <Collapsible key={String(settingsActive)} asChild defaultOpen={settingsActive} className="group/collapsible">
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton
+                        tooltip="Ρυθμίσεις"
+                        className={cn(ITEM, settingsActive && "font-semibold text-dg-red-700")}
+                      >
+                        <Settings />
+                        <span>Ρυθμίσεις</span>
+                        <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarMenuSub className="mr-0 border-dg-red-100 pr-0 dark:border-white/10">
+                        {settingsItems.map((item) => (
+                          <SidebarMenuSubItem key={item.href}>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={isActive(item)}
+                              className={SUB_ITEM}
+                            >
+                              <Link href={item.href}>
+                                <item.icon />
+                                <span>{item.label}</span>
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+      </SidebarContent>
+
+      <SidebarFooter className="border-t border-sidebar-border">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton size="lg" className="hover:bg-dg-red-50/70 data-[state=open]:bg-dg-red-50 dark:hover:bg-white/5">
+                  <Avatar className="size-8 rounded-lg">
+                    <AvatarFallback className="rounded-lg bg-linear-to-br from-dg-red-500 to-dg-red-700 text-xs font-semibold text-white">
+                      {initials(user.name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="flex min-w-0 flex-col leading-tight">
+                    <span className="truncate text-sm font-medium">{user.name}</span>
+                    <span className="truncate text-2xs text-muted-foreground">{ROLE_LABEL[user.platformRole]}</span>
+                  </span>
+                  <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="top" align="start" className="w-56">
+                <DropdownMenuLabel className="font-normal">
+                  <div className="truncate text-sm font-medium">{user.name}</div>
+                  <div className="truncate text-xs text-muted-foreground">{user.email}</div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={signOut}>
+                  <LogOut />
+                  Αποσύνδεση
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
+  );
+}

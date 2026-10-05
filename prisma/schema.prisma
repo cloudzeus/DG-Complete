@@ -1,0 +1,462 @@
+// DGsmart BI — control plane database (dgsmartbi)
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────── Auth (Better Auth) ─────────────────────────
+
+enum PlatformRole {
+  SUPER_ADMIN
+  ADMIN
+  USER
+}
+
+model User {
+  id            String       @id @default(cuid())
+  name          String
+  email         String       @unique
+  emailVerified Boolean      @default(false)
+  image         String?
+  platformRole  PlatformRole @default(USER)
+  active        Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  sessions           Session[]
+  accounts           Account[]
+  memberships        Membership[]
+  createdConnections DataConnection[]
+  payments           Payment[]
+  auditLogs          AuditLog[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ───────────────────────── Tenants & RBAC ─────────────────────────
+
+enum TenantStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  CANCELED
+}
+
+enum WarehouseStatus {
+  NONE // not provisioned
+  READY // schema t_<id> + role r_<id> exist, login enabled
+  DISABLED // role exists but NOLOGIN (suspended)
+  ERROR
+}
+
+enum TenantRole {
+  TENANT_ADMIN
+  TENANT_USER
+}
+
+model Tenant {
+  // cuid → lowercase alphanumeric: reused as warehouse schema t_<id> / role r_<id>
+  id     String       @id @default(cuid())
+  name   String
+  afm    String?
+  s1Trdr Int?         @unique // TRDR του πελάτη στο SoftOne της DGsoft
+  s1Code String?
+  email  String?
+  status TenantStatus @default(PENDING)
+
+  // Cube warehouse (cubebiproduction): schema t_<id>, read-only role r_<id>
+  warehouseStatus        WarehouseStatus @default(NONE)
+  warehouseProvisionedAt DateTime?
+  warehouseError         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships        Membership[]
+  connections        DataConnection[]
+  softoneConnections SoftOneConnection[]
+  payments           Payment[]
+  auditLogs          AuditLog[]
+
+  @@map("tenant")
+}
+
+model Membership {
+  id        String     @id @default(cuid())
+  userId    String
+  tenantId  String
+  role      TenantRole @default(TENANT_USER)
+  createdAt DateTime   @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+  @@map("membership")
+}
+
+// Editable role → permission matrix (Ρυθμίσεις → Πρόσβαση). Empty table = code defaults.
+model RolePermission {
+  role       String // SUPER_ADMIN | ADMIN | TENANT_ADMIN | TENANT_USER
+  permission String
+  createdAt  DateTime @default(now())
+
+  @@id([role, permission])
+  @@map("role_permission")
+}
+
+// ───────────────────────── Data connections ─────────────────────────
+
+enum ConnectionPurpose {
+  CUBE_WAREHOUSE // βάση που διαβάζει το Cube (π.χ. cubebiproduction / cubebidev)
+  TENANT_SOURCE // πηγή δεδομένων πελάτη
+}
+
+enum ConnectionEngine {
+  POSTGRES
+  MYSQL
+  MSSQL
+}
+
+enum ConnectionEnvironment {
+  PRODUCTION
+  DEVELOPMENT
+}
+
+enum ConnectionTestStatus {
+  UNTESTED
+  OK
+  FAILED
+}
+
+model DataConnection {
+  id             String                @id @default(cuid())
+  name           String
+  purpose        ConnectionPurpose
+  engine         ConnectionEngine
+  environment    ConnectionEnvironment @default(PRODUCTION)
+  host           String
+  port           Int
+  database       String
+  ssl            Boolean               @default(false)
+  // AES-256-GCM: { username, password } — never sent to the browser
+  credentialsEnc String
+  tenantId       String?
+  tenant         Tenant?               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lastTestedAt   DateTime?
+  lastTestStatus ConnectionTestStatus  @default(UNTESTED)
+  lastTestError  String?
+  createdById    String?
+  createdBy      User?                 @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  cubeWarehouseFor CubeDeployment[] @relation("CubeWarehouse")
+  cubeDevFor       CubeDeployment[] @relation("CubeDev")
+
+  @@index([tenantId])
+  @@index([purpose])
+  @@map("data_connection")
+}
+
+// ───────────────────────── SoftOne Web Services ─────────────────────────
+
+enum SoftOneScope {
+  DGSOFT // the SoftOne of DGsoft itself: customers → tenants, billing documents
+  TENANT // a customer's own SoftOne (data source) — used from Phase 4
+}
+
+model SoftOneConnection {
+  id             String               @id @default(cuid())
+  scope          SoftOneScope
+  tenantId       String?
+  tenant         Tenant?              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name           String
+  baseUrl        String // https://<serial>.oncloud.gr/s1services
+  appId          String
+  company        String
+  branch         String
+  module         String
+  refId          String
+  // AES-256-GCM: { username, password }
+  credentialsEnc String
+  // AES-256-GCM: permanent clientID of the day (re-auth on -100/-101 or new day)
+  sessionEnc     String?
+  sessionDate    String? // YYYY-MM-DD (Europe/Athens)
+  lastTestedAt   DateTime?
+  lastTestStatus ConnectionTestStatus @default(UNTESTED)
+  lastTestError  String?
+
+  // Subscription invoicing (DGSOFT scope): SALDOC series, service item, payment method
+  invoiceSeries    Int?
+  serviceMtrl      Int?
+  paymentCode      Int?
+  vatRate          Decimal? @db.Decimal(5, 2) // e.g. 24.00 — used when prices include VAT
+  pricesIncludeVat Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customers S1Customer[]
+  syncRuns  SyncRun[]
+  syncJobs  SyncJob[]
+
+  @@index([scope])
+  @@index([tenantId])
+  @@map("softone_connection")
+}
+
+// Local mirror of SoftOne customers (TRDR, SODTYPE=13) of a SoftOne connection.
+model S1Customer {
+  id           String            @id @default(cuid())
+  connectionId String
+  connection   SoftOneConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  trdr         Int
+  code         String
+  name         String
+  afm          String?
+  email        String?
+  phone        String?
+  address      String?
+  city         String?
+  zip          String?
+  isActive     Boolean           @default(true)
+  s1UpdatedAt  DateTime? // TRDR.UPDDATE
+  syncedAt     DateTime          @default(now())
+
+  @@unique([connectionId, trdr])
+  @@index([afm])
+  @@index([name])
+  @@map("s1_customer")
+}
+
+enum SyncKind {
+  DGSOFT_CUSTOMERS
+  TABLE
+}
+
+enum SyncJobType {
+  CUSTOMERS // built-in: TRDR customers → s1_customer + linked tenants
+  TABLE // generic: any SoftOne table → s1_record (JSON rows)
+}
+
+// A scheduled SoftOne → app synchronisation ("cron job").
+model SyncJob {
+  id              String            @id @default(cuid())
+  connectionId    String
+  connection      SoftOneConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  name            String
+  type            SyncJobType       @default(TABLE)
+  table           String // SoftOne DB table, e.g. MTRL, TRDR, FINDOC
+  fields          String // comma separated; must include keyField (and updField if set)
+  keyField        String // primary key column, e.g. MTRL
+  updField        String? // incremental watermark column, e.g. UPDDATE
+  filter          String? // extra GetTable FILTER (SQL where), e.g. SODTYPE=13
+  intervalMinutes Int               @default(60)
+  enabled         Boolean           @default(true)
+  lastRunAt       DateTime?
+  lastStatus      SyncStatus?
+  nextRunAt       DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  runs    SyncRun[]
+  records S1Record[]
+
+  @@unique([connectionId, name])
+  @@index([enabled, nextRunAt])
+  @@map("sync_job")
+}
+
+// Generic mirror rows of TABLE sync jobs.
+model S1Record {
+  id          String    @id @default(cuid())
+  jobId       String
+  job         SyncJob   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  key         String
+  data        Json
+  s1UpdatedAt DateTime?
+  syncedAt    DateTime  @default(now())
+
+  @@unique([jobId, key])
+  @@map("s1_record")
+}
+
+enum SyncMode {
+  FULL
+  INCREMENTAL
+}
+
+enum SyncStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+model SyncRun {
+  id             String            @id @default(cuid())
+  connectionId   String
+  connection     SoftOneConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  kind           SyncKind
+  mode           SyncMode
+  status         SyncStatus        @default(RUNNING)
+  trigger        String // "manual" | "cron"
+  triggeredById  String?
+  watermarkFrom  DateTime?
+  watermarkTo    DateTime?
+  rowsRead       Int               @default(0)
+  rowsUpserted   Int               @default(0)
+  tenantsUpdated Int               @default(0)
+  error          String?
+  startedAt      DateTime          @default(now())
+  finishedAt     DateTime?
+  jobId          String?
+  job            SyncJob?          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([connectionId, kind, startedAt])
+  @@map("sync_run")
+}
+
+// ───────────────────────── Payments ─────────────────────────
+
+enum PaymentMethod {
+  CARD
+  BANK_TRANSFER
+  CASH
+  VIVA
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum S1PostStatus {
+  NOT_POSTED
+  POSTING // claimed by one request — prevents double posting
+  POSTED
+  FAILED
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  tenantId    String
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  amount      Decimal       @db.Decimal(12, 2) // gross amount charged
+  currency    String        @default("EUR")
+  description String
+  method      PaymentMethod
+  status      PaymentStatus @default(PAID)
+  paidAt      DateTime      @default(now())
+  providerRef String?       @unique // e.g. Viva transaction id
+
+  // Posting to the SoftOne of DGsoft (SALDOC)
+  s1Status   S1PostStatus @default(NOT_POSTED)
+  s1Findoc   Int?
+  s1Fincode  String?
+  s1Error    String?
+  s1PostedAt DateTime?
+
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, paidAt])
+  @@index([s1Status])
+  @@map("payment")
+}
+
+// ───────────────────────── Cube server ─────────────────────────
+
+// Single row (id = "default"): how the Cube server on Coolify is wired to this app.
+model CubeDeployment {
+  id                    String          @id @default("default")
+  apiUrl                String // https://cube.dgsmart.gr
+  devUrl                String? // https://cube-dev.dgsmart.gr
+  controlPlaneUrl       String // public URL of this app, called by the Cube refresh worker
+  warehouseConnectionId String?
+  warehouseConnection   DataConnection? @relation("CubeWarehouse", fields: [warehouseConnectionId], references: [id], onDelete: SetNull)
+  devConnectionId       String?
+  devConnection         DataConnection? @relation("CubeDev", fields: [devConnectionId], references: [id], onDelete: SetNull)
+  // AES-256-GCM: secrets shared by this app and Cube (JWT secret, tenant role secret, internal token, …)
+  secretsEnc            String
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  @@map("cube_deployment")
+}
+
+// ───────────────────────── Audit ─────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  action    String
+  entity    String
+  entityId  String?
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([entity, entityId])
+  @@map("audit_log")
+}
