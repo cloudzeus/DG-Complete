@@ -44,7 +44,7 @@ function Actions({ row, canPost }: { row: PaymentRow; canPost: boolean }) {
           onSelect: () =>
             start(async () => {
               const r = await postPayment(row.id);
-              if (r.ok) toast.success(`Καταχωρήθηκε στο SoftOne: ${r.fincode ?? r.findoc}`);
+              if (r.ok) toast.success(`Καταχωρήθηκε στο SoftOne${r.fincode ? `: ${r.fincode}` : ""}`);
               else toast.error("Η αποστολή απέτυχε", { description: r.error });
             }),
         },
@@ -123,7 +123,7 @@ export function PaymentsTable({
         if (p.s1Status === "POSTED")
           return (
             <span className="flex min-w-0 flex-col gap-0.5" title={p.s1Error ?? undefined}>
-              <StatusPill tone="green">{p.s1Fincode ?? `#${p.s1Findoc}`}</StatusPill>
+              <StatusPill tone="green">{p.s1Fincode ?? "Καταχωρήθηκε"}</StatusPill>
               {p.s1Error && <span className="truncate text-xs text-amber-700">{p.s1Error}</span>}
             </span>
           );

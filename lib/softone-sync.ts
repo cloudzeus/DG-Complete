@@ -2,13 +2,14 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import type { SyncJob } from "@/lib/generated/prisma/client";
 import { formatS1Date, getDgsoftConnection, parseS1Date, s1GetTable, type Row } from "@/lib/softone";
+import { JOB_PRESETS, resolveFilter, stripCompany } from "@/lib/softone-presets";
 
 // SoftOne (DGsoft) → app synchronisation engine.
 //  · Every sync is a SyncJob ("cron job"): CUSTOMERS (built-in → s1_customer + tenants) or TABLE (any table → s1_record).
 //  · Incremental by the job's updField (e.g. UPDDATE) with a 1-hour overlap; FULL re-reads everything.
 //  · A partial unique index (one RUNNING sync_run per job) guarantees one run at a time across manual + cron.
 
-export const CUSTOMERS_JOB_NAME = "Πελάτες (TRDR)";
+export const CUSTOMERS_JOB_NAME = "Πελάτες";
 const CUSTOMER_FIELDS = ["TRDR", "CODE", "NAME", "AFM", "EMAIL", "PHONE01", "ADDRESS", "CITY", "ZIP", "ISACTIVE", "UPDDATE"];
 const OVERLAP_MS = 60 * 60 * 1000;
 const STALE_MS = 30 * 60 * 1000;
@@ -92,7 +93,9 @@ export async function runSyncJob(
 
   try {
     const fields = job.fields.split(",").map((f) => f.trim()).filter(Boolean);
-    const filter = [job.filter?.trim() || null, from && job.updField ? `${job.updField}>='${formatS1Date(from)}'` : null]
+    const conn = await prisma.softOneConnection.findUnique({ where: { id: job.connectionId }, select: { company: true } });
+    const baseFilter = resolveFilter(job.filter?.trim() || undefined, conn?.company ?? "");
+    const filter = [baseFilter || null, from && job.updField ? `${job.updField}>='${formatS1Date(from)}'` : null]
       .filter(Boolean)
       .map((f) => `(${f})`)
       .join(" AND ");
@@ -183,7 +186,7 @@ async function applyCustomers(job: SyncJob, rows: Row[]): Promise<Applied> {
 }
 
 async function applyTableRows(job: SyncJob, rows: Row[]): Promise<Applied> {
-  const keyField = job.keyField.toUpperCase();
+  const keyFields = job.keyField.split(",").map((k) => k.trim().toUpperCase()).filter(Boolean);
   const updField = job.updField?.toUpperCase();
   let maxUpdated: Date | null = null;
   let upserted = 0;
@@ -192,8 +195,9 @@ async function applyTableRows(job: SyncJob, rows: Row[]): Promise<Applied> {
     const batch = rows
       .slice(i, i + BATCH)
       .map((r) => {
-        const key = str(r[keyField]);
-        if (!key) return null;
+        const parts = keyFields.map((k) => str(r[k]));
+        if (parts.some((p) => !p)) return null;
+        const key = parts.join("|");
         const upd = updField ? parseS1Date(r[updField]) : null;
         maxUpdated = maxDate(maxUpdated, upd);
         return { key, data: r, upd: upd?.toISOString() ?? null };
@@ -208,6 +212,68 @@ async function applyTableRows(job: SyncJob, rows: Row[]): Promise<Applied> {
         SET "data" = EXCLUDED."data", "s1UpdatedAt" = EXCLUDED."s1UpdatedAt", "syncedAt" = now()`;
   }
   return { upserted, tenantsUpdated: 0, maxUpdated };
+}
+
+/**
+ * Creates the default reference/master-data jobs (lib/softone-presets) that don't exist yet.
+ * Each one is verified against this SoftOne installation first (GetTable … AND 1=0):
+ * full fields → without the COMPANY clause → minimal fields. Unverifiable presets are skipped.
+ */
+export async function seedDefaultJobs(connectionId?: string) {
+  const conn = connectionId
+    ? await prisma.softOneConnection.findUnique({ where: { id: connectionId } })
+    : await getDgsoftConnection();
+  if (!conn) throw new Error("Δεν έχει ρυθμιστεί σύνδεση με το SoftOne της DGsoft.");
+  if (conn.scope === "DGSOFT") await ensureCustomersJob(conn.id, conn.company);
+  const existing = new Set((await prisma.syncJob.findMany({ where: { connectionId: conn.id }, select: { name: true } })).map((j) => j.name));
+  const report: { name: string; status: "created" | "exists" | "failed"; note?: string }[] = [];
+
+  for (const p of JOB_PRESETS) {
+    if (existing.has(p.name)) {
+      report.push({ name: p.name, status: "exists" });
+      continue;
+    }
+    const withCompany = resolveFilter(p.filter, conn.company);
+    const attempts = [
+      { fields: p.fields, filter: withCompany, note: undefined },
+      { fields: p.fields, filter: stripCompany(withCompany), note: "χωρίς φίλτρο εταιρείας" },
+      { fields: p.minimal, filter: stripCompany(withCompany), note: "βασικά πεδία" },
+    ].filter((a, i, all) => i === 0 || a.fields !== all[i - 1].fields || a.filter !== all[i - 1].filter);
+
+    let chosen: (typeof attempts)[number] | null = null;
+    let lastError = "";
+    for (const a of attempts) {
+      try {
+        const probe = [a.filter ? `(${a.filter})` : null, "1=0"].filter(Boolean).join(" AND ");
+        await s1GetTable(conn.id, p.table, a.fields.split(","), probe);
+        chosen = a;
+        break;
+      } catch (err) {
+        lastError = (err as Error).message.slice(0, 200);
+      }
+    }
+    if (!chosen) {
+      report.push({ name: p.name, status: "failed", note: lastError });
+      continue;
+    }
+    const fieldList = chosen.fields.split(",");
+    await prisma.syncJob.create({
+      data: {
+        connectionId: conn.id,
+        name: p.name,
+        type: "TABLE",
+        table: p.table,
+        fields: chosen.fields,
+        keyField: p.keyField,
+        updField: p.updField && fieldList.includes(p.updField) ? p.updField : null,
+        filter: chosen.filter || null,
+        intervalMinutes: p.intervalMinutes,
+        enabled: p.enabled ?? true,
+      },
+    });
+    report.push({ name: p.name, status: "created", note: chosen.note });
+  }
+  return report;
 }
 
 /** Runs every enabled job whose nextRunAt has passed, within a time budget (called by cron). */

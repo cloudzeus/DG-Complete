@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Pause, Pencil, Play, Plus, RefreshCcw, Trash2, Zap } from "lucide-react";
+import { Pause, Pencil, Play, Plus, RefreshCcw, Table2, Trash2, Zap } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { StatusPill } from "@/components/admin/tone";
 import { DataTable } from "@/components/data-table/data-table";
@@ -34,7 +35,8 @@ const fmt = (iso: string | null) =>
 const every = (m: number) =>
   m % 1440 === 0 ? `${m / 1440} ημ.` : m % 60 === 0 ? `${m / 60} ώρ.` : `${m} λεπ.`;
 
-export function JobsTable({ data, connected }: { data: JobRow[]; connected: boolean }) {
+export function JobsTable({ data, connected, toolbar }: { data: JobRow[]; connected: boolean; toolbar?: React.ReactNode }) {
+  const router = useRouter();
   const [editing, setEditing] = useState<JobValues | "new" | null>(null);
   const [deleting, setDeleting] = useState<JobRow | null>(null);
   const [pending, start] = useTransition();
@@ -63,14 +65,13 @@ export function JobsTable({ data, connected }: { data: JobRow[]; connected: bool
       meta: { label: "Συγχρονισμός" },
       cell: ({ row }) => (
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5 truncate font-medium">
-            {row.original.name}
+          <div className="flex items-center gap-1.5 truncate">
+            <a href={`/admin/settings/sync/${row.original.id}`} className="truncate hover:text-primary hover:underline">
+              {row.original.name}
+            </a>
             {row.original.type === "CUSTOMERS" && <StatusPill tone="violet">ενσωματωμένο</StatusPill>}
           </div>
-          <div className="truncate font-mono text-2xs text-muted-foreground">
-            {row.original.table}
-            {row.original.filter ? ` · ${row.original.filter}` : ""}
-          </div>
+
         </div>
       ),
     },
@@ -125,7 +126,8 @@ export function JobsTable({ data, connected }: { data: JobRow[]; connected: bool
             label={j.name}
             disabled={pending || !connected}
             actions={[
-              { label: "Εκτέλεση τώρα", icon: Zap, onSelect: () => run(j, "INCREMENTAL") },
+              { label: "Δεδομένα", icon: Table2, onSelect: () => router.push(`/admin/settings/sync/${j.id}`) },
+              { label: "Εκτέλεση τώρα", icon: Zap, onSelect: () => run(j, "INCREMENTAL"), separated: true },
               { label: "Πλήρης εκτέλεση", icon: RefreshCcw, onSelect: () => run(j, "FULL"), hidden: !j.updField },
               { label: "Επεξεργασία", icon: Pencil, onSelect: () => setEditing(j), separated: true },
               {
@@ -151,10 +153,13 @@ export function JobsTable({ data, connected }: { data: JobRow[]; connected: bool
         initialSorting={[{ id: "name", desc: false }]}
         emptyMessage="Κανένας συγχρονισμός ακόμα."
         toolbar={
-          <Button size="sm" onClick={() => setEditing("new")} disabled={!connected}>
-            <Plus />
-            Νέος συγχρονισμός
-          </Button>
+          <>
+            {toolbar}
+            <Button size="sm" onClick={() => setEditing("new")} disabled={!connected}>
+              <Plus />
+              Νέος συγχρονισμός
+            </Button>
+          </>
         }
       />
       <JobDialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)} job={editing && editing !== "new" ? editing : undefined} />

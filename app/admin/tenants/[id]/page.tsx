@@ -114,8 +114,6 @@ export default async function TenantPage({ params }: PageProps<"/admin/tenants/[
                 <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
                   <dt className="text-muted-foreground">Κωδικός</dt>
                   <dd className="font-mono">{s1Customer?.code ?? tenant.s1Code ?? "—"}</dd>
-                  <dt className="text-muted-foreground">TRDR</dt>
-                  <dd className="font-mono">{tenant.s1Trdr}</dd>
                   {s1Customer && (
                     <>
                       <dt className="text-muted-foreground">Επωνυμία</dt>

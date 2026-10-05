@@ -3,10 +3,10 @@ import { NextResponse } from "next/server";
 import { runDueJobs } from "@/lib/softone-sync";
 
 // Scheduler tick: runs every due SoftOne sync job (Ρυθμίσεις → Συγχρονισμοί).
-// Coolify scheduled task, every 5 minutes:
-//   curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://bi.dgsmart.gr/api/internal/cron/run
+// Called every minute by the app's own in-process scheduler (lib/scheduler.ts, started from
+// instrumentation.ts). Can also be called manually with Authorization: Bearer $CRON_SECRET.
 
-export const maxDuration = 60;
+export const maxDuration = 600;
 
 function authorized(header: string | null) {
   const secret = process.env.CRON_SECRET;
@@ -20,5 +20,5 @@ export async function POST(request: Request) {
   if (!authorized(request.headers.get("authorization"))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  return NextResponse.json(await runDueJobs());
+  return NextResponse.json(await runDueJobs(8 * 60_000));
 }

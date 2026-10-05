@@ -95,7 +95,7 @@ export function TenantsTable({ data, canManage, toolbar }: { data: TenantRow[]; 
       meta: { label: "Επωνυμία" },
       cell: ({ row }) => (
         <div className="min-w-0">
-          <Link href={`/admin/tenants/${row.original.id}`} className="block truncate font-medium hover:text-primary hover:underline">
+          <Link href={`/admin/tenants/${row.original.id}`} className="block truncate text-foreground hover:text-primary hover:underline">
             {row.original.name}
           </Link>
           {row.original.email && <div className="truncate text-xs text-muted-foreground">{row.original.email}</div>}

@@ -84,7 +84,7 @@ export function CustomersTable({
       meta: { label: "Επωνυμία" },
       cell: ({ row }) => (
         <span className="flex min-w-0 items-center gap-2">
-          <span className="truncate font-medium">{row.original.name}</span>
+          <span className="truncate">{row.original.name}</span>
           {!row.original.isActive && <StatusPill tone="slate">Ανενεργός</StatusPill>}
         </span>
       ),

@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { JOB_PRESETS } from "@/lib/softone-presets";
 import { saveJob, testJob, type JobFormState } from "./actions";
 
 export type JobValues = {
@@ -24,16 +25,6 @@ export type JobValues = {
   filter: string | null;
   intervalMinutes: number;
   enabled: boolean;
-};
-
-// Common SoftOne tables of DGsoft (GetTable = raw DB tables).
-const PRESETS: Record<string, Omit<JobValues, "id" | "type" | "enabled" | "intervalMinutes">> = {
-  items: { name: "Είδη (MTRL)", table: "MTRL", keyField: "MTRL", updField: "UPDDATE", filter: "SODTYPE=51", fields: "MTRL,CODE,NAME,MTRUNIT1,VAT,PRICER,PRICEW,ISACTIVE,UPDDATE" },
-  services: { name: "Υπηρεσίες (MTRL)", table: "MTRL", keyField: "MTRL", updField: "UPDDATE", filter: "SODTYPE=52", fields: "MTRL,CODE,NAME,VAT,PRICER,ISACTIVE,UPDDATE" },
-  suppliers: { name: "Προμηθευτές (TRDR)", table: "TRDR", keyField: "TRDR", updField: "UPDDATE", filter: "SODTYPE=12", fields: "TRDR,CODE,NAME,AFM,EMAIL,PHONE01,CITY,ISACTIVE,UPDDATE" },
-  salesDocs: { name: "Παραστατικά πωλήσεων (FINDOC)", table: "FINDOC", keyField: "FINDOC", updField: "UPDDATE", filter: "SOSOURCE=1351", fields: "FINDOC,FINCODE,SERIES,TRNDATE,TRDR,SUMAMNT,VATAMNT,ISCANCEL,UPDDATE" },
-  series: { name: "Σειρές παραστατικών (SERIES)", table: "SERIES", keyField: "SERIES", updField: "", filter: "", fields: "SERIES,CODE,NAME,SOSOURCE,ISACTIVE" },
-  payments: { name: "Τρόποι πληρωμής (PAYMENT)", table: "PAYMENT", keyField: "PAYMENT", updField: "", filter: "", fields: "PAYMENT,CODE,NAME,ISACTIVE" },
 };
 
 const INTERVALS = [
@@ -106,17 +97,18 @@ function JobForm({ job, onDone }: { job?: JobValues; onDone: () => void }) {
           <Label>Πρότυπο</Label>
           <Select
             onValueChange={(k) => {
-              const p = PRESETS[k];
+              const p = JOB_PRESETS.find((x) => x.key === k)!;
               setV({ name: p.name, table: p.table, fields: p.fields, keyField: p.keyField, updField: p.updField ?? "", filter: p.filter ?? "" });
+              setInterval(String(p.intervalMinutes));
             }}
           >
             <SelectTrigger className="w-full">
               <SelectValue placeholder="Επιλέξτε έτοιμο πίνακα ή συμπληρώστε χειροκίνητα" />
             </SelectTrigger>
             <SelectContent>
-              {Object.entries(PRESETS).map(([k, p]) => (
-                <SelectItem key={k} value={k}>
-                  {p.name}
+              {JOB_PRESETS.map((p) => (
+                <SelectItem key={p.key} value={p.key}>
+                  {p.group} · {p.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -131,7 +123,7 @@ function JobForm({ job, onDone }: { job?: JobValues; onDone: () => void }) {
         <Field label="Πίνακας SoftOne *" error={e.table} hint="π.χ. MTRL, TRDR, FINDOC">
           <Input name="table" value={v.table} onChange={set("table")} readOnly={builtIn} className="font-mono uppercase" required />
         </Field>
-        <Field label="Κλειδί *" error={e.keyField} hint="Πρωτεύον κλειδί του πίνακα">
+        <Field label="Κλειδί *" error={e.keyField} hint="Πρωτεύον κλειδί (ή πεδία με κόμμα)">
           <Input name="keyField" value={v.keyField} onChange={set("keyField")} readOnly={builtIn} className="font-mono uppercase" required />
         </Field>
         <Field label="Πεδία *" error={e.fields} hint="Χωρισμένα με κόμμα" className="sm:col-span-2">
@@ -155,7 +147,7 @@ function JobForm({ job, onDone }: { job?: JobValues; onDone: () => void }) {
           </Select>
           <input type="hidden" name="intervalMinutes" value={interval} />
         </Field>
-        <Field label="Φίλτρο (SQL)" error={e.filter} hint="Προαιρετικό, π.χ. SODTYPE=51 AND ISACTIVE=1" className="sm:col-span-2">
+        <Field label="Φίλτρο (SQL)" error={e.filter} hint="Προαιρετικό, π.χ. COMPANY={COMPANY} AND SODTYPE=51" className="sm:col-span-2">
           <Input name="filter" value={v.filter ?? ""} onChange={set("filter")} className="font-mono" />
         </Field>
         <label className="flex items-center justify-between gap-3 rounded-md border p-2.5 sm:col-span-2">

@@ -150,7 +150,8 @@ export function DataTable<TData>({
   const visibleCols = table.getVisibleLeafColumns();
   const growId = (visibleCols.find((c) => c.columnDef.meta?.grow) ?? visibleCols.find((c) => !c.columnDef.meta?.fixed))?.id;
   const growUserSized = growId ? columnSizing[growId] !== undefined : false;
-  const minTableWidth = visibleCols.reduce((sum, c) => sum + (c.id === growId && !growUserSized ? (c.columnDef.minSize ?? 160) : c.getSize()), 0);
+  // The stretching column never shrinks below its own default width.
+  const minTableWidth = visibleCols.reduce((sum, c) => sum + c.getSize(), 0);
 
   return (
     <div className="space-y-3">
@@ -207,7 +208,7 @@ export function DataTable<TData>({
 
       {/* Table */}
       <div className="overflow-x-auto rounded-lg border border-border/80">
-        <table className="w-full table-fixed caption-bottom text-sm tabular-nums" style={{ minWidth: minTableWidth }}>
+        <table className="w-full table-fixed caption-bottom text-xs tabular-nums" style={{ minWidth: minTableWidth }}>
           <colgroup>
             {visibleCols.map((c) => (
               <col key={c.id} style={c.id === growId && !growUserSized ? undefined : { width: c.getSize() }} />

@@ -11,7 +11,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
   return (
     <SidebarProvider>
       <AppSidebar user={{ name: user.name, email: user.email, platformRole: user.platformRole }} />
-      <SidebarInset className="dg-canvas min-h-svh">
+      <SidebarInset className="dg-canvas min-h-svh min-w-0">
         <header className="dg-acrylic sticky top-0 z-20 flex h-11 items-center gap-2 border-b border-border/60 px-4">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-1 data-[orientation=vertical]:h-4" />
@@ -21,7 +21,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
             {process.env.NODE_ENV === "production" ? "Production" : "Development"}
           </span>
         </header>
-        <div className="mx-auto w-full max-w-7xl px-4 py-5 sm:px-6">{children}</div>
+        <div className="mx-auto w-full max-w-7xl min-w-0 px-4 py-5 sm:px-6">{children}</div>
       </SidebarInset>
     </SidebarProvider>
   );

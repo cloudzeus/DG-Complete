@@ -67,7 +67,7 @@ export async function recordPayment(_prev: PaymentFormState, formData: FormData)
   let message = "Η πληρωμή καταχωρήθηκε.";
   if (input.postToSoftOne) {
     const r = await postPaymentToSoftOne(payment.id);
-    message = r.ok ? `Η πληρωμή καταχωρήθηκε και στάλθηκε στο SoftOne (${r.fincode ?? r.findoc}).` : `Η πληρωμή καταχωρήθηκε, αλλά η αποστολή στο SoftOne απέτυχε: ${r.error}`;
+    message = r.ok ? `Η πληρωμή καταχωρήθηκε και στάλθηκε στο SoftOne ${r.fincode ? `(${r.fincode})` : ""}.` : `Η πληρωμή καταχωρήθηκε, αλλά η αποστολή στο SoftOne απέτυχε: ${r.error}`;
   }
   refresh(input.tenantId);
   return { ok: true, message };

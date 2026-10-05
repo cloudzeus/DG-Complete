@@ -8,7 +8,9 @@ import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/rbac";
 import { getDgsoftConnection } from "@/lib/softone";
 import { ensureCustomersJob } from "@/lib/softone-sync";
+import { schedulerState } from "@/lib/scheduler";
 import { JobsTable } from "./jobs-table";
+import { SeedButton } from "./seed-button";
 
 export const metadata: Metadata = { title: "Συγχρονισμοί" };
 
@@ -17,6 +19,7 @@ export default async function SyncPage() {
   const conn = await getDgsoftConnection();
   if (conn) await ensureCustomersJob(conn.id, conn.company);
 
+  const scheduler = schedulerState();
   const [jobs, counts, customers, runs] = await Promise.all([
     prisma.syncJob.findMany({ orderBy: { name: "asc" } }),
     prisma.s1Record.groupBy({ by: ["jobId"], _count: { _all: true } }),
@@ -29,7 +32,7 @@ export default async function SyncPage() {
       <PageHeader
         eyebrow="Ρυθμίσεις"
         title="Συγχρονισμοί (cron jobs)"
-        description="Ποιοι πίνακες του SoftOne της DGsoft αντιγράφονται στην εφαρμογή και πόσο συχνά."
+        description="Οι πίνακες του SoftOne της DGsoft που αντιγράφονται στην εφαρμογή (χώρες, ΔΟΥ, ΦΠΑ, είδη, παραστατικά …) και πόσο συχνά."
         icon={RefreshCcw}
         tone="violet"
       />
@@ -51,6 +54,7 @@ export default async function SyncPage() {
           <CardContent>
             <JobsTable
               connected={!!conn}
+              toolbar={<SeedButton disabled={!conn} />}
               data={jobs.map((j) => ({
                 id: j.id,
                 name: j.name,
@@ -75,16 +79,34 @@ export default async function SyncPage() {
           <Card>
             <CardHeader>
               <CardTitle>
-                <SectionTitle icon={Timer} tone="blue">
-                  Χρονοπρογραμματισμός
+                <SectionTitle
+                  icon={Timer}
+                  tone="blue"
+                  extra={
+                    scheduler.started ? <StatusPill tone="green">Ενεργός</StatusPill> : <StatusPill tone="slate">Ανενεργός</StatusPill>
+                  }
+                >
+                  Scheduler
                 </SectionTitle>
               </CardTitle>
-              <CardDescription>Scheduled task στο Coolify κάθε 5 λεπτά:</CardDescription>
+              <CardDescription>
+                Οι συγχρονισμοί τρέχουν από την ίδια την εφαρμογή, κάθε λεπτό ελέγχεται ποιοι είναι στην ώρα τους.
+              </CardDescription>
             </CardHeader>
-            <CardContent>
-              <pre className="overflow-x-auto rounded-md bg-muted p-2.5 font-mono text-2xs leading-relaxed">
-                {`curl -fsS -X POST \\\n  -H "Authorization: Bearer $CRON_SECRET" \\\n  https://bi.dgsmart.gr/api/internal/cron/run`}
-              </pre>
+            <CardContent className="space-y-1 text-xs text-muted-foreground">
+              {scheduler.started ? (
+                <p>
+                  Τελευταίος έλεγχος:{" "}
+                  {scheduler.lastTick
+                    ? new Date(scheduler.lastTick).toLocaleString("el-GR", { dateStyle: "short", timeStyle: "medium" })
+                    : "σε λίγα δευτερόλεπτα"}
+                </p>
+              ) : (
+                <p>
+                  Ανενεργός σε αυτό το περιβάλλον. Στην παραγωγή ξεκινά αυτόματα· τοπικά ενεργοποιείται με{" "}
+                  <code className="font-mono">SCHEDULER=on</code>.
+                </p>
+              )}
             </CardContent>
           </Card>
 
