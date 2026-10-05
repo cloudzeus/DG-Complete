@@ -18,6 +18,7 @@ export type TenantRow = {
   afm: string | null;
   s1Code: string | null;
   status: string;
+  isDemo: boolean;
   warehouseStatus: string;
   users: number;
   connections: number;
@@ -95,9 +96,12 @@ export function TenantsTable({ data, canManage, toolbar }: { data: TenantRow[]; 
       meta: { label: "Επωνυμία" },
       cell: ({ row }) => (
         <div className="min-w-0">
-          <Link href={`/admin/tenants/${row.original.id}`} className="block truncate text-foreground hover:text-primary hover:underline">
-            {row.original.name}
-          </Link>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <Link href={`/admin/tenants/${row.original.id}`} className="truncate text-foreground hover:text-primary hover:underline">
+              {row.original.name}
+            </Link>
+            {row.original.isDemo && <StatusPill tone="violet">Demo</StatusPill>}
+          </span>
           {row.original.email && <div className="truncate text-xs text-muted-foreground">{row.original.email}</div>}
         </div>
       ),

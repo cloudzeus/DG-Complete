@@ -115,6 +115,8 @@ model Tenant {
   s1Code String?
   email  String?
   status TenantStatus @default(PENDING)
+  // Demo tenant: always has access, never needs a subscription (for building/testing BI models)
+  isDemo Boolean      @default(false)
 
   // Cube warehouse (cubebiproduction): schema t_<id>, read-only role r_<id>
   warehouseStatus        WarehouseStatus @default(NONE)
@@ -239,6 +241,10 @@ model SoftOneConnection {
   lastTestedAt   DateTime?
   lastTestStatus ConnectionTestStatus @default(UNTESTED)
   lastTestError  String?
+
+  // What this installation contains (TENANT scope): GL / commercial documents / fiscal years
+  capabilities Json?
+  detectedAt   DateTime?
 
   // Subscription invoicing (DGSOFT scope): SALDOC series, service item, payment method
   invoiceSeries    Int?

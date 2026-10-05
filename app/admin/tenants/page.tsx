@@ -32,6 +32,7 @@ export default async function TenantsPage() {
               afm: t.afm,
               s1Code: t.s1Code,
               status: t.status,
+              isDemo: t.isDemo,
               warehouseStatus: t.warehouseStatus,
               users: t._count.memberships,
               connections: t._count.connections,

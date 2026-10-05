@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import { useActionState, useEffect, useEffectEvent, useRef, useState, useTransition } from "react";
 import { CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { saveSoftOne, testSoftOneDraft, type SoftOneFormState } from "../actions";
+import type { SoftOneFormState } from "@/lib/softone-form";
 
 export type SoftOneValues = {
   id: string;
@@ -21,9 +21,22 @@ export type SoftOneValues = {
   refId: string;
 };
 
-export function SoftOneForm({ values }: { values?: SoftOneValues }) {
+export function SoftOneForm({
+  values,
+  save,
+  test: testAction,
+  hidden,
+  onSaved,
+}: {
+  values?: SoftOneValues;
+  save: (prev: SoftOneFormState, fd: FormData) => Promise<SoftOneFormState>;
+  test: (fd: FormData) => Promise<SoftOneFormState>;
+  /** Extra hidden inputs, e.g. { tenantId }. */
+  hidden?: Record<string, string>;
+  onSaved?: () => void;
+}) {
   const formRef = useRef<HTMLFormElement>(null);
-  const [state, formAction, saving] = useActionState<SoftOneFormState, FormData>(saveSoftOne, {});
+  const [state, formAction, saving] = useActionState<SoftOneFormState, FormData>(save, {});
   const [testState, setTestState] = useState<SoftOneFormState>({});
   const [testing, startTest] = useTransition();
   const [ids, setIds] = useState({
@@ -33,9 +46,12 @@ export function SoftOneForm({ values }: { values?: SoftOneValues }) {
     refId: values?.refId ?? "",
   });
 
+  const handleSaved = useEffectEvent(() => onSaved?.());
   useEffect(() => {
-    if (state.ok) toast.success(state.message);
-    else if (state.message) toast.error(state.message);
+    if (state.ok) {
+      toast.success(state.message);
+      handleSaved();
+    } else if (state.message) toast.error(state.message);
   }, [state]);
 
   const errors = { ...testState.errors, ...state.errors };
@@ -44,12 +60,13 @@ export function SoftOneForm({ values }: { values?: SoftOneValues }) {
   function runTest() {
     if (!formRef.current) return;
     const fd = new FormData(formRef.current);
-    startTest(async () => setTestState(await testSoftOneDraft(fd)));
+    startTest(async () => setTestState(await testAction(fd)));
   }
 
   return (
     <form ref={formRef} action={formAction} className="space-y-5">
       {values?.id && <input type="hidden" name="id" value={values.id} />}
+      {hidden && Object.entries(hidden).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Διεύθυνση Web Services" hint="Serial ή πλήρες URL, π.χ. https://01234567.oncloud.gr/s1services" error={errors.baseUrl} className="sm:col-span-2">

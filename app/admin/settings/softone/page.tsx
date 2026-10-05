@@ -5,7 +5,8 @@ import { StatusPill } from "@/components/admin/tone";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requirePermission } from "@/lib/rbac";
 import { getDgsoftConnection, openSoftOneCredentials } from "@/lib/softone";
-import { SoftOneForm } from "./softone-form";
+import { saveSoftOne, testSoftOneDraft } from "../actions";
+import { SoftOneForm } from "@/components/admin/softone-form";
 
 export const metadata: Metadata = { title: "SoftOne DGsoft" };
 
@@ -46,6 +47,8 @@ export default async function SoftOneSettingsPage() {
         </CardHeader>
         <CardContent>
           <SoftOneForm
+            save={saveSoftOne}
+            test={testSoftOneDraft}
             values={
               conn
                 ? {
