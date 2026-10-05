@@ -1,4 +1,5 @@
 import "server-only";
+import { rebuildAfterImport } from "@/lib/pnl";
 import { prisma } from "@/lib/prisma";
 import type { SyncJob } from "@/lib/generated/prisma/client";
 import { formatS1Date, getDgsoftConnection, parseS1Date, s1GetTable, type Row } from "@/lib/softone";
@@ -112,6 +113,7 @@ export async function runSyncJob(
         },
       });
       await finishJob(job, "SUCCESS");
+      if (conn?.tenantId) await rebuildAfterImport(conn.tenantId, job.targetTable);
       return { ok: true, runId: run.id, rowsRead: result.read, rowsUpserted: result.written, tenantsUpdated: 0 };
     }
     const filter = [baseFilter || null, from && job.updField ? `${job.updField}>='${formatS1Date(from)}'` : null]

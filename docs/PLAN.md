@@ -188,3 +188,15 @@ Auth: Auth.js (credentials + magic link, προαιρετικά Microsoft Entra)
 6. **Πιλοτικός πελάτης** για τη Φάση 4 — και ποια reports/KPIs είναι προτεραιότητα;
 7. **Μέτρηση «queries»**: κάθε κλήση στο Cube (και refresh dashboard) μετράει ως query, ή μόνο ad-hoc queries/API calls; (Προτείνω: dashboards ανεξάρτητα από quota με cache, μετράνε ad-hoc & API.)
 8. Χρειάζεται **embedded dashboards** (iframe/SDK) στις εφαρμογές πελατών ή μόνο JSON API;
+
+---
+
+## 11. Μελλοντικά: AI agent (OpenRouter)
+
+Κάθε χρήστης tenant ρωτά με απλά λόγια («πώς πήγαν τα έξοδα προσωπικού φέτος σε σχέση με πέρσι;») και παίρνει απάντηση από τα δικά του δεδομένα.
+
+- **Μόνο μέσω Cube, όχι SQL**: ο agent χρησιμοποιεί tool calling πάνω στο Cube API με το JWT του tenant → η απομόνωση δεδομένων είναι εγγυημένη από την ίδια υποδομή.
+- Βλέπει το semantic layer (`/meta`: P&L γραμμές, πωλήσεις, αγορές …) και φτιάχνει Cube queries· απαντά στα ελληνικά με αριθμούς και γράφημα (shadcn charts).
+- OpenRouter με επιλογή μοντέλου/παρόχου ανά πακέτο· providers με zero data retention· όρος GDPR στη σύμβαση.
+- Μέτρηση χρήσης (tokens / ερωτήσεις) ανά tenant → μέρος των πακέτων συνδρομής.
+- Προϋπόθεση: τα Cube models (P&L κ.λπ.) των βημάτων 3–4.

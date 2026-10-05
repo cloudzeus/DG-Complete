@@ -32,7 +32,7 @@ export type WriteTarget = {
   keyFields: string[];
 };
 
-async function withWarehouse<T>(fn: (db: Client) => Promise<T>): Promise<T> {
+export async function withWarehouse<T>(fn: (db: Client) => Promise<T>): Promise<T> {
   const deployment = await getCubeDeployment();
   const conn = deployment?.warehouseConnection;
   if (!conn) throw new Error("Ο Cube server δεν έχει ρυθμιστεί (Ρυθμίσεις → Cube server).");

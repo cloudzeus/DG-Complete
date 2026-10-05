@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Bot,
   Building2,
   ChevronRight,
   ChevronsUpDown,
@@ -71,6 +72,7 @@ const SETTINGS: Item[] = [
   { href: "/admin/settings/softone", label: "SoftOne DGsoft", icon: PlugZap, superAdminOnly: true },
   { href: "/admin/settings/sync", label: "Συγχρονισμοί", icon: RefreshCcw, superAdminOnly: true },
   { href: "/admin/settings/billing", label: "Τιμολόγηση", icon: ReceiptText, superAdminOnly: true },
+  { href: "/admin/settings/ai", label: "AI · OpenRouter", icon: Bot, superAdminOnly: true },
   { href: "/admin/settings/cube", label: "Cube server", icon: Server, superAdminOnly: true },
   { href: "/admin/settings/connections", label: "Συνδέσεις δεδομένων", icon: Database },
   { href: "/admin/settings/logs", label: "Αρχεία καταγραφής", icon: ScrollText, superAdminOnly: true },

@@ -9,10 +9,12 @@ import {
   DatabaseZap,
   Download,
   Plug,
+  Scale,
   Users,
 } from "lucide-react";
 import { PageHeader, SectionTitle } from "@/components/admin/page-header";
 import { StatusPill, type Tone } from "@/components/admin/tone";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -131,6 +133,12 @@ export default async function TenantPage({
         tone="blue"
         actions={
           <>
+            <Button size="sm" variant="outline" asChild>
+              <Link href={`/admin/tenants/${tenant.id}/pnl`}>
+                <Scale />
+                Αποτελέσματα χρήσης
+              </Link>
+            </Button>
             <DemoToggle
               tenantId={tenant.id}
               isDemo={tenant.isDemo}

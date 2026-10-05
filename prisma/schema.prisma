@@ -130,6 +130,9 @@ model Tenant {
   connections        DataConnection[]
   softoneConnections SoftOneConnection[]
   payments           Payment[]
+  pnlConfig          PnlConfig?
+  pnlLines           PnlLine[]
+  aiUsage            AiUsage[]
   auditLogs          AuditLog[]
 
   @@map("tenant")
@@ -385,6 +388,109 @@ model SyncRun {
 
   @@index([connectionId, kind, startedAt])
   @@map("sync_run")
+}
+
+// ───────────────────────── P&L mapping (per tenant) ─────────────────────────
+
+enum PnlSource {
+  GL // Γενική Λογιστική: account-code prefixes
+  COMMERCIAL // Εμπορικό: sales / purchase documents
+}
+
+enum PnlSection {
+  REVENUE // Κύκλος εργασιών
+  COGS // Κόστος πωληθέντων / αγορές
+  OTHER_INCOME // Λοιπά έσοδα εκμετάλλευσης
+  OPEX // Λειτουργικά έξοδα
+  DEPRECIATION // Αποσβέσεις & προβλέψεις
+  FINANCIAL // Χρηματοοικονομικά
+  EXTRAORDINARY // Έκτακτα
+  TAX // Φόρος εισοδήματος
+}
+
+model PnlConfig {
+  tenantId   String    @id
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  source     PnlSource @default(GL)
+  template   String // template the lines were created from
+  builtAt    DateTime? // last fin_fact rebuild
+  buildRows  Int?
+  buildError String?
+  updatedAt  DateTime  @updatedAt
+  createdAt  DateTime  @default(now())
+
+  @@map("pnl_config")
+}
+
+model PnlLine {
+  id        String     @id @default(cuid())
+  tenantId  String
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  code      String // stable key used in fin_fact.line_code, e.g. REV_SALES
+  name      String
+  section   PnlSection
+  sortOrder Int
+  rules     PnlRule[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([tenantId, code])
+  @@map("pnl_line")
+}
+
+model PnlRule {
+  id        String   @id @default(cuid())
+  lineId    String
+  line      PnlLine  @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  source    String // GL | SALES | PURCHASES
+  pattern   String // GL: account code prefix (e.g. "70", "20.01"); docs: series id or "*"
+  negate    Boolean  @default(false) // e.g. credit-note series
+  createdAt DateTime @default(now())
+
+  @@index([lineId])
+  @@map("pnl_rule")
+}
+
+// ───────────────────────── AI (OpenRouter) ─────────────────────────
+
+/// Singleton (id "default"): the platform's OpenRouter key + pricing to tenants.
+model AiSettings {
+  id            String    @id @default("default")
+  apiKeyEnc     String? // AES-GCM envelope, AAD = ai_settings:default
+  keyHint       String? // last 4 chars, for display only
+  defaultModel  String    @default("anthropic/claude-sonnet-5.5")
+  markupPercent Decimal   @default(30) @db.Decimal(6, 2) // our margin on top of the OpenRouter cost
+  enabled       Boolean   @default(false)
+  lastTestedAt  DateTime?
+  lastTestOk    Boolean?
+  lastTestError String?
+  updatedAt     DateTime  @updatedAt
+
+  @@map("ai_settings")
+}
+
+/// One OpenRouter call, priced at the time it happened (cost + markup snapshot).
+model AiUsage {
+  id               String   @id @default(cuid())
+  tenantId         String?
+  tenant           Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  userId           String?
+  feature          String // e.g. chat, test
+  model            String
+  generationId     String?
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  costUsd          Decimal  @default(0) @db.Decimal(14, 8) // what OpenRouter charged us
+  markupPercent    Decimal  @db.Decimal(6, 2)
+  billedUsd        Decimal  @default(0) @db.Decimal(14, 8) // cost × (1 + markup)
+  latencyMs        Int?
+  ok               Boolean  @default(true)
+  error            String?
+  createdAt        DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([createdAt])
+  @@map("ai_usage")
 }
 
 // ───────────────────────── Payments ─────────────────────────
