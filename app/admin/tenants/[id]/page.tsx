@@ -7,6 +7,7 @@ import {
   Cable,
   CreditCard,
   DatabaseZap,
+  Download,
   Plug,
   Users,
 } from "lucide-react";
@@ -28,6 +29,9 @@ import { S1Link } from "./s1-link";
 import { StatusSelect } from "./status-select";
 import { DemoToggle } from "./demo-toggle";
 import { SourcesPanel } from "./sources-panel";
+import { ImportsPanel } from "./imports-panel";
+import { createTenantJobs } from "./sources-actions";
+import { countRows } from "@/lib/warehouse-writer";
 import { openSoftOneCredentials } from "@/lib/softone";
 import type { Capabilities } from "@/lib/softone-detect";
 import { WarehousePanel } from "./warehouse-panel";
@@ -97,6 +101,13 @@ export default async function TenantPage({
   const tenantSoftOne = await prisma.softOneConnection.findFirst({
     where: { scope: "TENANT", tenantId: tenant.id },
   });
+  const importJobs = tenantSoftOne
+    ? await prisma.syncJob.findMany({ where: { connectionId: tenantSoftOne.id }, orderBy: { name: "asc" } })
+    : [];
+  const importCounts = await countRows(
+    tenant.id,
+    importJobs.map((j) => j.targetTable).filter((t): t is string => !!t),
+  );
   const manage = can(user, "tenants.manage");
   const wh = WAREHOUSE[tenant.warehouseStatus];
 
@@ -178,6 +189,49 @@ export default async function TenantPage({
                     : null
                 }
               />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                <SectionTitle icon={Download} tone="blue">
+                  Άντληση δεδομένων
+                </SectionTitle>
+              </CardTitle>
+              <CardDescription>
+                Τι αντλείται από το SoftOne του πελάτη στην αποθήκη του (τρέχουσα + 2 προηγούμενες χρήσεις). Τρέχουν
+                αυτόματα από τον scheduler.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {tenantSoftOne ? (
+                <ImportsPanel
+                  tenantId={tenant.id}
+                  canManage={canSources}
+                  seed={canSources ? createTenantJobs.bind(null, tenant.id, tenantSoftOne.id) : null}
+                  jobs={importJobs.map((j) => ({
+                    id: j.id,
+                    name: j.name,
+                    type: j.type,
+                    table: j.table,
+                    fields: j.fields,
+                    keyField: j.keyField,
+                    updField: j.updField,
+                    filter: j.filter,
+                    intervalMinutes: j.intervalMinutes,
+                    enabled: j.enabled,
+                    locked: true,
+                    lastRunAt: j.lastRunAt?.toISOString() ?? null,
+                    lastStatus: j.lastStatus,
+                    nextRunAt: j.nextRunAt?.toISOString() ?? null,
+                    records: importCounts[j.targetTable ?? ""] ?? 0,
+                  }))}
+                />
+              ) : (
+                <p className="text-muted-foreground">
+                  Ορίστε πρώτα τη σύνδεση με το SoftOne του πελάτη (Πηγές δεδομένων).
+                </p>
+              )}
             </CardContent>
           </Card>
           <Card>

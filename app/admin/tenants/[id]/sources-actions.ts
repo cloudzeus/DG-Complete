@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/rbac";
 import { s1Authenticate, s1Login, sealSoftOneCredentials } from "@/lib/softone";
 import { detectCapabilities, type Capabilities } from "@/lib/softone-detect";
+import { seedTenantJobs } from "@/lib/softone-sync";
 import {
   parseSoftOneForm,
   PASSWORD_REQUIRED,
@@ -131,4 +132,33 @@ export async function deleteTenantSoftOne(tenantId: string, connectionId: string
   await audit({ actorId: user.id, action: "tenant.source.delete", entity: "SoftOneConnection", entityId: connectionId, tenantId });
   refresh(tenantId);
   return { ok: true, message: "Η σύνδεση διαγράφηκε. Τα δεδομένα που έχουν ήδη αντληθεί παραμένουν." };
+}
+
+/** Creates (verified) warehouse imports from the tenant's SoftOne — GL and/or commercial per detection. */
+export async function createTenantJobs(
+  tenantId: string,
+  connectionId: string,
+): Promise<{ ok: true; report: Awaited<ReturnType<typeof seedTenantJobs>> } | { ok: false; message: string }> {
+  const user = await requirePermission("connections.tenant.manage", tenantId);
+  const conn = await prisma.softOneConnection.findFirst({ where: { id: connectionId, scope: "TENANT", tenantId } });
+  if (!conn) return { ok: false, message: "Η σύνδεση δεν βρέθηκε." };
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { warehouseStatus: true } });
+  if (tenant?.warehouseStatus !== "READY" && tenant?.warehouseStatus !== "DISABLED") {
+    return { ok: false, message: "Κάντε πρώτα Provisioning της αποθήκης δεδομένων του tenant." };
+  }
+  try {
+    if (!conn.capabilities) await detectCapabilities(conn.id);
+    const report = await seedTenantJobs(conn.id);
+    await audit({
+      actorId: user.id,
+      action: "sync.job.seed",
+      entity: "SyncJob",
+      tenantId,
+      meta: { created: report.filter((r) => r.status === "created").map((r) => r.name) },
+    });
+    refresh(tenantId);
+    return { ok: true, report };
+  } catch (err) {
+    return { ok: false, message: (err as Error).message.slice(0, 400) };
+  }
 }

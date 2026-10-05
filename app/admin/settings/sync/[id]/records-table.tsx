@@ -7,7 +7,7 @@ import { fieldLabel, INTERNAL_ID_FIELDS } from "@/lib/softone-labels";
 
 type Row = Record<string, unknown>;
 
-const NUMERIC = /^(PRICE|PRICER|PRICEW|SUMAMNT|NETAMNT|VATAMNT|LINEVAL|QTY1|PERCNT|DISC1PRC)$/;
+const NUMERIC = /^(PRICE|PRICER|PRICEW|SUMAMNT|NETAMNT|VATAMNT|LINEVAL|QTY1|PERCNT|DISC1PRC|DEBIT|CREDIT)$/;
 const BOOLEAN = /^(ISACTIVE|ISCANCEL)$/;
 
 function formatValue(field: string, v: unknown) {

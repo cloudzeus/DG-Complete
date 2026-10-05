@@ -63,12 +63,27 @@ function errorsOf(error: z.ZodError): JobFormState["errors"] {
   return out;
 }
 
-const refresh = () => revalidatePath("/admin/settings/sync");
+const refresh = () => {
+  revalidatePath("/admin/settings/sync");
+  revalidatePath("/admin/tenants", "layout");
+};
+
+/** DGsoft jobs need platform settings; a tenant's jobs need permission on that tenant's sources. */
+async function requireJobPermission(jobId: string) {
+  const job = await prisma.syncJob.findUnique({ where: { id: jobId }, include: { connection: { select: { scope: true, tenantId: true } } } });
+  if (!job) return null;
+  if (job.connection.scope === "TENANT" && job.connection.tenantId) {
+    return { job, user: await requirePermission("connections.tenant.manage", job.connection.tenantId) };
+  }
+  return { job, user: await requirePermission("platform.settings.manage") };
+}
 
 /** Validates table + fields + filter against SoftOne without fetching rows (FILTER … AND 1=0). */
 export async function testJob(fd: FormData): Promise<JobFormState> {
-  await requirePermission("platform.settings.manage");
-  const conn = await getDgsoftConnection();
+  const editId = (fd.get("id") as string) || null;
+  const access = editId ? await requireJobPermission(editId) : null;
+  if (!access) await requirePermission("platform.settings.manage");
+  const conn = access ? await prisma.softOneConnection.findUnique({ where: { id: access.job.connectionId } }) : await getDgsoftConnection();
   if (!conn) return { test: { ok: false, message: "Δεν έχει ρυθμιστεί σύνδεση SoftOne." } };
   const parsed = parse(fd);
   if (!parsed.success) return { errors: errorsOf(parsed.error) };
@@ -83,8 +98,11 @@ export async function testJob(fd: FormData): Promise<JobFormState> {
 }
 
 export async function saveJob(_prev: JobFormState, fd: FormData): Promise<JobFormState> {
-  const user = await requirePermission("platform.settings.manage");
-  const conn = await getDgsoftConnection();
+  const editId = (fd.get("id") as string) || null;
+  const access = editId ? await requireJobPermission(editId) : null;
+  if (editId && !access) return { message: "Το job δεν βρέθηκε." };
+  const user = access ? access.user : await requirePermission("platform.settings.manage");
+  const conn = access ? await prisma.softOneConnection.findUnique({ where: { id: access.job.connectionId } }) : await getDgsoftConnection();
   if (!conn) return { message: "Δεν έχει ρυθμιστεί σύνδεση SoftOne." };
   const parsed = parse(fd);
   if (!parsed.success) return { errors: errorsOf(parsed.error) };
@@ -106,7 +124,8 @@ export async function saveJob(_prev: JobFormState, fd: FormData): Promise<JobFor
       if (!job) return { message: "Το job δεν βρέθηκε." };
       // The built-in customers job keeps its structure; only schedule / filter / enabled are editable.
       const patch =
-        job.type === "CUSTOMERS"
+        // Built-in customers job and typed warehouse imports keep their structure.
+        job.type === "CUSTOMERS" || job.destination === "WAREHOUSE"
           ? { filter: data.filter, intervalMinutes: data.intervalMinutes, enabled: data.enabled }
           : data;
       const structural = job.table !== data.table || job.keyField !== data.keyField;
@@ -126,7 +145,9 @@ export async function saveJob(_prev: JobFormState, fd: FormData): Promise<JobFor
 }
 
 export async function runJobNow(id: string, mode: "FULL" | "INCREMENTAL"): Promise<SyncResult> {
-  const user = await requirePermission("platform.settings.manage");
+  const access = await requireJobPermission(id);
+  if (!access) return { ok: false, error: "Το job δεν βρέθηκε." };
+  const { user } = access;
   const r = await runSyncJob(id, { mode, trigger: "manual", userId: user.id });
   await audit({ actorId: user.id, action: "sync.job.run", entity: "SyncJob", entityId: id, meta: { mode, ok: r.ok } });
   refresh();
@@ -135,7 +156,9 @@ export async function runJobNow(id: string, mode: "FULL" | "INCREMENTAL"): Promi
 }
 
 export async function setJobEnabled(id: string, enabled: boolean): Promise<{ ok: boolean; message: string }> {
-  const user = await requirePermission("platform.settings.manage");
+  const access = await requireJobPermission(id);
+  if (!access) return { ok: false, message: "Το job δεν βρέθηκε." };
+  const { user } = access;
   await prisma.syncJob.update({ where: { id }, data: { enabled, nextRunAt: null } });
   await audit({ actorId: user.id, action: enabled ? "sync.job.enable" : "sync.job.disable", entity: "SyncJob", entityId: id });
   refresh();
@@ -143,7 +166,9 @@ export async function setJobEnabled(id: string, enabled: boolean): Promise<{ ok:
 }
 
 export async function deleteJob(id: string): Promise<{ ok: boolean; message: string }> {
-  const user = await requirePermission("platform.settings.manage");
+  const access = await requireJobPermission(id);
+  if (!access) return { ok: false, message: "Το job δεν βρέθηκε." };
+  const { user } = access;
   const job = await prisma.syncJob.findUnique({ where: { id }, select: { type: true, name: true } });
   if (!job) return { ok: false, message: "Το job δεν βρέθηκε." };
   if (job.type === "CUSTOMERS") return { ok: false, message: "Το ενσωματωμένο job πελατών δεν διαγράφεται· απενεργοποιήστε το." };

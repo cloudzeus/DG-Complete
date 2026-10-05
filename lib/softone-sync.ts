@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import type { SyncJob } from "@/lib/generated/prisma/client";
 import { formatS1Date, getDgsoftConnection, parseS1Date, s1GetTable, type Row } from "@/lib/softone";
 import { JOB_PRESETS, resolveFilter, stripCompany } from "@/lib/softone-presets";
+import { TENANT_PRESETS } from "@/lib/tenant-presets";
+import { replaceRows, upsertRows, type Columns } from "@/lib/warehouse-writer";
 
 // SoftOne (DGsoft) → app synchronisation engine.
 //  · Every sync is a SyncJob ("cron job"): CUSTOMERS (built-in → s1_customer + tenants) or TABLE (any table → s1_record).
@@ -70,9 +72,10 @@ export async function runSyncJob(
     orderBy: { startedAt: "desc" },
     select: { watermarkTo: true },
   });
-  const incremental = !!job.updField && (opts.mode ?? (last?.watermarkTo ? "INCREMENTAL" : "FULL")) === "INCREMENTAL";
+  const canIncrement = !!job.updField || (job.destination === "WAREHOUSE" && !!job.dateField && !!job.windowDays);
+  const incremental = canIncrement && (opts.mode ?? (last?.watermarkTo ? "INCREMENTAL" : "FULL")) === "INCREMENTAL";
   const mode = incremental && last?.watermarkTo ? "INCREMENTAL" : "FULL";
-  const from = mode === "INCREMENTAL" ? new Date(last!.watermarkTo!.getTime() - OVERLAP_MS) : null;
+  const from = mode === "INCREMENTAL" && job.updField ? new Date(last!.watermarkTo!.getTime() - OVERLAP_MS) : null;
 
   let run;
   try {
@@ -93,8 +96,24 @@ export async function runSyncJob(
 
   try {
     const fields = job.fields.split(",").map((f) => f.trim()).filter(Boolean);
-    const conn = await prisma.softOneConnection.findUnique({ where: { id: job.connectionId }, select: { company: true } });
+    const conn = await prisma.softOneConnection.findUnique({ where: { id: job.connectionId }, select: { company: true, tenantId: true } });
     const baseFilter = resolveFilter(job.filter?.trim() || undefined, conn?.company ?? "");
+
+    if (job.destination === "WAREHOUSE") {
+      const result = await runWarehouseJob(job, conn?.tenantId ?? null, baseFilter, mode, from);
+      await prisma.syncRun.update({
+        where: { id: run.id },
+        data: {
+          status: "SUCCESS",
+          rowsRead: result.read,
+          rowsUpserted: result.written,
+          watermarkTo: result.maxUpdated ?? last?.watermarkTo ?? new Date(),
+          finishedAt: new Date(),
+        },
+      });
+      await finishJob(job, "SUCCESS");
+      return { ok: true, runId: run.id, rowsRead: result.read, rowsUpserted: result.written, tenantsUpdated: 0 };
+    }
     const filter = [baseFilter || null, from && job.updField ? `${job.updField}>='${formatS1Date(from)}'` : null]
       .filter(Boolean)
       .map((f) => `(${f})`)
@@ -124,6 +143,77 @@ export async function runSyncJob(
     await finishJob(job, "FAILED");
     return { ok: false, runId: run.id, error };
   }
+}
+
+// ───────────── Tenant warehouse imports ─────────────
+
+const monthStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
+const addMonths = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth() + n, 1);
+
+async function runWarehouseJob(
+  job: SyncJob,
+  tenantId: string | null,
+  baseFilter: string,
+  mode: "FULL" | "INCREMENTAL",
+  updFrom: Date | null,
+): Promise<{ read: number; written: number; maxUpdated: Date | null }> {
+  if (!tenantId) throw new Error("Η σύνδεση δεν ανήκει σε tenant.");
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { warehouseStatus: true } });
+  if (tenant?.warehouseStatus !== "READY" && tenant?.warehouseStatus !== "DISABLED") {
+    throw new Error("Ο tenant δεν έχει αποθήκη δεδομένων — κάντε πρώτα Provisioning.");
+  }
+  if (!job.targetTable || !job.columns) throw new Error("Λείπει ο πίνακας προορισμού.");
+
+  const columns = job.columns as Columns;
+  const fields = Object.keys(columns);
+  const target = { tenantId, table: job.targetTable, columns, keyFields: job.keyField.split(",") };
+  const updField = job.updField?.toUpperCase();
+  const and = (...parts: (string | null | undefined)[]) =>
+    parts.filter(Boolean).map((p) => `(${p})`).join(" AND ");
+  let maxUpdated: Date | null = null;
+  const track = (rows: Row[]) => {
+    if (!updField) return;
+    for (const r of rows) maxUpdated = maxDate(maxUpdated, parseS1Date(r[updField]));
+  };
+  const range = (f: string, a: Date, b?: Date) =>
+    `${f}>='${formatS1Date(a)}'${b ? ` AND ${f}<'${formatS1Date(b)}'` : ""}`;
+
+  // INCREMENTAL by update timestamp → upsert the changed rows.
+  if (mode === "INCREMENTAL" && updField && updFrom) {
+    const rows = await s1GetTable(job.connectionId, job.table, fields, and(baseFilter, range(updField, updFrom)));
+    track(rows);
+    return { read: rows.length, written: await upsertRows(target, rows), maxUpdated };
+  }
+
+  // INCREMENTAL by rolling window → re-import the window atomically (edits + deletions).
+  if (mode === "INCREMENTAL" && job.dateField && job.windowDays) {
+    const from = new Date(Date.now() - job.windowDays * 86_400_000);
+    from.setHours(0, 0, 0, 0);
+    const rows: Row[] = [];
+    for (let m = monthStart(from); m <= new Date(); m = addMonths(m, 1)) {
+      const a = m < from ? from : m;
+      rows.push(...(await s1GetTable(job.connectionId, job.table, fields, and(baseFilter, range(job.dateField, a, addMonths(m, 1))))));
+    }
+    track(rows);
+    return { read: rows.length, written: await replaceRows(target, rows, { dateField: job.dateField, from }), maxUpdated };
+  }
+
+  // FULL: history by month (keeps each SoftOne request small), or the whole table for master data.
+  if (job.dateField && job.historyFrom) {
+    await replaceRows(target, [], null);
+    let read = 0;
+    let written = 0;
+    for (let m = monthStart(job.historyFrom); m <= new Date(); m = addMonths(m, 1)) {
+      const rows = await s1GetTable(job.connectionId, job.table, fields, and(baseFilter, range(job.dateField, m, addMonths(m, 1))));
+      track(rows);
+      read += rows.length;
+      written += await upsertRows(target, rows);
+    }
+    return { read, written, maxUpdated };
+  }
+  const rows = await s1GetTable(job.connectionId, job.table, fields, baseFilter);
+  track(rows);
+  return { read: rows.length, written: await replaceRows(target, rows, null), maxUpdated };
 }
 
 async function finishJob(job: SyncJob, status: "SUCCESS" | "FAILED") {
@@ -292,4 +382,86 @@ export async function runDueJobs(budgetMs = 50_000) {
     results.push(r.ok ? { job: job.name, ok: true, rows: r.rowsUpserted } : { job: job.name, ok: false, error: r.error });
   }
   return { ran: results.length, due: due.length, results };
+}
+
+/**
+ * Creates the default warehouse imports of a tenant's SoftOne (lib/tenant-presets), according to
+ * what detection found (GL and/or commercial). Each is verified live first: full fields with the
+ * COMPANY clause → without it → without the optional fields.
+ */
+export async function seedTenantJobs(connectionId: string) {
+  const conn = await prisma.softOneConnection.findUnique({ where: { id: connectionId } });
+  if (!conn || conn.scope !== "TENANT" || !conn.tenantId) throw new Error("Η σύνδεση SoftOne πελάτη δεν βρέθηκε.");
+  const caps = (conn.capabilities ?? null) as { gl?: { available: boolean }; sales?: { available: boolean }; purchases?: { available: boolean }; fiscalYears?: { year: number; from: string | null }[] } | null;
+  const hasGL = !!caps?.gl?.available;
+  const hasSales = !!caps?.sales?.available;
+  const hasPurchases = !!caps?.purchases?.available;
+
+  // History: start of the 3rd most recent fiscal year that has started (or Jan 1 two years ago).
+  const now = new Date();
+  const started = (caps?.fiscalYears ?? []).filter((y) => y.from && new Date(y.from) <= now).sort((a, b) => b.year - a.year);
+  const historyFrom = started[2]?.from ? new Date(started[2].from) : new Date(now.getFullYear() - 2, 0, 1);
+
+  const existing = new Set((await prisma.syncJob.findMany({ where: { connectionId }, select: { name: true } })).map((j) => j.name));
+  const report: { name: string; status: "created" | "exists" | "failed" | "skipped"; note?: string }[] = [];
+
+  for (const p of TENANT_PRESETS) {
+    if (p.requires === "GL" && !hasGL) {
+      report.push({ name: p.name, status: "skipped", note: "δεν υπάρχει Γενική Λογιστική" });
+      continue;
+    }
+    if ((p.requires === "SALES" && !hasSales) || (p.requires === "PURCHASES" && !hasPurchases)) {
+      report.push({ name: p.name, status: "skipped", note: "δεν βρέθηκαν τέτοια παραστατικά" });
+      continue;
+    }
+    if (existing.has(p.name)) {
+      report.push({ name: p.name, status: "exists" });
+      continue;
+    }
+    const all = Object.keys(p.columns);
+    const required = all.filter((f) => !p.optional?.includes(f));
+    const withCompany = resolveFilter(p.filter, conn.company);
+    const attempts = [
+      { fields: all, filter: withCompany, note: undefined as string | undefined },
+      { fields: all, filter: stripCompany(withCompany), note: "χωρίς φίλτρο εταιρείας" },
+      { fields: required, filter: stripCompany(withCompany), note: "χωρίς προαιρετικά πεδία" },
+    ];
+    let chosen: (typeof attempts)[number] | null = null;
+    let lastError = "";
+    for (const a of attempts) {
+      try {
+        await s1GetTable(conn.id, p.table, a.fields, [a.filter ? `(${a.filter})` : null, "1=0"].filter(Boolean).join(" AND "));
+        chosen = a;
+        break;
+      } catch (err) {
+        lastError = (err as Error).message.slice(0, 200);
+      }
+    }
+    if (!chosen) {
+      report.push({ name: p.name, status: "failed", note: lastError });
+      continue;
+    }
+    const columns = Object.fromEntries(chosen.fields.map((f) => [f, p.columns[f]]));
+    await prisma.syncJob.create({
+      data: {
+        connectionId: conn.id,
+        name: p.name,
+        type: "TABLE",
+        destination: "WAREHOUSE",
+        table: p.table,
+        targetTable: p.targetTable,
+        fields: chosen.fields.join(","),
+        columns,
+        keyField: p.keyField,
+        updField: p.updField && chosen.fields.includes(p.updField) ? p.updField : null,
+        dateField: p.dateField && chosen.fields.includes(p.dateField) ? p.dateField : null,
+        windowDays: p.windowDays ?? null,
+        historyFrom: p.dateField ? historyFrom : null,
+        filter: chosen.filter || null,
+        intervalMinutes: p.intervalMinutes,
+      },
+    });
+    report.push({ name: p.name, status: "created", note: chosen.note });
+  }
+  return report;
 }

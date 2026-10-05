@@ -25,6 +25,8 @@ export type JobValues = {
   filter: string | null;
   intervalMinutes: number;
   enabled: boolean;
+  /** Structure (table, fields, key) is managed by the app — only schedule/filter are editable. */
+  locked?: boolean;
 };
 
 const INTERVALS = [
@@ -68,7 +70,7 @@ function JobForm({ job, onDone }: { job?: JobValues; onDone: () => void }) {
     filter: job?.filter ?? "",
   });
   const [interval, setInterval] = useState(String(job?.intervalMinutes ?? 60));
-  const builtIn = job?.type === "CUSTOMERS";
+  const builtIn = job?.type === "CUSTOMERS" || !!job?.locked;
   const handleDone = useEffectEvent(onDone);
 
   useEffect(() => {

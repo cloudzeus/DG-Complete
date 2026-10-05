@@ -49,6 +49,24 @@ const COMMON: Record<string, string> = {
   QTY1: "Ποσότητα",
   DISC1PRC: "Έκπτωση %",
   LINEVAL: "Αξία γραμμής",
+  ACNT: "Λογαριασμός",
+  ACNHEADER: "Άρθρο",
+  ACNEDIT: "Άρθρο",
+  ACNTRN: "Γραμμή άρθρου",
+  DEBIT: "Χρέωση",
+  CREDIT: "Πίστωση",
+  FISCPRD: "Χρήση",
+  PERIOD: "Περίοδος",
+  BRANCH: "Υποκατάστημα",
+  PRJC: "Έργο",
+  TFPRMS: "Συμπεριφορά",
+  FROMDATE: "Από",
+  FINALDATE: "Έως",
+  SODTYPE: "Τύπος",
+  ACNGROUP: "Ομάδα λογαριασμού",
+  ACNCATEGORY: "Κατηγορία λογαριασμού",
+  TRDCATEGORY: "Λογιστική κατηγορία",
+  TRDBUSINESS: "Εμπορική κατηγορία",
 };
 
 // Per-table wording (e.g. a customer has an "Επωνυμία", an item a "Περιγραφή").
@@ -89,4 +107,4 @@ export const FOREIGN_KEYS: Record<string, string> = {
 };
 
 /** Internal ids that are never shown as columns (resolved FKs are shown by name instead). */
-export const INTERNAL_ID_FIELDS = new Set(["TRDR", "MTRL", "FINDOC", "MTRLINES"]);
+export const INTERNAL_ID_FIELDS = new Set(["TRDR", "MTRL", "FINDOC", "MTRLINES", "ACNT", "ACNHEADER", "ACNEDIT", "ACNTRN", "PRJC"]);

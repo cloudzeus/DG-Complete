@@ -35,7 +35,21 @@ const fmt = (iso: string | null) =>
 const every = (m: number) =>
   m % 1440 === 0 ? `${m / 1440} ημ.` : m % 60 === 0 ? `${m / 60} ώρ.` : `${m} λεπ.`;
 
-export function JobsTable({ data, connected, toolbar }: { data: JobRow[]; connected: boolean; toolbar?: React.ReactNode }) {
+export function JobsTable({
+  data,
+  connected,
+  toolbar,
+  canCreate = true,
+  dataHref = (id: string) => `/admin/settings/sync/${id}`,
+  storageKey = "sync-jobs",
+}: {
+  data: JobRow[];
+  connected: boolean;
+  toolbar?: React.ReactNode;
+  canCreate?: boolean;
+  dataHref?: (id: string) => string;
+  storageKey?: string;
+}) {
   const router = useRouter();
   const [editing, setEditing] = useState<JobValues | "new" | null>(null);
   const [deleting, setDeleting] = useState<JobRow | null>(null);
@@ -66,7 +80,7 @@ export function JobsTable({ data, connected, toolbar }: { data: JobRow[]; connec
       cell: ({ row }) => (
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 truncate">
-            <a href={`/admin/settings/sync/${row.original.id}`} className="truncate hover:text-primary hover:underline">
+            <a href={dataHref(row.original.id)} className="truncate hover:text-primary hover:underline">
               {row.original.name}
             </a>
             {row.original.type === "CUSTOMERS" && <StatusPill tone="violet">ενσωματωμένο</StatusPill>}
@@ -126,7 +140,7 @@ export function JobsTable({ data, connected, toolbar }: { data: JobRow[]; connec
             label={j.name}
             disabled={pending || !connected}
             actions={[
-              { label: "Δεδομένα", icon: Table2, onSelect: () => router.push(`/admin/settings/sync/${j.id}`) },
+              { label: "Δεδομένα", icon: Table2, onSelect: () => router.push(dataHref(j.id)) },
               { label: "Εκτέλεση τώρα", icon: Zap, onSelect: () => run(j, "INCREMENTAL"), separated: true },
               { label: "Πλήρης εκτέλεση", icon: RefreshCcw, onSelect: () => run(j, "FULL"), hidden: !j.updField },
               { label: "Επεξεργασία", icon: Pencil, onSelect: () => setEditing(j), separated: true },
@@ -146,7 +160,7 @@ export function JobsTable({ data, connected, toolbar }: { data: JobRow[]; connec
   return (
     <>
       <DataTable
-        storageKey="sync-jobs"
+        storageKey={storageKey}
         columns={columns}
         data={data}
         searchPlaceholder="Αναζήτηση συγχρονισμών…"
@@ -155,10 +169,12 @@ export function JobsTable({ data, connected, toolbar }: { data: JobRow[]; connec
         toolbar={
           <>
             {toolbar}
-            <Button size="sm" onClick={() => setEditing("new")} disabled={!connected}>
-              <Plus />
-              Νέος συγχρονισμός
-            </Button>
+            {canCreate && (
+              <Button size="sm" onClick={() => setEditing("new")} disabled={!connected}>
+                <Plus />
+                Νέος συγχρονισμός
+              </Button>
+            )}
           </>
         }
       />

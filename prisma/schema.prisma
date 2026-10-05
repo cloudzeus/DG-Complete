@@ -294,6 +294,11 @@ enum SyncKind {
   TABLE
 }
 
+enum SyncDestination {
+  APP // app database: s1_customer / s1_record (DGsoft SoftOne)
+  WAREHOUSE // tenant schema t_<id> in the Cube warehouse (typed table per job)
+}
+
 enum SyncJobType {
   CUSTOMERS // built-in: TRDR customers → s1_customer + linked tenants
   TABLE // generic: any SoftOne table → s1_record (JSON rows)
@@ -312,6 +317,12 @@ model SyncJob {
   updField        String? // incremental watermark column, e.g. UPDDATE
   filter          String? // extra GetTable FILTER (SQL where), e.g. SODTYPE=13
   intervalMinutes Int               @default(60)
+  destination     SyncDestination   @default(APP)
+  targetTable     String? // WAREHOUSE: table in t_<tenant>, e.g. gl_lines
+  columns         Json? // WAREHOUSE: { FIELD: "int" | "numeric" | "text" | "timestamp" }
+  dateField       String? // rolling-window column, e.g. TRNDATE
+  windowDays      Int? // INCREMENTAL without updField: re-import the last N days (catches edits + deletes)
+  historyFrom     DateTime? // FULL: import rows with dateField >= historyFrom
   enabled         Boolean           @default(true)
   lastRunAt       DateTime?
   lastStatus      SyncStatus?
