@@ -11,7 +11,8 @@ let keyring: Keyring | null = null;
 
 function loadKeyring(): Keyring {
   if (keyring) return keyring;
-  const raw = process.env.DATA_ENCRYPTION_KEYS;
+  // Tolerate values pasted with surrounding quotes/whitespace (e.g. copied from a .env file).
+  const raw = process.env.DATA_ENCRYPTION_KEYS?.trim().replace(/^(['"])(.*)\1$/, "$2").trim();
   if (!raw) throw new Error("DATA_ENCRYPTION_KEYS is not set");
   const keys = new Map<string, Buffer>();
   let activeId = "";
@@ -41,11 +42,17 @@ export function decrypt(envelope: string, aad: string): string {
   const { keys } = loadKeyring();
   const [id, iv, tag, ct] = envelope.split(".");
   const key = keys.get(id);
-  if (!key || !iv || !tag || !ct) throw new Error("Cannot decrypt: unknown key or malformed envelope");
+  if (!key || !iv || !tag || !ct) {
+    throw new Error(`Cannot decrypt: key '${id}' is not in DATA_ENCRYPTION_KEYS (or the value is malformed)`);
+  }
   const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "base64url"));
   decipher.setAAD(Buffer.from(aad));
   decipher.setAuthTag(Buffer.from(tag, "base64url"));
-  return Buffer.concat([decipher.update(Buffer.from(ct, "base64url")), decipher.final()]).toString("utf8");
+  try {
+    return Buffer.concat([decipher.update(Buffer.from(ct, "base64url")), decipher.final()]).toString("utf8");
+  } catch {
+    throw new Error(`Cannot decrypt with key '${id}': DATA_ENCRYPTION_KEYS differs from the key that encrypted this data`);
+  }
 }
 
 export function encryptJson(value: unknown, aad: string): string {

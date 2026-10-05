@@ -98,7 +98,9 @@ CRON_SECRET=<ίδιο με το τοπικό .env>
 ```bash
 curl -s https://bi.dgsmart.gr/api/health
 ```
-Αναμενόμενο: `{"ok":true}` (η εφαρμογή βλέπει τη βάση).
+Αναμενόμενο: `{"ok":true,"encryption":"ok"}`
+- `ok:true` → η εφαρμογή βλέπει τη βάση.
+- `encryption:"ok"` → το `DATA_ENCRYPTION_KEYS` αποκρυπτογραφεί τα αποθηκευμένα credentials. Με `"mismatch"` οι σελίδες SoftOne / Συνδέσεις δεδομένων δίνουν σφάλμα — διόρθωσε την τιμή (βλ. πίνακα στο τέλος).
 
 - [ ] Σύνδεση στο `https://bi.dgsmart.gr` με τον super admin.
 - [ ] **Ρυθμίσεις → SoftOne DGsoft**: «Συνδεδεμένο» (αν όχι → «Δοκιμή σύνδεσης»· σφάλμα αποκρυπτογράφησης = λάθος `DATA_ENCRYPTION_KEYS`).
@@ -140,7 +142,7 @@ curl -s https://bi.dgsmart.gr/api/health
 | Το build αποτυγχάνει στο `npm ci` | Το `package-lock.json` δεν είναι συγχρονισμένο — `npm install` τοπικά, commit, push. |
 | Το container κάνει restart, στο log `P1001` / `Can't reach database` | Το Coolify δεν βλέπει το `100.70.50.43` (Tailscale) ή λείπει γραμμή στο `pg_hba.conf`. |
 | `no pg_hba.conf entry for host …` | Πρόσθεσε την IP που αναφέρει το μήνυμα στο `pg_hba.conf` (βήμα 1) και `SELECT pg_reload_conf();`. |
-| `Unsupported state or unable to authenticate data` | Λάθος `DATA_ENCRYPTION_KEYS` — πρέπει να είναι ίδιο με αυτό που κρυπτογράφησε τα δεδομένα. |
+| Σελίδες «SoftOne DGsoft» / «Συνδέσεις δεδομένων» δίνουν *This page couldn't load*, ή `/api/health` → `"encryption":"mismatch"` | Το `DATA_ENCRYPTION_KEYS` δεν είναι ίδιο με το τοπικό. Αντέγραψε **μόνο** την τιμή `k1:…` (χωρίς κενά/αλλαγή γραμμής), αποθήκευσε και κάνε **Restart** (όχι μόνο save). |
 | Σύνδεση χρήστη επιστρέφει στη σελίδα login | Λάθος `BETTER_AUTH_URL` (πρέπει να είναι ακριβώς `https://bi.dgsmart.gr`). |
 | Ο scheduler εμφανίζεται «Ανενεργός» | Λείπει το `CRON_SECRET` ή έχει οριστεί `SCHEDULER=off`. |
 | Συγχρονισμοί «Σφάλμα» | Ρυθμίσεις → Αρχεία καταγραφής → Σφάλματα: το μήνυμα του SoftOne (π.χ. λάθος πεδίο/φίλτρο → διόρθωση στη φόρμα του συγχρονισμού). |
