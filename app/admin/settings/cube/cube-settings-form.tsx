@@ -47,7 +47,7 @@ export function CubeSettingsForm({ connections, values }: { connections: Conn[];
         <Input name="apiUrl" defaultValue={values?.apiUrl ?? "https://cube.dgsmart.gr"} required />
       </Field>
       <Field label="URL εφαρμογής (το καλεί το Cube)" error={e.controlPlaneUrl}>
-        <Input name="controlPlaneUrl" defaultValue={values?.controlPlaneUrl ?? "https://app.dgsmart.gr"} required />
+        <Input name="controlPlaneUrl" defaultValue={values?.controlPlaneUrl ?? "https://bi.dgsmart.gr"} required />
       </Field>
 
       <Field label="Βάση production" error={e.warehouseConnectionId}>

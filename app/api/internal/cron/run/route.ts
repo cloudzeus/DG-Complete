@@ -4,7 +4,7 @@ import { runDueJobs } from "@/lib/softone-sync";
 
 // Scheduler tick: runs every due SoftOne sync job (Ρυθμίσεις → Συγχρονισμοί).
 // Coolify scheduled task, every 5 minutes:
-//   curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://<app>/api/internal/cron/run
+//   curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://bi.dgsmart.gr/api/internal/cron/run
 
 export const maxDuration = 60;
 

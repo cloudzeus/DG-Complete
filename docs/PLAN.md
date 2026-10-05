@@ -25,7 +25,7 @@ Multi-tenant BI πλατφόρμα της DGsoft πάνω σε έναν κοιν
                      └───────────────▲──────────────────────────────▲────────────────────┘
                                      │ S1 WS (login→authenticate)   │ setData
 ┌────────────────────────────────────┴──────────────────────────────┴───────────────────┐
-│ NEXT.JS CONTROL PLANE (app.dgsmart.gr)                                                 │
+│ NEXT.JS CONTROL PLANE (bi.dgsmart.gr)                                                  │
 │  • Admin console (super admin / admin): tenants, πακέτα, συνδρομές, connectors        │
 │  • Tenant portal (tenant admin / user): dashboards, χρήστες, API keys, billing        │
 │  • BI Gateway  /api/bi/*   (session auth)  ─┐                                         │
@@ -184,7 +184,7 @@ Auth: Auth.js (credentials + magic link, προαιρετικά Microsoft Entra)
 2. **Viva**: Merchant ID / API key / Smart Checkout client credentials (demo πρώτα); Τιμές με ΦΠΑ ή χωρίς;
 3. **Warehouse**: OK να δημιουργήσω δεύτερη βάση `dgsmartbi_wh` στον ίδιο Postgres server, ή προτιμάς schemas μέσα στην `dgsmartbi`; (Προτείνω ξεχωριστή βάση.)
 4. **Cube**: έχεις SSH/Coolify API πρόσβαση για να στήσουμε το δεύτερο (dev) instance και Cube Store;
-5. **Domain της εφαρμογής**: π.χ. `app.dgsmart.gr`;
+5. **Domain της εφαρμογής**: `bi.dgsmart.gr` ✓
 6. **Πιλοτικός πελάτης** για τη Φάση 4 — και ποια reports/KPIs είναι προτεραιότητα;
 7. **Μέτρηση «queries»**: κάθε κλήση στο Cube (και refresh dashboard) μετράει ως query, ή μόνο ad-hoc queries/API calls; (Προτείνω: dashboards ανεξάρτητα από quota με cache, μετράνε ad-hoc & API.)
 8. Χρειάζεται **embedded dashboards** (iframe/SDK) στις εφαρμογές πελατών ή μόνο JSON API;

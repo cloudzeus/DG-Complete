@@ -83,7 +83,7 @@ export default async function SyncPage() {
             </CardHeader>
             <CardContent>
               <pre className="overflow-x-auto rounded-md bg-muted p-2.5 font-mono text-2xs leading-relaxed">
-                {`curl -fsS -X POST \\\n  -H "Authorization: Bearer $CRON_SECRET" \\\n  https://<app>/api/internal/cron/run`}
+                {`curl -fsS -X POST \\\n  -H "Authorization: Bearer $CRON_SECRET" \\\n  https://bi.dgsmart.gr/api/internal/cron/run`}
               </pre>
             </CardContent>
           </Card>
