@@ -1,0 +1,191 @@
+# Αποτελέσματα χρήσης — reads the tenant's fin_fact + pnl_lines (built by the app, lib/pnl.ts).
+# Tables are unqualified: the tenant role's search_path is its own schema t_<tenantId>.
+# amount = effect on profit (revenue positive, costs negative).
+
+cubes:
+  - name: pnl
+    title: Αποτελέσματα χρήσης
+    description: Γραμμές αποτελεσμάτων ανά λογαριασμό/παραστατικό, ποσά με πρόσημο επίδρασης στο αποτέλεσμα.
+    sql: >
+      SELECT f.source, f.line_code, f.trndate, f.fiscprd, f.period, f.branch,
+             f.account_code, f.account_name, f.trdr, f.series, f.amount,
+             l.name AS line_name, l.section, l.section_sort, l.sort_order
+      FROM fin_fact f
+      JOIN pnl_lines l ON l.code = f.line_code
+
+    measures:
+      - name: amount
+        title: Αποτέλεσμα
+        description: Άθροισμα όλων των γραμμών (καθαρό αποτέλεσμα όταν δεν υπάρχει φίλτρο).
+        type: sum
+        sql: amount
+
+      - name: revenue
+        title: Κύκλος εργασιών
+        type: sum
+        sql: amount
+        filters:
+          - sql: "{CUBE}.section = 'REVENUE'"
+
+      - name: cogs
+        title: Κόστος πωληθέντων / αγορές
+        type: sum
+        sql: amount
+        filters:
+          - sql: "{CUBE}.section = 'COGS'"
+
+      - name: gross_profit
+        title: Μικτό κέρδος
+        type: sum
+        sql: amount
+        filters:
+          - sql: "{CUBE}.section IN ('REVENUE', 'COGS')"
+
+      - name: other_income
+        title: Λοιπά έσοδα εκμετάλλευσης
+        type: sum
+        sql: amount
+        filters:
+          - sql: "{CUBE}.section = 'OTHER_INCOME'"
+
+      - name: opex
+        title: Λειτουργικά έξοδα
+        type: sum
+        sql: amount
+        filters:
+          - sql: "{CUBE}.section = 'OPEX'"
+
+      - name: ebitda
+        title: EBITDA
+        type: sum
+        sql: amount
+        filters:
+          - sql: "{CUBE}.section IN ('REVENUE', 'COGS', 'OTHER_INCOME', 'OPEX')"
+
+      - name: depreciation
+        title: Αποσβέσεις & προβλέψεις
+        type: sum
+        sql: amount
+        filters:
+          - sql: "{CUBE}.section = 'DEPRECIATION'"
+
+      - name: ebit
+        title: EBIT
+        type: sum
+        sql: amount
+        filters:
+          - sql: "{CUBE}.section IN ('REVENUE', 'COGS', 'OTHER_INCOME', 'OPEX', 'DEPRECIATION')"
+
+      - name: financial
+        title: Χρηματοοικονομικά
+        type: sum
+        sql: amount
+        filters:
+          - sql: "{CUBE}.section = 'FINANCIAL'"
+
+      - name: extraordinary
+        title: Έκτακτα
+        type: sum
+        sql: amount
+        filters:
+          - sql: "{CUBE}.section = 'EXTRAORDINARY'"
+
+      - name: profit_before_tax
+        title: Κέρδη προ φόρων
+        type: sum
+        sql: amount
+        filters:
+          - sql: "{CUBE}.section <> 'TAX'"
+
+      - name: net_profit
+        title: Καθαρά κέρδη
+        type: sum
+        sql: amount
+
+      - name: expenses
+        title: Έξοδα (θετικά)
+        description: Όλα τα έξοδα ως θετικός αριθμός (για γραφήματα κατανομής).
+        type: sum
+        sql: "-{CUBE}.amount"
+        filters:
+          - sql: "{CUBE}.section IN ('COGS', 'OPEX', 'DEPRECIATION', 'FINANCIAL', 'EXTRAORDINARY', 'TAX') AND {CUBE}.amount < 0"
+
+      - name: gross_margin
+        title: Μικτό περιθώριο %
+        type: number
+        sql: "100.0 * {gross_profit} / NULLIF({revenue}, 0)"
+
+      - name: ebitda_margin
+        title: Περιθώριο EBITDA %
+        type: number
+        sql: "100.0 * {ebitda} / NULLIF({revenue}, 0)"
+
+      - name: net_margin
+        title: Καθαρό περιθώριο %
+        type: number
+        sql: "100.0 * {net_profit} / NULLIF({revenue}, 0)"
+
+      - name: lines
+        title: Κινήσεις
+        type: count
+
+    dimensions:
+      - name: date
+        title: Ημερομηνία
+        type: time
+        sql: trndate
+
+      - name: fiscal_year
+        title: Χρήση
+        type: number
+        sql: fiscprd
+
+      - name: period
+        title: Περίοδος
+        type: number
+        sql: period
+
+      - name: line_code
+        title: Κωδικός γραμμής
+        type: string
+        sql: line_code
+
+      - name: line_name
+        title: Γραμμή
+        type: string
+        sql: line_name
+
+      - name: section
+        title: Ενότητα
+        type: string
+        sql: section
+
+      - name: section_sort
+        title: Σειρά ενότητας
+        type: number
+        sql: section_sort
+
+      - name: sort_order
+        title: Σειρά γραμμής
+        type: number
+        sql: sort_order
+
+      - name: source
+        title: Πηγή
+        type: string
+        sql: source
+
+      - name: account_code
+        title: Λογαριασμός
+        type: string
+        sql: account_code
+
+      - name: account_name
+        title: Περιγραφή λογαριασμού
+        type: string
+        sql: account_name
+
+      - name: branch
+        title: Υποκατάστημα
+        type: number
+        sql: branch

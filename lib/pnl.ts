@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { schemaName } from "@/lib/warehouse";
 import { withWarehouse } from "@/lib/warehouse-writer";
 import {
+  classifySeries,
   commercialTemplate,
   EGLS_TEMPLATE,
   SECTION_ORDER,
@@ -29,6 +30,42 @@ async function readSeries(tenantId: string): Promise<SeriesInfo[]> {
     if (!(await exists(db, schema, "series"))) return [];
     const res = await db.query(`SELECT series::int AS series, name, sosource::int AS sosource FROM "${schema}".series`);
     return res.rows as SeriesInfo[];
+  });
+}
+
+/**
+ * doc_series: the invoicing series of the tenant with their sign (1 invoice/receipt, -1 credit
+ * note/return, 0 = not a sale/purchase: orders, offers, delivery notes). Used by the sales and
+ * purchases cubes. Rebuilt with fin_fact and after every series import.
+ */
+async function buildDocSeries(db: Client, schema: string) {
+  const s = `"${schema}"`;
+  await db.query(`CREATE TABLE IF NOT EXISTS ${s}.doc_series (
+    series bigint PRIMARY KEY, sosource int, name text, sign int NOT NULL)`);
+  await db.query(`DELETE FROM ${s}.doc_series`);
+  if (!(await exists(db, schema, "series"))) return;
+  const rows = (await db.query(`SELECT series::bigint AS series, sosource::int AS sosource, name FROM ${s}.series`)).rows as SeriesInfo[];
+  const data = rows.map((r) => {
+    const c = classifySeries(r.name ?? "");
+    return { series: r.series, sosource: r.sosource, name: r.name, sign: c.include ? (c.negate ? -1 : 1) : 0 };
+  });
+  await db.query(
+    `INSERT INTO ${s}.doc_series SELECT * FROM jsonb_to_recordset($1::jsonb) AS r(series bigint, sosource int, name text, sign int)
+     ON CONFLICT (series) DO NOTHING`,
+    [JSON.stringify(data)],
+  );
+}
+
+export async function rebuildDocSeries(tenantId: string) {
+  await withWarehouse(async (db) => {
+    await db.query("BEGIN");
+    try {
+      await buildDocSeries(db, schemaName(tenantId));
+      await db.query("COMMIT");
+    } catch (err) {
+      await db.query("ROLLBACK");
+      throw err;
+    }
   });
 }
 
@@ -80,6 +117,7 @@ export async function rebuildFinFact(tenantId: string): Promise<number> {
       await db.query("BEGIN");
       try {
         await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`fin_fact:${tenantId}`]);
+        await buildDocSeries(db, schema);
         await db.query(`CREATE TABLE IF NOT EXISTS ${s}.pnl_lines (
           code text PRIMARY KEY, name text NOT NULL, section text NOT NULL,
           section_sort int NOT NULL, sort_order int NOT NULL)`);
@@ -162,6 +200,7 @@ export async function rebuildFinFact(tenantId: string): Promise<number> {
 /** Rebuilds after a source import, if the tenant has a P&L. Never throws (logged on the config). */
 export async function rebuildAfterImport(tenantId: string, table: string | null) {
   if (!table || !PNL_SOURCE_TABLES.has(table)) return;
+  if (table === "series") await rebuildDocSeries(tenantId).catch(() => undefined);
   if (!(await prisma.pnlConfig.findUnique({ where: { tenantId }, select: { tenantId: true } }))) return;
   await rebuildFinFact(tenantId).catch(() => undefined);
 }

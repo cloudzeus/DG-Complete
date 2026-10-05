@@ -44,6 +44,7 @@ COPY --from=migrator --chown=nextjs:nodejs /migrate /migrate
 COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=build --chown=nextjs:nodejs /app/public ./public
+COPY --from=build --chown=nextjs:nodejs /app/cube ./cube
 
 USER nextjs
 EXPOSE 3000
