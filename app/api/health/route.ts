@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { openSoftOneCredentials } from "@/lib/softone";
 import { openCredentials } from "@/lib/connections";
+import { keyFingerprint } from "@/lib/crypto";
 
 // Liveness + database check for the Coolify / Docker healthcheck.
 // `encryption` reports whether DATA_ENCRYPTION_KEYS can decrypt the stored credentials
@@ -13,7 +14,11 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: "database" }, { status: 503 });
   }
 
-  let encryption: "ok" | "mismatch" | "no-data" = "no-data";
+  let encryption: "ok" | "mismatch" | "no-data" | "not-set" = "no-data";
+  const key = keyFingerprint();
+  if ("error" in key) {
+    return NextResponse.json({ ok: true, encryption: "not-set", key });
+  }
   try {
     const s1 = await prisma.softOneConnection.findFirst({ select: { id: true, credentialsEnc: true } });
     const conn = s1 ? null : await prisma.dataConnection.findFirst({ select: { id: true, credentialsEnc: true } });
@@ -23,5 +28,5 @@ export async function GET() {
   } catch {
     encryption = "mismatch";
   }
-  return NextResponse.json({ ok: true, encryption });
+  return NextResponse.json({ ok: true, encryption, key });
 }

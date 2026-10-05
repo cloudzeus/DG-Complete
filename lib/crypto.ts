@@ -1,5 +1,5 @@
 import "server-only";
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
 // AES-256-GCM envelope:  <keyId>.<iv>.<tag>.<ciphertext>  (base64url parts)
 // Keys: DATA_ENCRYPTION_KEYS="k1:<base64 32 bytes>,k2:<base64 32 bytes>" — the first key encrypts,
@@ -25,6 +25,17 @@ function loadKeyring(): Keyring {
   }
   keyring = { activeId, keys };
   return keyring;
+}
+
+/** Non-reversible fingerprint of the configured keys (to compare environments without revealing them). */
+export function keyFingerprint(): { ids: string[]; active: string; fingerprint: string } | { error: string } {
+  try {
+    const { activeId, keys } = loadKeyring();
+    const fp = createHash("sha256").update(keys.get(activeId)!).digest("hex").slice(0, 8);
+    return { ids: [...keys.keys()], active: activeId, fingerprint: fp };
+  } catch (err) {
+    return { error: (err as Error).message };
+  }
 }
 
 export function encrypt(plaintext: string, aad: string): string {
