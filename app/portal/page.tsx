@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { ChartNoAxesCombined } from "lucide-react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { requireUser } from "@/lib/rbac";
+import { can, requireUser } from "@/lib/rbac";
 
 export const metadata: Metadata = { title: "Τα dashboards μου" };
 
-// Tenant portal — dashboards arrive in Phase 6.
+// Tenant portal — the user's businesses and their dashboards.
 export default async function PortalHome() {
   const user = await requireUser();
   return (
@@ -17,7 +19,15 @@ export default async function PortalHome() {
           <Card key={m.tenantId}>
             <CardHeader>
               <CardTitle>{m.tenantName}</CardTitle>
-              <CardDescription>Τα dashboards θα εμφανιστούν εδώ σύντομα.</CardDescription>
+              <CardDescription>
+                {can(user, "tenant.dashboards.view", m.tenantId) ? (
+                  <Link href={`/dashboards/${m.tenantId}/pnl`} className="inline-flex items-center gap-1.5 text-primary hover:underline">
+                    <ChartNoAxesCombined className="size-4" /> Άνοιγμα dashboards
+                  </Link>
+                ) : (
+                  "Δεν έχετε δικαίωμα προβολής dashboards."
+                )}
+              </CardDescription>
             </CardHeader>
           </Card>
         ))

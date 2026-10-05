@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Bot,
+  ChartNoAxesCombined,
   Building2,
   ChevronRight,
   ChevronsUpDown,
@@ -55,7 +56,13 @@ import { cn } from "@/lib/utils";
 type Item = { href: string; label: string; icon: LucideIcon; exact?: boolean; superAdminOnly?: boolean };
 
 const MAIN: { label: string; items: Item[] }[] = [
-  { label: "Γενικά", items: [{ href: "/admin", label: "Επισκόπηση", icon: LayoutDashboard, exact: true }] },
+  {
+    label: "Γενικά",
+    items: [
+      { href: "/admin", label: "Επισκόπηση", icon: LayoutDashboard, exact: true },
+      { href: "/dashboards", label: "Dashboards", icon: ChartNoAxesCombined },
+    ],
+  },
   {
     label: "Πελάτες",
     items: [

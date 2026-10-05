@@ -10,6 +10,7 @@ import {
   Download,
   Plug,
   Scale,
+  ChartNoAxesCombined,
   Users,
 } from "lucide-react";
 import { PageHeader, SectionTitle } from "@/components/admin/page-header";
@@ -133,6 +134,12 @@ export default async function TenantPage({
         tone="blue"
         actions={
           <>
+            <Button size="sm" asChild>
+              <Link href={`/dashboards/${tenant.id}/pnl`}>
+                <ChartNoAxesCombined />
+                Dashboards
+              </Link>
+            </Button>
             <Button size="sm" variant="outline" asChild>
               <Link href={`/admin/tenants/${tenant.id}/pnl`}>
                 <Scale />

@@ -1,6 +1,7 @@
 # Πωλήσεις & αγορές από τα παραστατικά (sales_docs / purchase_docs).
 # doc_series (built by the app) keeps only invoicing series: sign 1 = τιμολόγιο/απόδειξη,
 # -1 = πιστωτικό/επιστροφή; orders, offers and delivery notes are excluded.
+# Amounts in company currency (€): LNETAMNT / SUMLAMNT (NETAMNT is in the document's currency).
 
 cubes:
   - name: sales
@@ -8,7 +9,9 @@ cubes:
     description: Παραστατικά τιμολόγησης πωλήσεων (καθαρή αξία, πιστωτικά αφαιρούνται).
     sql: >
       SELECT d.findoc, d.trndate, d.fiscprd, d.branch, d.trdr, s.sign,
-             d.netamnt * s.sign AS net, d.vatamnt * s.sign AS vat, d.sumamnt * s.sign AS gross,
+             COALESCE(d.lnetamnt, d.netamnt) * s.sign AS net,
+             (COALESCE(d.sumlamnt, d.sumamnt) - COALESCE(d.lnetamnt, d.netamnt)) * s.sign AS vat,
+             COALESCE(d.sumlamnt, d.sumamnt) * s.sign AS gross,
              s.name AS series_name, c.code AS customer_code, c.name AS customer_name, c.city AS customer_city
       FROM sales_docs d
       JOIN doc_series s ON s.series = d.series AND s.sign <> 0
@@ -107,7 +110,9 @@ cubes:
     description: Παραστατικά τιμολόγησης αγορών (καθαρή αξία, πιστωτικά αφαιρούνται).
     sql: >
       SELECT d.findoc, d.trndate, d.fiscprd, d.branch, d.trdr, s.sign,
-             d.netamnt * s.sign AS net, d.vatamnt * s.sign AS vat, d.sumamnt * s.sign AS gross,
+             COALESCE(d.lnetamnt, d.netamnt) * s.sign AS net,
+             (COALESCE(d.sumlamnt, d.sumamnt) - COALESCE(d.lnetamnt, d.netamnt)) * s.sign AS vat,
+             COALESCE(d.sumlamnt, d.sumamnt) * s.sign AS gross,
              s.name AS series_name, p.code AS supplier_code, p.name AS supplier_name, p.city AS supplier_city
       FROM purchase_docs d
       JOIN doc_series s ON s.series = d.series AND s.sign <> 0

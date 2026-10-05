@@ -43,6 +43,12 @@ async function buildDocSeries(db: Client, schema: string) {
   await db.query(`CREATE TABLE IF NOT EXISTS ${s}.doc_series (
     series bigint PRIMARY KEY, sosource int, name text, sign int NOT NULL)`);
   await db.query(`DELETE FROM ${s}.doc_series`);
+  // The cubes read company-currency amounts; tables imported before they were added get them (NULL → NETAMNT).
+  for (const t of ["sales_docs", "purchase_docs"]) {
+    if (await exists(db, schema, t)) {
+      await db.query(`ALTER TABLE ${s}.${t} ADD COLUMN IF NOT EXISTS lnetamnt numeric(19,6), ADD COLUMN IF NOT EXISTS sumlamnt numeric(19,6)`);
+    }
+  }
   if (!(await exists(db, schema, "series"))) return;
   const rows = (await db.query(`SELECT series::bigint AS series, sosource::int AS sosource, name FROM ${s}.series`)).rows as SeriesInfo[];
   const data = rows.map((r) => {
@@ -161,7 +167,8 @@ export async function rebuildFinFact(tenantId: string): Promise<number> {
             WHERE l.period BETWEEN 1 AND 12 AND coalesce(l.iscancel, 0) = 0`);
         }
 
-        // Commercial documents: net amount, cancelled documents excluded.
+        // Commercial documents: net amount in company currency (LNETAMNT; NETAMNT is in the
+        // document's currency), cancelled documents excluded.
         const docs = [
           { table: "sales_docs", source: "SALES", sign: 1, ok: has.sales },
           { table: "purchase_docs", source: "PURCHASES", sign: -1, ok: has.purchases },
@@ -172,7 +179,7 @@ export async function rebuildFinFact(tenantId: string): Promise<number> {
             `INSERT INTO ${s}.fin_fact (source, line_code, trndate, fiscprd, period, branch, trdr, series, amount)
              SELECT $1, r.line_code, f.trndate, coalesce(f.fiscprd, extract(year FROM f.trndate)::int),
                     coalesce(f.period, extract(month FROM f.trndate)::int), f.branch, f.trdr, f.series,
-                    coalesce(f.netamnt, 0) * $2 * CASE WHEN r.negate THEN -1 ELSE 1 END
+                    coalesce(f.lnetamnt, f.netamnt, 0) * $2 * CASE WHEN r.negate THEN -1 ELSE 1 END
              FROM ${s}.${d.table} f
              JOIN _rules r ON r.source = $1 AND (r.pattern = '*' OR r.pattern = f.series::text)
              WHERE coalesce(f.iscancel, 0) = 0`,
