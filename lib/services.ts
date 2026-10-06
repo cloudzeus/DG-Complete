@@ -25,7 +25,7 @@ export const SERVICES: ServiceDef[] = [
     key: "sales",
     name: "Πωλήσεις",
     description: "Πωλήσεις, προϊόντα με κέρδος και περιθώριο, πελάτες (RFM, απώλειες, εισπράξεις και αξιολόγηση πληρωμών).",
-    pages: ["live", "sales", "products", "customers"],
+    pages: ["live", "sales", "products", "customers", "profitability"],
     cubes: ["sales", "sales_lines", "customers"],
   },
   {
