@@ -3,7 +3,17 @@
 import { z } from "zod";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { createPurchaseOrder, orderTarget, supplierOrderLines, supplierOrderSeries, type OrderLine } from "@/lib/purchase-orders";
+import {
+  brandOrderLines,
+  createPurchaseOrder,
+  itemOrderLines,
+  orderTarget,
+  searchOrderItems,
+  supplierOrderLines,
+  supplierOrderSeries,
+  type ItemHit,
+  type OrderLine,
+} from "@/lib/purchase-orders";
 import { can, requireUser } from "@/lib/rbac";
 import { hasService } from "@/lib/tenant-services";
 
@@ -17,11 +27,23 @@ async function viewer(tenantId: string) {
  * The supplier's suggested lines + the series to preselect: the one of their latest purchase order
  * in SoftOne (domestic / EU / third country …), else the one we last used for them.
  */
-export async function loadSupplierLines(tenantId: string, trdr: number): Promise<{ lines: OrderLine[]; series: number | null }> {
+export async function loadSupplierLines(tenantId: string, trdr: number | null, all = false): Promise<{ lines: OrderLine[]; series: number | null }> {
+  await viewer(tenantId);
+  const lines = await supplierOrderLines(tenantId, trdr, { all });
+  return { lines, series: trdr === null ? null : await recipientSeries(tenantId, trdr) };
+}
+
+/** A brand's lines (whoever supplied them so far). */
+export async function loadBrandLines(tenantId: string, mtrmark: number, all = false): Promise<{ lines: OrderLine[] }> {
+  await viewer(tenantId);
+  return { lines: await brandOrderLines(tenantId, mtrmark, { all }) };
+}
+
+/** Series to preselect for an order to this supplier. */
+export async function recipientSeries(tenantId: string, trdr: number): Promise<number | null> {
   await viewer(tenantId);
   const allowed = (await orderTarget(tenantId)).series.map((x) => x.id);
-  const [lines, fromSoftOne, last] = await Promise.all([
-    supplierOrderLines(tenantId, trdr),
+  const [fromSoftOne, last] = await Promise.all([
     supplierOrderSeries(tenantId, trdr, allowed),
     prisma.auditLog.findFirst({
       where: { tenantId, action: "purchase_order.create", entityId: String(trdr) },
@@ -30,7 +52,18 @@ export async function loadSupplierLines(tenantId: string, trdr: number): Promise
     }),
   ]);
   const used = (last?.meta as { series?: number } | null)?.series;
-  return { lines, series: fromSoftOne ?? (typeof used === "number" && allowed.includes(used) ? used : null) };
+  return fromSoftOne ?? (typeof used === "number" && allowed.includes(used) ? used : null);
+}
+
+/** Items by code / name / brand, to add to the order by hand. */
+export async function findOrderItems(tenantId: string, q: string): Promise<ItemHit[]> {
+  await viewer(tenantId);
+  return searchOrderItems(tenantId, String(q).slice(0, 80));
+}
+
+export async function loadItemLines(tenantId: string, mtrls: number[]): Promise<OrderLine[]> {
+  await viewer(tenantId);
+  return itemOrderLines(tenantId, mtrls.filter((m) => Number.isInteger(m) && m > 0).slice(0, 100));
 }
 
 const orderInput = z.object({

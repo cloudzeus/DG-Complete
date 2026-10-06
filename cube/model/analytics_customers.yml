@@ -8,11 +8,12 @@ cubes:
       (Champions, Πιστοί, Σε κίνδυνο, Χαμένοι …), κίνδυνος απώλειας, υπόλοιπο, ληξιπρόθεσμα ανά ηλικία,
       μέσες ημέρες πληρωμής και βαθμολογία πληρωμών (Α–Δ).
     sql: >
-      SELECT cs.*, c.code AS customer_code, c.name AS customer_name, c.city AS customer_city,
+      SELECT cs.*, c.code AS customer_code, c.name AS customer_name, c.city AS customer_city, gr.region AS customer_region, gr.periphery AS customer_periphery,
              pb.balance, pb.open_0_30, pb.open_31_60, pb.open_61_90, pb.open_90_plus, pb.oldest_open,
              pb.avg_payment_days, pb.paid_12m, pb.invoiced_12m, pb.last_payment, pb.dso_days, pb.payment_score, pb.payment_grade
       FROM m_customer_stats cs
       LEFT JOIN customers c ON c.trdr = cs.trdr
+      LEFT JOIN gr_regions gr ON gr.prefix = LEFT(REGEXP_REPLACE(COALESCE(c.zip, ''), '[^0-9]', '', 'g'), 2) AND LENGTH(REGEXP_REPLACE(COALESCE(c.zip, ''), '[^0-9]', '', 'g')) = 5
       LEFT JOIN m_partner_balances pb ON pb.trdr = cs.trdr AND pb.kind = 'R'
     measures:
       - name: count
@@ -87,6 +88,16 @@ cubes:
         title: Πόλη
         type: string
         sql: customer_city
+      - name: region
+        title: Νομός
+        description: Νομός / περιφερειακή ενότητα του πελάτη από τον ταχυδρομικό κώδικα (π.χ. Θεσσαλονίκη = ΤΚ 54xxx–57xxx, Αθήνα, Πειραιάς). Αξιόπιστο για φίλτρα «στη Θεσσαλονίκη», σε αντίθεση με την ελεύθερη πόλη.
+        type: string
+        sql: "COALESCE(customer_region, 'Άγνωστος / εξωτερικό')"
+      - name: periphery
+        title: Περιφέρεια
+        description: Περιφέρεια του πελάτη από τον ΤΚ (π.χ. Κεντρική Μακεδονία, Αττική, Κρήτη).
+        type: string
+        sql: "COALESCE(customer_periphery, 'Άγνωστη / εξωτερικό')"
       - name: segment
         title: Κατηγορία RFM
         type: string

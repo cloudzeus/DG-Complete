@@ -69,6 +69,26 @@ export const KIMON_TOOLS = [
   {
     type: "function",
     function: {
+      name: "find_values",
+      description:
+        "Βρίσκει πώς είναι γραμμένες στα δεδομένα οι τιμές ενός string dimension (πόλη, μάρκα, κατηγορία, πελάτης, είδος …) που μοιάζουν με αυτό που είπε ο χρήστης, με τον τζίρο τους. Χρησιμοποίησέ το ΠΡΙΝ φιλτράρεις με equals σε όνομα που δεν ξέρεις ακριβώς.",
+      parameters: {
+        type: "object",
+        properties: {
+          dimension: { type: "string", description: "Πλήρες όνομα, π.χ. sales_lines.brand ή sales_lines.customer_city." },
+          search: {
+            type: "array",
+            items: { type: "string" },
+            description: "1–6 παραλλαγές γραφής (κεφαλαία/πεζά, με/χωρίς τόνους, συντομογραφίες, λατινικά), π.χ. [\"Θεσσαλονίκη\",\"ΘΕΣΣΑΛΟΝΙΚΗ\",\"ΘΕΣ/ΝΙΚΗ\",\"THESSALONIKI\"].",
+          },
+        },
+        required: ["dimension", "search"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "show_table",
       description: "Δείχνει στον χρήστη έναν πίνακα από αποτέλεσμα του query_cube (με εξαγωγή σε Excel).",
       parameters: {
@@ -211,6 +231,34 @@ export async function runTool(name: string, rawArgs: string, run: ToolRun): Prom
       const id = idOf("r", run.results.size + 1);
       run.results.set(id, { query: { ...query, limit }, rows });
       return JSON.stringify({ result_id: id, row_count: rows.length, truncated: rows.length >= limit, rows: rowsForModel(rows) });
+    } catch (err) {
+      return JSON.stringify({ error: (err as Error).message.slice(0, 400) });
+    }
+  }
+
+  if (name === "find_values") {
+    const dimension = String(args.dimension ?? "");
+    const terms = (Array.isArray(args.search) ? args.search : [])
+      .map((t) => String(t).trim())
+      .filter((t) => t.length >= 2)
+      .slice(0, 6);
+    if (!run.catalog.members.has(dimension) || run.catalog.types.get(dimension) !== "string") {
+      return JSON.stringify({ error: "Δώσε string dimension του καταλόγου (π.χ. sales_lines.brand)." });
+    }
+    if (!terms.length) return JSON.stringify({ error: "Δώσε τουλάχιστον μία λέξη αναζήτησης." });
+    const cube = dimension.split(".")[0];
+    const measure = [`${cube}.revenue`, `${cube}.revenue_12m`, `${cube}.count`].find((m) => run.catalog.members.has(m));
+    run.status("Αναζητώ πώς είναι γραμμένο στα δεδομένα…");
+    try {
+      // Upper case as well: «contains» ignores case but not Greek accents.
+      const variants = [...new Set(terms.flatMap((t) => [t, t.toUpperCase(), t.normalize("NFD").replace(/\p{M}/gu, "").toUpperCase()]))];
+      const rows = await cubeLoad(run.tenantId, {
+        dimensions: [dimension],
+        ...(measure ? { measures: [measure], order: { [measure]: "desc" } } : {}),
+        filters: [{ member: dimension, operator: "contains", values: variants }],
+        limit: 40,
+      });
+      return JSON.stringify({ dimension, values: rows.map((r) => ({ value: r[dimension], ...(measure ? { [measure]: r[measure] } : {}) })) });
     } catch (err) {
       return JSON.stringify({ error: (err as Error).message.slice(0, 400) });
     }

@@ -3,6 +3,7 @@ import type { Client } from "pg";
 import { prisma } from "@/lib/prisma";
 import { schemaName } from "@/lib/warehouse";
 import { buildDocSeries } from "@/lib/doc-series";
+import { GR_REGIONS } from "@/lib/gr-regions";
 import { withWarehouse } from "@/lib/warehouse-writer";
 import { buildLedgerMarts } from "@/lib/bi-ledger";
 
@@ -215,10 +216,23 @@ async function buildItemStats(db: Client, schema: string, settings: BiSettings, 
      main_supplier AS (
        ${
          has.purchases
-           ? `SELECT DISTINCT ON (mtrl) mtrl, trdr FROM (
+           ? // The item's own supplier (most bought from: last 2 years first, then all history), else the
+             // supplier of its brand (the one most of the brand's items are bought from).
+             `SELECT i.mtrl, COALESCE(recent.trdr, ever.trdr, bs.trdr) AS trdr,
+                     CASE WHEN COALESCE(recent.trdr, ever.trdr) IS NOT NULL THEN 'item' WHEN bs.trdr IS NOT NULL THEN 'brand' END AS source
+              FROM ${s}.items i
+              LEFT JOIN (SELECT DISTINCT ON (mtrl) mtrl, trdr FROM (
                 SELECT mtrl, trdr, SUM(qty) AS q FROM ${s}.f_purchase_lines WHERE trndate >= now() - interval '730 days' AND qty > 0 GROUP BY 1, 2
-              ) x ORDER BY mtrl, q DESC`
-           : `SELECT NULL::bigint AS mtrl, NULL::bigint AS trdr WHERE false`
+              ) x ORDER BY mtrl, q DESC) recent ON recent.mtrl = i.mtrl
+              LEFT JOIN (SELECT DISTINCT ON (mtrl) mtrl, trdr FROM (
+                SELECT mtrl, trdr, MAX(trndate) AS last, SUM(qty) AS q FROM ${s}.f_purchase_lines WHERE qty > 0 GROUP BY 1, 2
+              ) x ORDER BY mtrl, last DESC, q DESC) ever ON ever.mtrl = i.mtrl
+              LEFT JOIN (SELECT DISTINCT ON (mtrmark) mtrmark, trdr FROM (
+                SELECT it.mtrmark, p.trdr, COUNT(DISTINCT p.mtrl) AS n, MAX(p.trndate) AS last
+                FROM ${s}.f_purchase_lines p JOIN ${s}.items it ON it.mtrl = p.mtrl
+                WHERE p.qty > 0 AND it.mtrmark IS NOT NULL GROUP BY 1, 2
+              ) x ORDER BY mtrmark, n DESC, last DESC) bs ON bs.mtrmark = i.mtrmark`
+           : `SELECT NULL::bigint AS mtrl, NULL::bigint AS trdr, NULL::text AS source WHERE false`
        }
      ),
      supplier_lead AS (
@@ -238,7 +252,7 @@ async function buildItemStats(db: Client, schema: string, settings: BiSettings, 
               ls.last_sale,
               COALESCE(st.qty, 0) AS stock_qty,
               COALESCE(cl.unit_cost, cp.unit_cost) AS unit_cost,
-              ms.trdr AS main_supplier,
+              ms.trdr AS main_supplier, ms.source AS supplier_source,
               COALESCE(sl.lead_days, 30) AS lead_days
        FROM ${s}.items i
        LEFT JOIN s12 ON s12.mtrl = i.mtrl
@@ -274,10 +288,13 @@ async function buildItemStats(db: Client, schema: string, settings: BiSettings, 
             (GREATEST(r.qty_12m, 0) / 365.0)::numeric(19,6) AS daily_demand,
             CASE WHEN r.qty_12m > 0 THEN (r.stock_qty / (r.qty_12m / 365.0))::numeric(16,1) END AS days_of_cover,
             (r.stock_qty > 0 AND (r.last_sale IS NULL OR r.last_sale < now() - make_interval(days => ${deadDays}))) AS dead_stock,
-            r.main_supplier, r.lead_days::int,
+            r.main_supplier, r.supplier_source, r.lead_days::int,
             CEIL(GREATEST(r.qty_12m, 0) / 365.0 * (r.lead_days + 7))::numeric(19,2) AS reorder_point,
             CASE
-              WHEN r.qty_12m > 0 AND r.qty_90d > 0 AND r.stock_qty <= GREATEST(r.qty_12m, 0) / 365.0 * (r.lead_days + 7)
+              -- Demand on the 12-month pace: sold in the last quarter, or regularly during the year
+              -- (≥ 2 invoices in 12 months) even if not in the last 3 months.
+              WHEN r.qty_12m > 0 AND (r.qty_90d > 0 OR r.documents_12m >= 2)
+                   AND r.stock_qty <= GREATEST(r.qty_12m, 0) / 365.0 * (r.lead_days + 7)
               THEN GREATEST(0, CEIL(GREATEST(r.qty_12m, 0) / 365.0 * (r.lead_days + ${coverDays}) - r.stock_qty))
               ELSE 0
             END::numeric(19,2) AS suggested_order_qty
@@ -441,10 +458,27 @@ export async function buildBiMarts(tenantId: string): Promise<MartsReport> {
         sales: (await ensureColumns(db, schema, "sales_docs", docCols)) && (await ensureColumns(db, schema, "sales_lines", lineCols)),
         purchases: (await ensureColumns(db, schema, "purchase_docs", docCols)) && (await ensureColumns(db, schema, "purchase_lines", lineCols)),
         series: await tableExists(db, schema, "doc_series"),
-        items: await tableExists(db, schema, "items"),
+        items: await ensureColumns(db, schema, "items", { mtrmark: "bigint" }),
         costs: await ensureColumns(db, schema, "item_costs", { purprice1: "numeric(19,6)" }),
         stock: await tableExists(db, schema, "stock_balances"),
+        customers: await tableExists(db, schema, "customers"),
       };
+      // Place of each customer by postal code (cubes: region / periphery). customers.zip may be
+      // missing on imports from before it was added.
+      if (has.customers) await ensureColumns(db, schema, "customers", { zip: "text", city: "text" });
+      await db.query("BEGIN");
+      try {
+        await db.query(`CREATE TABLE IF NOT EXISTS ${qi(schema)}.gr_regions (prefix text PRIMARY KEY, region text NOT NULL, periphery text NOT NULL)`);
+        await db.query(`DELETE FROM ${qi(schema)}.gr_regions`);
+        await db.query(
+          `INSERT INTO ${qi(schema)}.gr_regions SELECT * FROM jsonb_to_recordset($1::jsonb) AS r(prefix text, region text, periphery text)`,
+          [JSON.stringify(GR_REGIONS)],
+        );
+        await db.query("COMMIT");
+      } catch (err) {
+        await db.query("ROLLBACK");
+        throw err;
+      }
       if (!has.costs) {
         await db.query(`CREATE TABLE IF NOT EXISTS ${qi(schema)}.item_costs (mtrl bigint, fiscprd int, standcost numeric(19,6), purlprice numeric(19,6), purprice1 numeric(19,6), "_synced_at" timestamp NOT NULL DEFAULT now(), PRIMARY KEY (mtrl, fiscprd))`);
       }

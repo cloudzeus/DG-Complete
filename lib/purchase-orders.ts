@@ -9,7 +9,16 @@ import { withWarehouse } from "@/lib/warehouse-writer";
 // the user, then written to the tenant's SoftOne as a PURDOC (item + quantity only — SoftOne prices
 // the lines with its own rules).
 
-export type OrderSupplier = { trdr: number | null; code: string | null; name: string; items: number };
+export type OrderSupplier = {
+  trdr: number | null;
+  code: string | null;
+  name: string;
+  /** Items with a suggested quantity. */
+  items: number;
+  /** Items they are the main supplier of. */
+  total: number;
+  brands: string[];
+};
 export type Urgency = "critical" | "urgent" | "normal";
 export type OrderLine = {
   mtrl: number;
@@ -34,6 +43,9 @@ export type OrderLine = {
   /** Why it is suggested, in plain words. */
   reasons: string[];
   suggested: number;
+  /** Who the item is bought from now, and whether that comes from the item or from its brand. */
+  supplier: string | null;
+  supplierSource: "item" | "brand" | null;
 };
 
 const RISING = 20; // % — demand of the last 90 days this much above the 12-month average
@@ -56,7 +68,7 @@ function assess(x: { stock: number; qty12m: number; qtyPrev12m: number; qty90d: 
   let urgency: Urgency = "normal";
   if (x.stock <= 0) {
     urgency = important ? "critical" : "urgent";
-    reasons.push(x.stock < 0 ? "Αρνητικό απόθεμα — ελέγξτε και τις καταχωρήσεις" : "Εξαντλημένο, με πωλήσεις το τελευταίο τρίμηνο");
+    reasons.push(x.stock < 0 ? "Αρνητικό απόθεμα — ελέγξτε και τις καταχωρήσεις" : x.qty90d > 0 ? "Εξαντλημένο, με πωλήσεις το τελευταίο τρίμηνο" : `Εξαντλημένο — ${x.qty12m.toLocaleString("el-GR")} τεμ. πωλήσεις τους τελευταίους 12 μήνες`);
   } else if (coverNow !== null && coverNow < lead) {
     urgency = important ? "critical" : "urgent";
     reasons.push(`Τελειώνει σε ~${Math.round(coverNow)} ημ., πριν φτάσει παραγγελία (παράδοση ${lead} ημ.)`);
@@ -82,28 +94,88 @@ const qi = (s: string) => `"${s.replaceAll('"', '""')}"`;
 const n = (v: unknown) => (v === null || v === undefined ? null : Number(v));
 
 export async function orderSuppliers(tenantId: string): Promise<OrderSupplier[]> {
-  const s = qi(schemaName(tenantId));
+  const schema = schemaName(tenantId);
+  const s = qi(schema);
   return withWarehouse(async (db) => {
+    const has = async (t: string) => !!(await db.query("SELECT to_regclass($1) AS t", [`${s}.${t}`])).rows[0]?.t;
+    const brands = await has("brands");
+    const purchases = await has("purchase_docs");
+    // Every supplier: the main supplier of any item, or bought from in the last 2 years. Those with
+    // suggestions come first; the brands they carry make them searchable by brand.
     const r = await db.query(
-      `SELECT m.main_supplier AS trdr, sp.code, sp.name, COUNT(*)::int AS items
-       FROM ${s}.m_item_stats m LEFT JOIN ${s}.suppliers sp ON sp.trdr = m.main_supplier
-       WHERE m.suggested_order_qty > 0
-       GROUP BY m.main_supplier, sp.code, sp.name
-       ORDER BY (m.main_supplier IS NULL), COUNT(*) DESC`,
+      `WITH st AS (
+         SELECT m.main_supplier AS trdr, COUNT(*) FILTER (WHERE m.suggested_order_qty > 0)::int AS to_order, COUNT(*)::int AS total,
+                ${brands ? "(array_agg(DISTINCT b.name) FILTER (WHERE b.name IS NOT NULL))[1:40]" : "ARRAY[]::text[]"} AS brands
+         FROM ${s}.m_item_stats m
+         LEFT JOIN ${s}.items i ON i.mtrl = m.mtrl
+         ${brands ? `LEFT JOIN ${s}.brands b ON b.mtrmark = i.mtrmark` : ""}
+         GROUP BY m.main_supplier
+       ),
+       pu AS (${purchases ? `SELECT DISTINCT trdr FROM ${s}.purchase_docs WHERE trndate >= now() - interval '24 months' AND trdr IS NOT NULL` : "SELECT NULL::bigint AS trdr WHERE false"})
+       SELECT COALESCE(st.trdr, pu.trdr) AS trdr, sp.code, sp.name, COALESCE(st.to_order, 0) AS to_order, COALESCE(st.total, 0) AS total, st.brands
+       FROM st FULL JOIN pu ON pu.trdr = st.trdr
+       LEFT JOIN ${s}.suppliers sp ON sp.trdr = COALESCE(st.trdr, pu.trdr)
+       WHERE COALESCE(st.trdr, pu.trdr) IS NOT NULL OR COALESCE(st.to_order, 0) > 0
+       ORDER BY (COALESCE(st.trdr, pu.trdr) IS NULL), COALESCE(st.to_order, 0) DESC, sp.name`,
     );
-    return r.rows.map((x) => ({ trdr: n(x.trdr), code: x.code ?? null, name: x.name ?? "Χωρίς κύριο προμηθευτή", items: Number(x.items) }));
+    return r.rows.map((x) => ({
+      trdr: n(x.trdr),
+      code: x.code ?? null,
+      name: x.name ?? (x.trdr === null ? "Χωρίς κύριο προμηθευτή" : `Προμηθευτής ${x.trdr}`),
+      items: Number(x.to_order),
+      total: Number(x.total),
+      brands: (x.brands as string[] | null) ?? [],
+    }));
   });
 }
 
-export async function supplierOrderLines(tenantId: string, trdr: number): Promise<OrderLine[]> {
+/** Order lines of the supplier: the suggested ones, or (all) every item they are main supplier of. */
+export async function supplierOrderLines(tenantId: string, trdr: number | null, opts: { all?: boolean } = {}): Promise<OrderLine[]> {
+  // trdr null = the items without a supplier (the order recipient is chosen when sending).
+  return orderLinesWhere(tenantId, `m.main_supplier IS NOT DISTINCT FROM $1::bigint AND (m.suggested_order_qty > 0 OR $2)`, [trdr, !!opts.all]);
+}
+
+export type OrderBrand = { mtrmark: number; name: string; items: number; total: number; supplier: number | null };
+
+/** Brands with their items: suggested / all, and the supplier most of their items come from. */
+export async function orderBrands(tenantId: string): Promise<OrderBrand[]> {
+  const s = qi(schemaName(tenantId));
+  return withWarehouse(async (db) => {
+    if (!(await db.query("SELECT to_regclass($1) AS t", [`${s}.brands`])).rows[0]?.t) return [];
+    const r = await db.query(
+      `SELECT b.mtrmark, b.name, COUNT(*) FILTER (WHERE m.suggested_order_qty > 0)::int AS to_order, COUNT(*)::int AS total,
+              mode() WITHIN GROUP (ORDER BY m.main_supplier) AS supplier
+       FROM ${s}.m_item_stats m JOIN ${s}.items i ON i.mtrl = m.mtrl JOIN ${s}.brands b ON b.mtrmark = i.mtrmark
+       GROUP BY b.mtrmark, b.name
+       ORDER BY COUNT(*) FILTER (WHERE m.suggested_order_qty > 0) DESC, b.name`,
+    );
+    return r.rows.map((x) => ({ mtrmark: Number(x.mtrmark), name: x.name ?? `Μάρκα ${x.mtrmark}`, items: Number(x.to_order), total: Number(x.total), supplier: n(x.supplier) }));
+  });
+}
+
+/** Order lines of a brand, whoever supplied them so far: the suggested ones, or (all) every item. */
+export async function brandOrderLines(tenantId: string, mtrmark: number, opts: { all?: boolean } = {}): Promise<OrderLine[]> {
+  return orderLinesWhere(tenantId, `i.mtrmark = $1 AND (m.suggested_order_qty > 0 OR $2)`, [mtrmark, !!opts.all]);
+}
+
+/** Order lines for chosen items (added by hand to an order). */
+export async function itemOrderLines(tenantId: string, mtrls: number[]): Promise<OrderLine[]> {
+  if (!mtrls.length) return [];
+  return orderLinesWhere(tenantId, `m.mtrl = ANY($1::bigint[])`, [mtrls]);
+}
+
+async function orderLinesWhere(tenantId: string, where: string, params: unknown[]): Promise<OrderLine[]> {
   const s = qi(schemaName(tenantId));
   return withWarehouse(async (db) => {
     const r = await db.query(
       `SELECT m.mtrl, i.code, i.name, m.abc, m.stock_qty, m.days_of_cover, m.lead_days, m.qty_12m, m.qty_prev_12m, m.qty_90d,
-              m.suggested_order_qty
+              m.suggested_order_qty, m.supplier_source, sp.name AS supplier_name
        FROM ${s}.m_item_stats m LEFT JOIN ${s}.items i ON i.mtrl = m.mtrl
-       WHERE m.main_supplier = $1 AND m.suggested_order_qty > 0`,
-      [trdr],
+       LEFT JOIN ${s}.suppliers sp ON sp.trdr = m.main_supplier
+       WHERE ${where}
+       ORDER BY m.suggested_order_qty DESC NULLS LAST, m.qty_12m DESC NULLS LAST
+       LIMIT 500`,
+      params,
     );
     const mtrls = r.rows.map((x) => Number(x.mtrl));
     // Monthly sales of these items, last 12 calendar months (current month included).
@@ -140,11 +212,61 @@ export async function supplierOrderLines(tenantId: string, trdr: number): Promis
           daysOfCover: n(x.days_of_cover),
           monthly: monthly.get(Number(x.mtrl)) ?? Array(12).fill(0),
           suggested: Number(x.suggested_order_qty ?? 0),
+          supplier: (x.supplier_name as string | null) ?? null,
+          supplierSource: (x.supplier_source as "item" | "brand" | null) ?? null,
           ...base,
           ...assess(base),
         };
       })
+      .map((l) => {
+        // Shown with «all items» but not suggested: say why nothing is needed.
+        if (l.suggested <= 0 && l.stock > 0) {
+          l.urgency = "normal";
+          l.reasons = [l.coverNow === null ? "Χωρίς πωλήσεις τους τελευταίους 12 μήνες" : `Επαρκές απόθεμα — κάλυψη ~${Math.round(l.coverNow)} ημ.`];
+        }
+        if (l.supplierSource === "brand" && l.supplier) l.reasons = [...l.reasons, `Προμηθευτής από τη μάρκα: ${l.supplier}`];
+        return l;
+      })
       .sort((a, b) => URGENCY_ORDER[a.urgency] - URGENCY_ORDER[b.urgency] || (a.coverNow ?? 1e9) - (b.coverNow ?? 1e9));
+  });
+}
+
+// Codes / brands typed with the Greek keyboard layout by mistake («βεσσεω» → «bessey»).
+const KEYS: Record<string, string> = {
+  ς: "w", ε: "e", ρ: "r", τ: "t", υ: "y", θ: "u", ι: "i", ο: "o", π: "p", α: "a", σ: "s", δ: "d", φ: "f", γ: "g",
+  η: "h", ξ: "j", κ: "k", λ: "l", ζ: "z", χ: "x", ψ: "c", ω: "v", β: "b", ν: "n", μ: "m",
+};
+const latinKeys = (q: string) => [...q.toLowerCase()].map((c) => KEYS[c] ?? c).join("");
+
+export type ItemHit = { mtrl: number; code: string | null; name: string; brand: string | null; supplier: string | null; stock: number; qty12m: number };
+
+/** Items by code, name or brand (to add to an order). */
+export async function searchOrderItems(tenantId: string, q: string): Promise<ItemHit[]> {
+  const term = q.trim();
+  if (term.length < 2) return [];
+  const s = qi(schemaName(tenantId));
+  return withWarehouse(async (db) => {
+    const brands = !!(await db.query("SELECT to_regclass($1) AS t", [`${s}.brands`])).rows[0]?.t;
+    const r = await db.query(
+      `SELECT i.mtrl, i.code, i.name, ${brands ? "b.name" : "NULL"} AS brand, sp.name AS supplier, m.stock_qty, m.qty_12m
+       FROM ${s}.items i
+       JOIN ${s}.m_item_stats m ON m.mtrl = i.mtrl
+       ${brands ? `LEFT JOIN ${s}.brands b ON b.mtrmark = i.mtrmark` : ""}
+       LEFT JOIN ${s}.suppliers sp ON sp.trdr = m.main_supplier
+       WHERE i.code ILIKE $1 OR i.name ILIKE $2 OR i.code ILIKE $3 ${brands ? "OR b.name ILIKE $2 OR b.name ILIKE $4" : ""}
+       ORDER BY (i.code ILIKE $1) DESC, m.qty_12m DESC NULLS LAST
+       LIMIT 40`,
+      [`${term}%`, `%${term}%`, `${latinKeys(term)}%`, `%${latinKeys(term)}%`],
+    );
+    return r.rows.map((x) => ({
+      mtrl: Number(x.mtrl),
+      code: x.code ?? null,
+      name: x.name ?? `Είδος ${x.mtrl}`,
+      brand: x.brand ?? null,
+      supplier: x.supplier ?? null,
+      stock: Number(x.stock_qty ?? 0),
+      qty12m: Number(x.qty_12m ?? 0),
+    }));
   });
 }
 

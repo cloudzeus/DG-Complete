@@ -1,9 +1,16 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { CheckCircle2, Loader2, Send, Trash2, TrendingDown, TrendingUp, Undo2 } from "lucide-react";
+import { useDeferredValue, useMemo, useState, useTransition } from "react";
+import { CheckCircle2, Loader2, Plus, Search, Send, Trash2, TrendingDown, TrendingUp, Undo2 } from "lucide-react";
 import { toast } from "sonner";
-import { loadSupplierLines, submitPurchaseOrder } from "@/app/dashboards/[tenantId]/orders/actions";
+import {
+  findOrderItems,
+  loadBrandLines,
+  loadItemLines,
+  loadSupplierLines,
+  recipientSeries,
+  submitPurchaseOrder,
+} from "@/app/dashboards/[tenantId]/orders/actions";
 import { ExportButton } from "@/components/dashboards/export-button";
 import {
   AlertDialog,
@@ -18,13 +25,16 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { OrderLine, OrderSupplier } from "@/lib/purchase-orders";
+import type { ItemHit, OrderBrand, OrderLine, OrderSupplier } from "@/lib/purchase-orders";
 import { cn } from "@/lib/utils";
 
 // Order suggestions per supplier: pick a supplier, adjust quantities or drop lines, export to
 // Excel, and create the purchase order in SoftOne (item + quantity; SoftOne prices it).
 
 type Line = OrderLine & { qty: number; removed: boolean };
+
+/** What the lines come from: a supplier (or the items without one), or a brand whoever supplied it. */
+type Selection = { kind: "supplier" | "brand"; id: number | null; name: string; items: number; total: number; recipient: number | null; matched?: string };
 
 const URGENCY = {
   critical: { label: "Επείγον", plural: "επείγοντα", badge: "bg-red-50 text-red-700 ring-red-200", row: "border-l-red-500 bg-red-50/40 dark:bg-red-950/20" },
@@ -61,40 +71,126 @@ function MonthBars({ values, rising }: { values: number[]; rising: boolean }) {
   );
 }
 
+/** Case- and accent-insensitive text for searching (Θεσσαλονίκη = ΘΕΣΣΑΛΟΝΙΚΗ). */
+const fold = (v: string) => v.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+
+// Text typed with the Greek keyboard layout by mistake («βεσσεω» for «bessey»): same keys in Latin.
+const KEYS: Record<string, string> = {
+  ς: "w", ε: "e", ρ: "r", τ: "t", υ: "y", θ: "u", ι: "i", ο: "o", π: "p", α: "a", σ: "s", δ: "d", φ: "f", γ: "g",
+  η: "h", ξ: "j", κ: "k", λ: "l", ζ: "z", χ: "x", ψ: "c", ω: "v", β: "b", ν: "n", μ: "m", ";": "q",
+};
+const latinKeys = (q: string) => [...q].map((c) => KEYS[c] ?? c).join("");
+/** Does the text contain the search, as typed or as typed on the other keyboard layout? */
+const matches = (text: string, q: string) => {
+  const t = fold(text);
+  return t.includes(q) || t.includes(latinKeys(q));
+};
+
 const num = (v: number | null, digits = 0) => (v === null ? "—" : v.toLocaleString("el-GR", { maximumFractionDigits: digits }));
 
 export function OrderEditor({
   tenantId,
   suppliers,
+  brands,
   canCreate,
   problem,
   series: allowedSeries,
 }: {
   tenantId: string;
   suppliers: OrderSupplier[];
+  brands: OrderBrand[];
   canCreate: boolean;
   /** Series the order may be written to (domestic / EU / third country …). */
   series: { id: number; label: string }[];
   /** Why orders can't be sent right now (no series, no connection …), or null. */
   problem: string | null;
 }) {
-  const [supplier, setSupplier] = useState<OrderSupplier | null>(null);
+  const [supplier, setSupplier] = useState<Selection | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
   const [loading, startLoad] = useTransition();
   const [sending, startSend] = useTransition();
   const [confirm, setConfirm] = useState<null | { duplicate?: string }>(null);
-  // Per supplier: preselected from their latest order in SoftOne; must be chosen when unknown.
+  // Per recipient: preselected from their latest order in SoftOne; must be chosen when unknown.
   const [series, setSeries] = useState<number | null>(null);
   const [created, setCreated] = useState<{ supplier: string; fincode: string } | null>(null);
+  // Who the order goes to: the selected supplier / the brand's supplier, changeable when sending.
+  const [recipient, setRecipient] = useState<OrderSupplier | null>(null);
+  const byTrdr = useMemo(() => new Map(suppliers.filter((s) => s.trdr !== null).map((s) => [s.trdr!, s])), [suppliers]);
 
-  function pick(s: OrderSupplier) {
-    if (s.trdr === null) return;
-    setSupplier(s);
+  const [mode, setMode] = useState<"supplier" | "brand">("supplier");
+  const [query, setQuery] = useState("");
+  const deferred = useDeferredValue(query);
+  const [allItems, setAllItems] = useState(false);
+  const list = useMemo((): Selection[] => {
+    const q = fold(deferred.trim());
+    if (mode === "brand") {
+      return brands
+        .filter((b) => !q || matches(b.name, q))
+        .map((b) => ({ kind: "brand", id: b.mtrmark, name: b.name, items: b.items, total: b.total, recipient: b.supplier }));
+    }
+    const toSel = (s: OrderSupplier, matched?: string): Selection => ({ kind: "supplier", id: s.trdr, name: s.name, items: s.items, total: s.total, recipient: s.trdr, matched });
+    // All of them (those with suggestions first); the search narrows by name, code or brand.
+    if (!q) return suppliers.map((s) => toSel(s));
+    return suppliers
+      .map((s) => ({ s, brand: s.brands.find((b) => matches(b, q)) }))
+      .filter(({ s, brand }) => brand || matches(s.name, q) || (s.code && matches(s.code, q)))
+      .map(({ s, brand }) => toSel(s, brand));
+  }, [suppliers, brands, mode, deferred]);
+
+  function chooseRecipient(trdr: number | null) {
+    const r = trdr === null ? null : (byTrdr.get(trdr) ?? null);
+    setRecipient(r);
+    setSeries(null);
+    if (r?.trdr) {
+      const id = r.trdr;
+      void recipientSeries(tenantId, id).then((x) => setSeries((cur) => cur ?? x));
+    }
+  }
+
+  function pick(sel: Selection, all = sel.items === 0) {
+    setSupplier(sel);
     setCreated(null);
+    setAllItems(all);
     startLoad(async () => {
-      const r = await loadSupplierLines(tenantId, s.trdr!);
-      setLines(r.lines.map((l) => ({ ...l, qty: l.suggested, removed: false })));
-      setSeries(r.series);
+      if (sel.kind === "brand") {
+        const r = await loadBrandLines(tenantId, sel.id!, all);
+        setLines(r.lines.map((l) => ({ ...l, qty: l.suggested, removed: false })));
+        chooseRecipient(sel.recipient);
+      } else {
+        const r = await loadSupplierLines(tenantId, sel.id, all);
+        setLines(r.lines.map((l) => ({ ...l, qty: l.suggested, removed: false })));
+        setRecipient(sel.id === null ? null : (byTrdr.get(sel.id) ?? null));
+        setSeries(r.series);
+      }
+    });
+  }
+
+  const [recipientQuery, setRecipientQuery] = useState("");
+  const recipientOptions = useMemo(() => {
+    const q = fold(recipientQuery.trim());
+    if (!q) return [];
+    return suppliers.filter((s) => s.trdr !== null && (matches(s.name, q) || (s.code && matches(s.code, q)))).slice(0, 30);
+  }, [suppliers, recipientQuery]);
+
+  // Add an item by hand (any item: e.g. one without a main supplier in SoftOne).
+  const [itemQuery, setItemQuery] = useState("");
+  const [hits, setHits] = useState<ItemHit[] | null>(null);
+  const [searching, startSearch] = useTransition();
+  function searchItems(q: string) {
+    setItemQuery(q);
+    if (q.trim().length < 2) return setHits(null);
+    startSearch(async () => setHits(await findOrderItems(tenantId, q)));
+  }
+  function addItem(h: ItemHit) {
+    if (lines.some((l) => l.mtrl === h.mtrl)) {
+      update(h.mtrl, { removed: false });
+      return;
+    }
+    startSearch(async () => {
+      const [line] = await loadItemLines(tenantId, [h.mtrl]);
+      if (line) setLines((ls) => [{ ...line, qty: Math.max(line.suggested, 1), removed: false }, ...ls]);
+      setItemQuery("");
+      setHits(null);
     });
   }
 
@@ -105,19 +201,20 @@ export function OrderEditor({
   const update = (mtrl: number, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.mtrl === mtrl ? { ...l, ...patch } : l)));
 
   function send(force = false) {
-    if (!supplier?.trdr || !series) return;
+    if (!recipient?.trdr || !series) return;
+    const to = recipient;
     startSend(async () => {
       const r = await submitPurchaseOrder({
         tenantId,
-        trdr: supplier.trdr!,
+        trdr: to.trdr!,
         series,
-        supplierName: supplier.name,
+        supplierName: to.name,
         lines: active.map((l) => ({ mtrl: l.mtrl, qty: l.qty })),
         force,
       });
       if (r.ok) {
         setConfirm(null);
-        setCreated({ supplier: supplier.name, fincode: r.fincode });
+        setCreated({ supplier: to.name, fincode: r.fincode });
         toast.success(`Η παραγγελία ${r.fincode} δημιουργήθηκε στο SoftOne (${r.lines} γραμμές).`);
       } else if (r.duplicate) setConfirm({ duplicate: r.error });
       else {
@@ -130,26 +227,67 @@ export function OrderEditor({
   return (
     <div className="grid gap-5 lg:grid-cols-[18rem_minmax(0,1fr)]">
       <aside className="rounded-xl border bg-card">
-        <div className="border-b px-3 py-2 text-sm font-medium">Προμηθευτές με προτάσεις</div>
-        <div className="max-h-[60svh] overflow-y-auto p-1.5 lg:max-h-[calc(100svh-14rem)]">
-          {suppliers.length === 0 && <p className="p-3 text-sm text-muted-foreground">Δεν υπάρχουν προτάσεις παραγγελίας αυτή τη στιγμή.</p>}
-          {suppliers.map((s) => (
-            <button
-              key={s.trdr ?? "none"}
-              type="button"
-              disabled={s.trdr === null}
-              onClick={() => pick(s)}
-              className={cn(
-                "flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
-                s.trdr === null ? "cursor-not-allowed text-muted-foreground" : "hover:bg-muted",
-                supplier?.trdr === s.trdr && s.trdr !== null && "bg-dg-red-50/70 text-dg-red-700 dark:bg-white/5",
-              )}
-              title={s.trdr === null ? "Ορίστε κύριο προμηθευτή στα είδη αυτά στο SoftOne" : undefined}
-            >
-              <span className="min-w-0 truncate">{s.name}</span>
-              <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-2xs tabular-nums">{s.items}</span>
-            </button>
-          ))}
+        <div className="space-y-2 border-b p-2.5">
+          <div className="grid grid-cols-2 overflow-hidden rounded-md border text-xs" role="tablist" aria-label="Παραγγελία ανά">
+            {(["supplier", "brand"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="tab"
+                aria-selected={mode === m}
+                onClick={() => setMode(m)}
+                className={cn("min-h-9 font-medium", mode === m ? "bg-sisyphus-500 text-white" : "bg-background text-muted-foreground hover:bg-muted")}
+              >
+                {m === "supplier" ? "Προμηθευτές" : "Μάρκες"}
+              </button>
+            ))}
+          </div>
+          <div className="relative">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={mode === "brand" ? "Μάρκα…" : "Προμηθευτής, κωδικός ή μάρκα…"}
+              aria-label={mode === "brand" ? "Αναζήτηση μάρκας" : "Αναζήτηση προμηθευτή ή μάρκας"}
+              className="h-10 pl-8"
+            />
+          </div>
+          <div className="px-0.5 text-2xs text-muted-foreground">
+            {query.trim()
+              ? `${list.length.toLocaleString("el-GR")} από ${(mode === "brand" ? brands : suppliers).length.toLocaleString("el-GR")}`
+              : `${list.length.toLocaleString("el-GR")} ${mode === "brand" ? "μάρκες" : "προμηθευτές"} · ${list.filter((x) => x.items > 0).length.toLocaleString("el-GR")} με προτάσεις`}
+          </div>
+        </div>
+        <div className="max-h-[60svh] overflow-y-auto p-1.5 lg:max-h-[calc(100svh-18rem)]">
+          {list.length === 0 && (
+            <p className="p-3 text-sm text-muted-foreground">{query.trim() ? "Δεν βρέθηκε." : "Δεν υπάρχουν προτάσεις παραγγελίας αυτή τη στιγμή."}</p>
+          )}
+          {list.map((s) => {
+            const selected = supplier?.kind === s.kind && supplier.id === s.id;
+            return (
+              <button
+                key={`${s.kind}:${s.id ?? "none"}`}
+                type="button"
+                onClick={() => pick(s)}
+                className={cn(
+                  "flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted",
+                  selected && "bg-dg-red-50/70 text-dg-red-700 dark:bg-white/5",
+                )}
+              >
+                <span className="min-w-0">
+                  <span className={cn("block truncate", s.id === null && "italic text-muted-foreground")}>{s.name}</span>
+                  {s.matched && <span className="block truncate text-2xs text-muted-foreground">μάρκα {s.matched}</span>}
+                </span>
+                <span
+                  className={cn("shrink-0 rounded-full px-2 py-0.5 text-2xs tabular-nums", s.items > 0 ? "bg-dg-red-50 text-dg-red-700 dark:bg-white/10" : "bg-muted text-muted-foreground")}
+                  title={s.items > 0 ? `${s.items} είδη με πρόταση παραγγελίας` : `${s.total} είδη, χωρίς πρόταση`}
+                >
+                  {s.items > 0 ? s.items : s.total}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </aside>
 
@@ -160,10 +298,14 @@ export function OrderEditor({
           <div className="rounded-xl border bg-card">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
               <div className="min-w-0">
-                <div className="truncate font-medium">{supplier.name}</div>
+                <div className="truncate font-medium">
+                  {supplier.kind === "brand" && <span className="text-muted-foreground">Μάρκα </span>}
+                  {supplier.name}
+                </div>
                 <div className="text-xs text-muted-foreground">
                   {active.length.toLocaleString("el-GR")} γραμμές προς παραγγελία
                   {lines.length !== active.length && ` · ${lines.length - active.length} εκτός`}
+                  {!loading && <> · προς: {recipient ? recipient.name : "επιλέξτε προμηθευτή στη δημιουργία"}</>}
                   {canCreate && allowedSeries.length > 0 && !loading && (
                     <> · σειρά: {series ? (allowedSeries.find((x) => x.id === series)?.label ?? series) : "δεν έχει οριστεί — επιλέξτε τη στη δημιουργία"}</>
                   )}
@@ -179,6 +321,7 @@ export function OrderEditor({
                       columns: [
                         { key: "code", label: "Κωδικός" },
                         { key: "name", label: "Είδος" },
+                        { key: "currentSupplier", label: "Τρέχων προμηθευτής" },
                         { key: "urgencyLabel", label: "Προτεραιότητα" },
                         { key: "why", label: "Γιατί" },
                         { key: "stock", label: "Απόθεμα", format: "num" },
@@ -190,7 +333,10 @@ export function OrderEditor({
                         { key: "trendPct", label: "Τάση 3μ %", format: "pct" },
                         { key: "qty", label: "Ποσότητα παραγγελίας", format: "num" },
                       ],
-                      rows: active.map((l) => ({ ...l, urgencyLabel: URGENCY[l.urgency].label, why: l.reasons.join(" · ") })),
+                      // Everything on screen (all the supplier's / brand's items when «all» is on), not only the lines being ordered.
+                      rows: lines
+                        .filter((l) => !l.removed)
+                        .map((l) => ({ ...l, urgencyLabel: URGENCY[l.urgency].label, why: l.reasons.join(" · "), currentSupplier: l.supplier ?? "" })),
                     },
                   ]}
                 />
@@ -215,6 +361,70 @@ export function OrderEditor({
                 <AlertTitle>Η παραγγελία {created.fincode} δημιουργήθηκε</AlertTitle>
                 <AlertDescription>Θα τη βρείτε στο SoftOne στις παραγγελίες αγορών του προμηθευτή {created.supplier}.</AlertDescription>
               </Alert>
+            )}
+
+            <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2 text-xs">
+              <div className="inline-flex overflow-hidden rounded-md border" role="radiogroup" aria-label="Ποια είδη">
+                {[
+                  { all: false, label: "Προτάσεις" },
+                  { all: true, label: supplier.kind === "brand" ? "Όλα τα είδη της μάρκας" : "Όλα τα είδη του προμηθευτή" },
+                ].map((o) => (
+                  <button
+                    key={o.label}
+                    type="button"
+                    role="radio"
+                    aria-checked={allItems === o.all}
+                    disabled={loading}
+                    onClick={() => allItems !== o.all && pick(supplier, o.all)}
+                    className={cn("min-h-9 px-3 font-medium", allItems === o.all ? "bg-sisyphus-500 text-white" : "bg-background text-muted-foreground hover:bg-muted")}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+              <div className="relative min-w-56 flex-1">
+                <Plus className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="search"
+                  value={itemQuery}
+                  onChange={(e) => searchItems(e.target.value)}
+                  placeholder="Προσθήκη είδους: κωδικός, περιγραφή ή μάρκα"
+                  aria-label="Προσθήκη είδους στην παραγγελία"
+                  className="h-9 pl-8"
+                />
+                {searching && <Loader2 className="absolute top-1/2 right-2.5 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />}
+                {hits && (
+                  <div className="absolute inset-x-0 top-full z-20 mt-1 max-h-80 overflow-y-auto rounded-md border bg-popover p-1 shadow-fluent-8">
+                    {hits.length === 0 && <p className="p-2 text-muted-foreground">Δεν βρέθηκαν είδη.</p>}
+                    {hits.map((h) => (
+                      <button
+                        key={h.mtrl}
+                        type="button"
+                        onClick={() => addItem(h)}
+                        className="flex min-h-10 w-full items-center justify-between gap-3 rounded px-2 py-1.5 text-left hover:bg-muted"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{h.name}</span>
+                          <span className="block truncate text-2xs text-muted-foreground">
+                            {[h.code, h.brand, h.supplier ?? "χωρίς κύριο προμηθευτή"].filter(Boolean).join(" · ")}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-right text-2xs text-muted-foreground tabular-nums">
+                          απόθ. {num(h.stock)}
+                          <br />
+                          12μ {num(h.qty12m)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {!loading && lines.length === 0 && (
+              <p className="px-4 py-6 text-sm text-muted-foreground">
+                {allItems ? "Ο προμηθευτής δεν είναι κύριος προμηθευτής σε κανένα είδος." : "Καμία πρόταση: το απόθεμα καλύπτει τη ζήτηση. Δείτε «Όλα τα είδη» ή προσθέστε είδη."}
+              </p>
             )}
 
             {!loading && lines.length > 0 && (
@@ -283,6 +493,7 @@ export function OrderEditor({
                             <div className="text-2xs text-muted-foreground">
                               {l.code}
                               {l.abc && ` · τάξη ${l.abc}`}
+                              {supplier.kind === "brand" && ` · από ${l.supplier ?? "—"}`}
                             </div>
                             <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
                               {l.reasons.map((r) => (
@@ -367,9 +578,50 @@ export function OrderEditor({
             <AlertDialogDescription>
               {confirm?.duplicate
                 ? `${confirm.duplicate} Θέλετε σίγουρα να δημιουργηθεί και δεύτερη;`
-                : `Θα δημιουργηθεί παραγγελία αγοράς προς «${supplier?.name}» με ${active.length} γραμμές (είδος και ποσότητα· τις τιμές τις βάζει το SoftOne).`}
+                : `Θα δημιουργηθεί παραγγελία αγοράς με ${active.length} γραμμές (είδος και ποσότητα· τις τιμές τις βάζει το SoftOne).`}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {!confirm?.duplicate && (
+            <div className="space-y-1.5">
+              <label htmlFor="po-recipient" className="text-sm font-medium">
+                Προμηθευτής
+              </label>
+              {recipient && (
+                <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                  <span className="min-w-0 truncate font-medium">{recipient.name}</span>
+                  {recipient.code && <span className="shrink-0 text-xs text-muted-foreground">{recipient.code}</span>}
+                </div>
+              )}
+              <div className="relative">
+                <Input
+                  id="po-recipient"
+                  type="search"
+                  value={recipientQuery}
+                  onChange={(e) => setRecipientQuery(e.target.value)}
+                  placeholder={recipient ? "Αλλαγή προμηθευτή…" : "Αναζήτηση προμηθευτή…"}
+                  className="h-10"
+                />
+                {recipientOptions.length > 0 && (
+                  <div className="absolute inset-x-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-md border bg-popover p-1 shadow-fluent-8">
+                    {recipientOptions.map((o) => (
+                      <button
+                        key={o.trdr}
+                        type="button"
+                        onClick={() => {
+                          chooseRecipient(o.trdr);
+                          setRecipientQuery("");
+                        }}
+                        className="flex min-h-10 w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
+                      >
+                        <span className="min-w-0 truncate">{o.name}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">{o.code}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           {!confirm?.duplicate && (
             <div className="space-y-1.5">
               <label htmlFor="po-series" className="text-sm font-medium">
@@ -393,7 +645,7 @@ export function OrderEditor({
           <AlertDialogFooter>
             <AlertDialogCancel disabled={sending}>Άκυρο</AlertDialogCancel>
             <AlertDialogAction
-              disabled={sending || !series}
+              disabled={sending || !series || !recipient}
               onClick={(e) => {
                 e.preventDefault();
                 send(!!confirm?.duplicate);
