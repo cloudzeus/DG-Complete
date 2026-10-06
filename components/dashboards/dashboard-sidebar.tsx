@@ -23,7 +23,7 @@ import {
   Users,
   Warehouse,
   Webhook,
-  type LucideIcon, Bell, Coins, Radar, RefreshCw, Target, TrendingUp, UserSearch } from "lucide-react";
+  type LucideIcon, Bell, FileBarChart, FilePlus2, Coins, Radar, RefreshCw, Target, TrendingUp, UserSearch } from "lucide-react";
 import { DgLogo } from "@/components/brand/dg-logo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -38,14 +38,12 @@ import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { CollapsibleNavGroup } from "@/components/ui/collapsible-nav-group";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
@@ -93,6 +91,13 @@ const NAV: { label: string; items: NavItem[] }[] = [
       { slug: "suppliers", label: "Προμηθευτές", icon: Truck },
     ],
   },
+  {
+    label: "Αναφορές",
+    items: [
+      { slug: "reports", label: "Έτοιμες αναφορές", icon: FileBarChart },
+      { slug: "reports/builder", label: "Νέα αναφορά", icon: FilePlus2 },
+    ],
+  },
   { label: "Ενσωμάτωση", items: [{ slug: "api", label: "Web services", icon: Webhook }] },
   {
     label: "Λογαριασμός",
@@ -102,6 +107,8 @@ const NAV: { label: string; items: NavItem[] }[] = [
     ],
   },
 ];
+
+const NESTED = new Set(NAV.flatMap((g) => g.items.map((i) => i.slug)).filter((s) => s.includes("/")));
 
 const ITEM = cn(
   "relative h-8 text-sidebar-foreground [&>svg]:text-dg-red-500",
@@ -137,7 +144,10 @@ export function DashboardSidebar({
   const pathname = usePathname();
   const router = useRouter();
   const base = `/dashboards/${tenantId}`;
-  const current = pathname.slice(base.length).split("/")[1] ?? "";
+  const rest = pathname.slice(base.length).replace(/^\//, "");
+  const current = rest.split("/")[0] ?? "";
+  // Nested pages (e.g. reports/builder) match exactly; others by their first segment.
+  const isCurrent = (slug: string) => (slug.includes("/") ? rest === slug : current === slug && !NESTED.has(rest));
   // Period/year are carried over from the URL at click time (no useSearchParams → no Suspense
   // boundary, which would hydrate the sidebar after the mobile check and mismatch the server).
   const keep = () => {
@@ -264,33 +274,31 @@ export function DashboardSidebar({
         }))
           .filter((group) => group.items.length > 0)
           .map((group) => (
-            <SidebarGroup key={group.label} className="py-1">
-              <SidebarGroupLabel className={GROUP_LABEL}>
-                {group.label}
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu className="gap-0.5">
-                  {group.items.map((item) => (
-                    <SidebarMenuItem key={item.slug}>
-                      <SidebarMenuButton
-                        asChild
-                        isActive={current === item.slug || undefined}
-                        tooltip={item.label}
-                        className={ITEM}
-                      >
-                        <Link
-                          href={href(item.slug)}
-                          onClick={go(href(item.slug))}
-                        >
-                          <item.icon />
-                          <span>{item.label}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
+            <CollapsibleNavGroup
+              key={group.label}
+              id={`bi:${group.label}`}
+              label={group.label}
+              active={group.items.some((i) => isCurrent(i.slug))}
+              labelClassName={GROUP_LABEL}
+            >
+              <SidebarMenu className="gap-0.5">
+                {group.items.map((item) => (
+                  <SidebarMenuItem key={item.slug}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isCurrent(item.slug) || undefined}
+                      tooltip={item.label}
+                      className={ITEM}
+                    >
+                      <Link href={href(item.slug)} onClick={go(href(item.slug))}>
+                        <item.icon />
+                        <span>{item.label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </CollapsibleNavGroup>
           ))}
       </SidebarContent>
 

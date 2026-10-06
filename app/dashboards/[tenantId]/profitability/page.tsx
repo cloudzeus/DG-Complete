@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { BadgePercent, CircleAlert, Percent, TrendingUp } from "lucide-react";
-import { ComboChart, WaterfallChart } from "@/components/charts/bi-charts";
+import { ComboChart } from "@/components/charts/bi-charts";
+import { ProfitBridge } from "@/components/charts/profit-bridge";
 import { ChartCard, DashboardErrors, Kpi } from "@/components/dashboards/blocks";
 import { DriverTable, LeakTable } from "@/components/finance/profit-tables";
 import { Findings } from "@/components/purchases/purchase-analysis";
@@ -68,7 +69,7 @@ function Body({ p }: { p: Profitability }) {
         title="Από πού ήρθε η μεταβολή του κέρδους"
         description="Όγκος: περισσότερα/λιγότερα τεμάχια · Μίγμα: άλλα είδη με άλλο περιθώριο · Τιμές πώλησης και κόστος αγοράς στα ίδια είδη · Νέα είδη και είδη που δεν πουλήθηκαν φέτος · *Λοιπά: επιστροφές, πιστωτικά αξίας και λάθη κόστους στο SoftOne"
       >
-        <WaterfallChart steps={p.steps} />
+        <ProfitBridge steps={p.steps} />
       </ChartCard>
 
       <div className="grid gap-5 xl:grid-cols-3">

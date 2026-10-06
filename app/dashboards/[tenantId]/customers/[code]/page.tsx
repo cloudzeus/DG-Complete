@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import { Fragment } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CalendarClock, Receipt, TrendingUp, Wallet } from "lucide-react";
-import { ComboChart, Sparkline } from "@/components/charts/bi-charts";
+import { Sparkline } from "@/components/charts/bi-charts";
 import { ChartCard, DashboardErrors, Kpi } from "@/components/dashboards/blocks";
 import { CubeTable, type ListColumn } from "@/components/dashboards/cube-table";
 import { cubeLoadAll, num, type CubeQuery } from "@/lib/cube-client";
@@ -18,7 +19,6 @@ export const metadata: Metadata = { title: "Προφίλ πελάτη" };
 
 const S = (m: string) => `sales_lines.${m}`;
 const C = (m: string) => `customers.${m}`;
-const COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "#8B5CF6", "#94a3b8"];
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
@@ -106,12 +106,6 @@ export default async function CustomerProfilePage({ params }: PageProps<"/dashbo
     byBrand.set(b, arr);
   }
   const ranked = [...byBrand.entries()].sort((a, b) => b[1].reduce((x, y) => x + y, 0) - a[1].reduce((x, y) => x + y, 0));
-  const topBrands = ranked.slice(0, 6).map(([b]) => b);
-  const chart = months.map((m, i) => ({
-    month: `${MONTHS_SHORT[m.getMonth()]} ${String(m.getFullYear()).slice(2)}`,
-    ...Object.fromEntries(topBrands.map((b, j) => [`b${j}`, byBrand.get(b)![i]])),
-    other: ranked.slice(6).reduce((t, [, arr]) => t + arr[i], 0),
-  }));
 
   // Brand mix: last 12 months vs the 12 before, share and trend.
   const prev = new Map(data.brandsPrev.map((r) => [String(r[S("brand")]), num(r[S("revenue")])]));
@@ -261,13 +255,15 @@ export default async function CustomerProfilePage({ params }: PageProps<"/dashbo
         </div>
       )}
 
-      <ChartCard title="Αγορές ανά μήνα και μάρκα" description="Τελευταίοι 24 μήνες · οι 6 μεγαλύτερες μάρκες του πελάτη, οι υπόλοιπες ως «Άλλες»">
-        <ComboChart
-          data={chart}
-          xKey="month"
-          series={[
-            ...topBrands.map((b, j) => ({ key: `b${j}`, label: b, color: COLORS[j], stack: "brands" })),
-            ...(ranked.length > 6 ? [{ key: "other", label: "Άλλες", color: COLORS[6], stack: "brands" }] : []),
+      <ChartCard
+        title="Τι αγόρασε, ποιον μήνα"
+        description="Τελευταίοι 24 μήνες · κάθε κελί = αγορές της μάρκας τον μήνα (πιο σκούρο = μεγαλύτερο ποσό, κόκκινο = επιστροφή) · κενό = καμία αγορά"
+      >
+        <BrandMonthGrid
+          months={months.map((m) => `${MONTHS_SHORT[m.getMonth()]} ${String(m.getFullYear()).slice(2)}`)}
+          rows={[
+            ...ranked.slice(0, 10).map(([b, arr]) => ({ label: b, values: arr })),
+            ...(ranked.length > 10 ? [{ label: `Άλλες ${ranked.length - 10} μάρκες`, values: months.map((_, i) => ranked.slice(10).reduce((t, [, arr]) => t + arr[i], 0)) }] : []),
           ]}
         />
       </ChartCard>
@@ -342,5 +338,66 @@ export default async function CustomerProfilePage({ params }: PageProps<"/dashbo
         initialSort={{ id: S("revenue"), desc: true }}
       />
     </>
+  );
+}
+
+/** Brand × month grid: shading by amount, yearly totals at the end, a total row at the bottom. */
+function BrandMonthGrid({ months, rows }: { months: string[]; rows: { label: string; values: number[] }[] }) {
+  if (!rows.length) return <p className="py-6 text-center text-sm text-muted-foreground">Καμία αγορά τους τελευταίους 24 μήνες.</p>;
+  const total = months.map((_, i) => rows.reduce((t, r) => t + r.values[i], 0));
+  const max = Math.max(1, ...rows.flatMap((r) => r.values.map(Math.abs)));
+  const sum = (v: number[], a: number, b: number) => v.slice(a, b).reduce((t, x) => t + x, 0);
+  const cell = (v: number, strong: boolean, yearStart: boolean) => {
+    const edge = yearStart && "border-l-2 border-foreground/20";
+    if (Math.abs(v) < 0.5) return <td className={cn("h-7 min-w-11 rounded-sm bg-muted/40", edge)} />;
+    const t = Math.min(1, Math.abs(v) / max);
+    const bg = v < 0 ? `rgba(220, 38, 38, ${0.15 + 0.5 * t})` : `rgba(37, 99, 235, ${0.12 + 0.75 * t})`;
+    return (
+      <td className={cn("h-7 min-w-11 rounded-sm px-1 text-center tabular-nums", t > 0.55 && v > 0 ? "text-white" : "text-foreground", strong && "font-semibold", edge)} style={{ background: bg }} title={eurFull(v)}>
+        {eurCompact(v).replace(" €", "")}
+      </td>
+    );
+  };
+  return (
+    <div className="overflow-x-auto">
+      <table className="border-separate border-spacing-0.5 text-2xs">
+        <thead>
+          <tr className="text-muted-foreground">
+            <th />
+            {months.map((m, i) => (
+              <th key={m} className={cn("px-0.5 pb-1 font-medium whitespace-nowrap", i === 12 && "border-l-2 border-foreground/20")}>
+                {m}
+              </th>
+            ))}
+            <th className="border-l-2 border-foreground/20 px-1.5 pb-1 font-semibold whitespace-nowrap">Προηγ. 12μ</th>
+            <th className="px-1.5 pb-1 font-semibold whitespace-nowrap">Τελευτ. 12μ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {[...rows, { label: "Σύνολο", values: total }].map((r, ri) => {
+            const isTotal = ri === rows.length;
+            const a = sum(r.values, 0, 12);
+            const b = sum(r.values, 12, 24);
+            return (
+              <tr key={r.label} className={cn(isTotal && "font-semibold")}>
+                <th className={cn("sticky left-0 max-w-40 truncate bg-card pr-2 text-left text-xs font-medium", isTotal && "font-semibold")} title={r.label}>
+                  {r.label}
+                </th>
+                {r.values.map((v, i) => (
+                  <Fragment key={i}>{cell(v, isTotal, i === 12)}</Fragment>
+                ))}
+                <td className="border-l-2 border-foreground/20 px-1.5 text-right tabular-nums">{Math.abs(a) < 0.5 ? "—" : eurCompact(a)}</td>
+                <td className="px-1.5 text-right tabular-nums">
+                  {Math.abs(b) < 0.5 ? "—" : eurCompact(b)}
+                  {Math.abs(a) >= 0.5 && (
+                    <span className={cn("ml-1", b >= a ? "text-emerald-700" : "text-red-600")}>{`${b >= a ? "+" : "−"}${Math.abs(Math.round(((b - a) / Math.abs(a)) * 100))}%`}</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }

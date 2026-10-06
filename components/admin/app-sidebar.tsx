@@ -43,9 +43,6 @@ import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -55,6 +52,7 @@ import {
   SidebarMenuSubItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { CollapsibleNavGroup } from "@/components/ui/collapsible-nav-group";
 import { cn } from "@/lib/utils";
 
 type Item = { href: string; label: string; icon: LucideIcon; exact?: boolean; superAdminOnly?: boolean };
@@ -155,11 +153,13 @@ export function AppSidebar({ user }: { user: { name: string; email: string; plat
 
       <SidebarContent className="gap-0">
         {MAIN.map((group) => (
-          <SidebarGroup key={group.label} className="py-1">
-            <SidebarGroupLabel className={GROUP_LABEL}>
-              {group.label}
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
+          <CollapsibleNavGroup
+            key={group.label}
+            id={`admin:${group.label}`}
+            label={group.label}
+            active={group.items.filter(visible).some(isActive)}
+            labelClassName={GROUP_LABEL}
+          >
               <SidebarMenu className="gap-0.5">
                 {group.items.filter(visible).map((item) => (
                   <SidebarMenuItem key={item.href}>
@@ -172,16 +172,11 @@ export function AppSidebar({ user }: { user: { name: string; email: string; plat
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+          </CollapsibleNavGroup>
         ))}
 
         {settingsItems.length > 0 && (
-          <SidebarGroup className="py-1">
-            <SidebarGroupLabel className={GROUP_LABEL}>
-              Διαχείριση
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
+          <CollapsibleNavGroup id="admin:Διαχείριση" label="Διαχείριση" active={settingsActive} labelClassName={GROUP_LABEL}>
               <SidebarMenu>
                 {/* key resets the open state when navigating into/out of settings */}
                 <Collapsible key={String(settingsActive)} asChild defaultOpen={settingsActive} className="group/collapsible">
@@ -217,8 +212,7 @@ export function AppSidebar({ user }: { user: { name: string; email: string; plat
                   </SidebarMenuItem>
                 </Collapsible>
               </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+          </CollapsibleNavGroup>
         )}
       </SidebarContent>
 

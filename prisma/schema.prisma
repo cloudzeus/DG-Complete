@@ -147,6 +147,7 @@ model Tenant {
   aiTokenRequests    AiTokenRequest[]
   budgetMonths       BudgetMonth[]
   planningSettings   PlanningSettings?
+  savedReports       SavedReport[]
   apiKeys            ApiKey[]
   industry           IndustrySegmentation?
   /// BI settings, e.g. { mainWarehouses: [1000], receivablePrefixes: ["30"], payablePrefixes: ["50"] }
@@ -962,4 +963,22 @@ model PlanningSettings {
   updatedAt         DateTime @updatedAt
 
   @@map("planning_settings")
+}
+
+// Report builder (module «Αναφορές»): a saved report definition (cube, rows / columns / values,
+// filters, period, view), private to its author or shared with the company.
+model SavedReport {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId      String
+  name        String
+  description String?
+  definition  Json
+  shared      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, userId])
+  @@map("saved_report")
 }

@@ -148,7 +148,7 @@ export function ComboChart({
           <ReferenceLine yAxisId="left" y={0} stroke="var(--border)" />
         )}
         <ValueTooltip format={format} />
-        <ChartLegend content={<ChartLegendContent />} />
+        <ChartLegend content={<ChartLegendContent />} itemSorter={(item) => series.findIndex((x) => x.key === item.dataKey)} />
         {series.map((s) =>
           s.type === "line" ? (
             <Line
