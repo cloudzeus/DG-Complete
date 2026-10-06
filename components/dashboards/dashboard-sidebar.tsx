@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Package,
   ShoppingCart,
+  Truck,
   Users,
   Warehouse,
   type LucideIcon,
@@ -62,6 +63,7 @@ const NAV: { label: string; items: NavItem[] }[] = [
     items: [
       { slug: "stock", label: "Αποθήκη & παραγγελίες", icon: Warehouse },
       { slug: "purchases", label: "Αγορές", icon: ShoppingCart },
+      { slug: "suppliers", label: "Προμηθευτές", icon: Truck },
     ],
   },
 ];

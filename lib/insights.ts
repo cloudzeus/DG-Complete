@@ -264,7 +264,7 @@ export async function buildInsights(tenantId: string, p: Period): Promise<{ insi
       title: `Αυξήσεις τιμών από ${d.priceUp.length === 3 ? "τουλάχιστον 3" : d.priceUp.length} βασικούς προμηθευτές`,
       detail: `Για τα ίδια είδη, έναντι των προηγούμενων 12 μηνών: ${listNames(d.priceUp, "suppliers.supplier_name", (r) => `+${pct(num(r["suppliers.price_change"]))}`)}.`,
       action: "Διαπραγματευτείτε ή συγκρίνετε με εναλλακτικούς προμηθευτές· περάστε την αύξηση στις τιμές πώλησης όπου χρειάζεται.",
-      href: "purchases",
+      href: "suppliers?tab=prices",
       weight: d.priceUp.length * 5,
     });
   }
@@ -278,7 +278,7 @@ export async function buildInsights(tenantId: string, p: Period): Promise<{ insi
       title: `Αργές παραδόσεις: ${d.lead.length} σημαντικοί προμηθευτές ξεπερνούν τις 30 ημέρες`,
       detail: `Στο 10% των παραγγελιών (χειρότερες περιπτώσεις): ${listNames(d.lead, "suppliers.supplier_name", (r) => `${Math.round(num(r["suppliers.lead_days_p90"]))} ημ.`)}.`,
       action: "Κρατήστε μεγαλύτερο απόθεμα ασφαλείας για τα είδη τους ή παραγγέλνετε νωρίτερα.",
-      href: "purchases",
+      href: "suppliers?tab=lead",
       weight: 2,
     });
   }
