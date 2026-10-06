@@ -564,6 +564,8 @@ model CubeDeployment {
   devConnection         DataConnection? @relation("CubeDev", fields: [devConnectionId], references: [id], onDelete: SetNull)
   // AES-256-GCM: secrets shared by this app and Cube (JWT secret, tenant role secret, internal token, …)
   secretsEnc            String
+  /// Model files NOT served to Cube (glob, e.g. "analytics_*") — staged roll-out / quick rollback.
+  modelExclude          String[]        @default(["analytics_*"])
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
 

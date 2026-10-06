@@ -1,0 +1,44 @@
+# Generated from the analytics model — one cube per file.
+cubes:
+  - name: open_items
+    title: Ανοιχτά παραστατικά πελατών & προμηθευτών
+    description: Κάθε ανοιχτό (απλήρωτο) ποσό με ηλικία και αναμενόμενη ημερομηνία πληρωμής. kind R = πελάτης, P = προμηθευτής.
+    sql: >
+      SELECT o.*, COALESCE(c.name, s.name) AS partner_name
+      FROM m_open_items o
+      LEFT JOIN customers c ON o.kind = 'R' AND c.trdr = o.trdr
+      LEFT JOIN suppliers s ON o.kind = 'P' AND s.trdr = o.trdr
+    measures:
+      - name: amount
+        title: Ανοιχτό ποσό
+        type: sum
+        sql: amount
+      - name: count
+        title: Ανοιχτά παραστατικά
+        type: count
+    dimensions:
+      - name: key
+        sql: "kind || '-' || trdr::text || '-' || doc_date::text || '-' || amount::text"
+        type: string
+        primary_key: true
+        public: false
+      - name: kind
+        title: Τύπος (R πελάτης, P προμηθευτής)
+        type: string
+        sql: kind
+      - name: partner_name
+        title: Συναλλασσόμενος
+        type: string
+        sql: COALESCE(partner_name, '—')
+      - name: doc_date
+        title: Ημερομηνία παραστατικού
+        type: time
+        sql: doc_date
+      - name: expected_date
+        title: Αναμενόμενη πληρωμή
+        type: time
+        sql: expected_date
+      - name: age_days
+        title: Ηλικία (ημέρες)
+        type: number
+        sql: age_days

@@ -1,0 +1,142 @@
+# Generated from the analytics model — one cube per file.
+cubes:
+  # ───────────────────────── Γραμμές πωλήσεων (ανά είδος) ─────────────────────────
+  - name: sales_lines
+    title: Πωλήσεις ανά είδος
+    description: >
+      Κάθε γραμμή τιμολογίου/απόδειξης πώλησης με είδος, κατηγορία, ομάδα, μάρκα, πελάτη, πωλητή και
+      αποθήκη. Τζίρος = καθαρή αξία· κόστος από το κόστος είδους της χρήσης· μικτό κέρδος = τζίρος − κόστος.
+      Πιστωτικά/επιστροφές με αρνητικό πρόσημο.
+    sql: >
+      SELECT f.*, i.code AS item_code, i.name AS item_name,
+             c.name AS category_name, g.name AS group_name, b.name AS brand_name,
+             cu.code AS customer_code, cu.name AS customer_name, cu.city AS customer_city,
+             TRIM(COALESCE(sm.name, '') || ' ' || COALESCE(sm.name2, '')) AS salesman_name,
+             w.name AS warehouse_name
+      FROM f_sales_lines f
+      LEFT JOIN items i ON i.mtrl = f.mtrl
+      LEFT JOIN item_categories c ON c.mtrcategory = i.mtrcategory
+      LEFT JOIN item_groups g ON g.mtrgroup = i.mtrgroup
+      LEFT JOIN brands b ON b.mtrmark = i.mtrmark
+      LEFT JOIN customers cu ON cu.trdr = f.trdr
+      LEFT JOIN salesmen sm ON sm.prsn = f.salesman
+      LEFT JOIN warehouses w ON w.whouse = f.whouse
+
+    measures:
+      - name: revenue
+        title: Τζίρος
+        description: Καθαρή αξία πωλήσεων (χωρίς ΦΠΑ), μείον πιστωτικά.
+        type: sum
+        sql: net
+      - name: cost
+        title: Κόστος πωληθέντων
+        type: sum
+        sql: cost
+      - name: revenue_costed
+        title: Τζίρος με γνωστό κόστος
+        type: sum
+        sql: net
+        filters:
+          - sql: "cost IS NOT NULL"
+      - name: margin
+        title: Μικτό κέρδος
+        description: Τζίρος − κόστος, μόνο για γραμμές με γνωστό κόστος είδους.
+        type: number
+        sql: "{revenue_costed} - {cost}"
+      - name: margin_pct
+        title: Περιθώριο μικτού κέρδους %
+        description: Μικτό κέρδος ως ποσοστό του τζίρου (ποσοστό κέρδους).
+        type: number
+        sql: "100.0 * ({revenue_costed} - {cost}) / NULLIF({revenue_costed}, 0)"
+      - name: markup_pct
+        title: Markup %
+        description: Μικτό κέρδος ως ποσοστό του κόστους.
+        type: number
+        sql: "100.0 * ({revenue_costed} - {cost}) / NULLIF({cost}, 0)"
+      - name: quantity
+        title: Ποσότητα
+        type: sum
+        sql: qty
+      - name: documents
+        title: Παραστατικά
+        type: count_distinct
+        sql: findoc
+      - name: customers
+        title: Πελάτες
+        type: count_distinct
+        sql: trdr
+      - name: items
+        title: Διαφορετικά είδη
+        type: count_distinct
+        sql: mtrl
+      - name: avg_price
+        title: Μέση τιμή πώλησης
+        type: number
+        sql: "{revenue} / NULLIF({quantity}, 0)"
+
+    dimensions:
+      - name: line_key
+        sql: "findoc::text || '-' || mtrlines::text"
+        type: string
+        primary_key: true
+        public: false
+      - name: date
+        title: Ημερομηνία
+        type: time
+        sql: trndate
+      - name: entry_time
+        title: Ώρα καταχώρησης
+        type: time
+        sql: insdate
+      - name: hour
+        title: Ώρα της ημέρας
+        type: number
+        sql: "EXTRACT(HOUR FROM insdate)"
+      - name: weekday
+        title: Ημέρα εβδομάδας (1=Δευτέρα)
+        type: number
+        sql: "EXTRACT(ISODOW FROM trndate)"
+      - name: fiscal_year
+        title: Χρήση
+        type: number
+        sql: fiscprd
+      - name: item_code
+        title: Κωδικός είδους
+        type: string
+        sql: item_code
+      - name: item_name
+        title: Είδος
+        type: string
+        sql: COALESCE(item_name, '—')
+      - name: category
+        title: Εμπορική κατηγορία
+        type: string
+        sql: COALESCE(category_name, 'Χωρίς κατηγορία')
+      - name: item_group
+        title: Ομάδα ειδών
+        type: string
+        sql: COALESCE(group_name, 'Χωρίς ομάδα')
+      - name: brand
+        title: Μάρκα
+        type: string
+        sql: COALESCE(brand_name, 'Χωρίς μάρκα')
+      - name: customer_code
+        title: Κωδικός πελάτη
+        type: string
+        sql: customer_code
+      - name: customer_name
+        title: Πελάτης
+        type: string
+        sql: COALESCE(customer_name, 'Λιανική / χωρίς πελάτη')
+      - name: customer_city
+        title: Πόλη πελάτη
+        type: string
+        sql: customer_city
+      - name: salesman
+        title: Πωλητής
+        type: string
+        sql: COALESCE(NULLIF(salesman_name, ''), 'Χωρίς πωλητή')
+      - name: warehouse
+        title: Αποθήκη
+        type: string
+        sql: COALESCE(warehouse_name, whouse::text)
