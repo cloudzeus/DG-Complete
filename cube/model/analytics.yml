@@ -40,7 +40,7 @@ cubes:
         type: sum
         sql: net
         filters:
-          - sql: "{CUBE}.cost IS NOT NULL"
+          - sql: "cost IS NOT NULL"
       - name: margin
         title: Μικτό κέρδος
         description: Τζίρος − κόστος, μόνο για γραμμές με γνωστό κόστος είδους.
@@ -240,7 +240,7 @@ cubes:
       - name: margin_pct
         title: Περιθώριο %
         type: number
-        sql: "100.0 * SUM({CUBE}.margin_12m) / NULLIF(SUM({CUBE}.revenue_costed_12m), 0)"
+        sql: "100.0 * SUM(margin_12m) / NULLIF(SUM(revenue_costed_12m), 0)"
       - name: stock_value
         title: Αξία αποθέματος
         description: Απόθεμα κύριας αποθήκης × κόστος είδους.
@@ -256,12 +256,12 @@ cubes:
         type: sum
         sql: stock_value
         filters:
-          - sql: "{CUBE}.dead_stock"
+          - sql: "dead_stock"
       - name: dead_stock_items
         title: Είδη νεκρού αποθέματος
         type: count
         filters:
-          - sql: "{CUBE}.dead_stock"
+          - sql: "dead_stock"
       - name: suggested_order_qty
         title: Προτεινόμενη ποσότητα παραγγελίας
         type: sum
@@ -274,7 +274,7 @@ cubes:
         title: Είδη προς παραγγελία
         type: count
         filters:
-          - sql: "{CUBE}.suggested_order_qty > 0"
+          - sql: "suggested_order_qty > 0"
     dimensions:
       - name: mtrl
         sql: mtrl
@@ -422,17 +422,17 @@ cubes:
         title: Ημέρες είσπραξης (DSO)
         description: Πόσες ημέρες πωλήσεων είναι ανείσπρακτες — υπόλοιπο πελατών / ημερήσιες τιμολογήσεις.
         type: number
-        sql: "365.0 * SUM(GREATEST({CUBE}.balance, 0)) / NULLIF(SUM({CUBE}.invoiced_12m), 0)"
+        sql: "365.0 * SUM(GREATEST(balance, 0)) / NULLIF(SUM(invoiced_12m), 0)"
       - name: avg_payment_days
         title: Μέσες ημέρες πληρωμής (σταθμισμένες με τον τζίρο)
         type: number
-        sql: "SUM({CUBE}.avg_payment_days * {CUBE}.invoiced_12m) / NULLIF(SUM(CASE WHEN {CUBE}.avg_payment_days IS NOT NULL THEN {CUBE}.invoiced_12m END), 0)"
+        sql: "SUM(avg_payment_days * invoiced_12m) / NULLIF(SUM(CASE WHEN avg_payment_days IS NOT NULL THEN invoiced_12m END), 0)"
       - name: at_risk_revenue
         title: Τζίρος πελατών σε κίνδυνο
         type: sum
         sql: revenue_prev_12m
         filters:
-          - sql: "{CUBE}.churn_risk = 'Υψηλός'"
+          - sql: "churn_risk = 'Υψηλός'"
     dimensions:
       - name: trdr
         sql: trdr
@@ -471,8 +471,8 @@ cubes:
         title: Μέσες ημέρες πληρωμής
         type: number
         sql: avg_payment_days
-      - name: dso
-        title: DSO (ημέρες)
+      - name: dso_days
+        title: DSO πελάτη (ημέρες)
         type: number
         sql: dso_days
       - name: open_balance
@@ -552,11 +552,11 @@ cubes:
         title: Ημέρες πληρωμής προμηθευτών (DPO)
         description: Υπόλοιπο προμηθευτών / ημερήσιες αγορές — πόσο γρήγορα πληρώνουμε.
         type: number
-        sql: "365.0 * SUM(GREATEST({CUBE}.balance, 0)) / NULLIF(SUM({CUBE}.invoiced_12m), 0)"
+        sql: "365.0 * SUM(GREATEST(balance, 0)) / NULLIF(SUM(invoiced_12m), 0)"
       - name: avg_lead_days
         title: Μέσος χρόνος παράδοσης (σταθμισμένος)
         type: number
-        sql: "SUM({CUBE}.lead_days_avg * {CUBE}.orders_received) / NULLIF(SUM(CASE WHEN {CUBE}.lead_days_avg IS NOT NULL THEN {CUBE}.orders_received END), 0)"
+        sql: "SUM(lead_days_avg * orders_received) / NULLIF(SUM(CASE WHEN lead_days_avg IS NOT NULL THEN orders_received END), 0)"
     dimensions:
       - name: trdr
         sql: trdr
@@ -665,11 +665,15 @@ cubes:
         type: max
         sql: balance
     dimensions:
+      - name: key
+        sql: "month::text"
+        type: string
+        primary_key: true
+        public: false
       - name: month
         title: Μήνας
         type: time
         sql: month
-        primary_key: true
 
   - name: open_items
     title: Ανοιχτά παραστατικά πελατών & προμηθευτών

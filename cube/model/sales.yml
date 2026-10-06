@@ -49,7 +49,7 @@ cubes:
       - name: returns
         title: Αξία πιστωτικών
         type: sum
-        sql: "-{CUBE}.net"
+        sql: "-net"
         filters:
           - sql: "{CUBE}.sign = -1"
 

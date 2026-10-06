@@ -106,9 +106,9 @@ cubes:
         title: Έξοδα (θετικά)
         description: Όλα τα έξοδα ως θετικός αριθμός (για γραφήματα κατανομής).
         type: sum
-        sql: "-{CUBE}.amount"
+        sql: "-amount"
         filters:
-          - sql: "{CUBE}.section IN ('COGS', 'OPEX', 'DEPRECIATION', 'FINANCIAL', 'EXTRAORDINARY', 'TAX') AND {CUBE}.amount < 0"
+          - sql: "{CUBE}.section IN ('COGS', 'OPEX', 'DEPRECIATION', 'FINANCIAL', 'EXTRAORDINARY', 'TAX') AND amount < 0"
 
       - name: gross_margin
         title: Μικτό περιθώριο %
