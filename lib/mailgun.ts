@@ -61,6 +61,7 @@ export type OutgoingMessage = {
   /** Custom variables, returned in every webhook event (user-variables). */
   variables?: Record<string, string>;
   trackOpens?: boolean;
+  attachments?: { filename: string; content: Uint8Array; contentType: string }[];
 };
 
 export async function mailgunSend(cfg: MailgunConfig, m: OutgoingMessage): Promise<string> {
@@ -78,6 +79,7 @@ export async function mailgunSend(cfg: MailgunConfig, m: OutgoingMessage): Promi
   // Opens only: click tracking would rewrite the password / welcome links through Mailgun.
   form.set("o:tracking-opens", m.trackOpens ? "yes" : "no");
   form.set("o:tracking-clicks", "no");
+  for (const a of m.attachments ?? []) form.append("attachment", new Blob([a.content as BlobPart], { type: a.contentType }), a.filename);
   const res = await fetch(`${apiBase(cfg.region)}/v3/${encodeURIComponent(cfg.domain)}/messages`, {
     method: "POST",
     headers: { Authorization: auth(cfg.apiKey) },

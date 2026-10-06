@@ -7,6 +7,7 @@ import { cubeLoadAll, num } from "@/lib/cube-client";
 import { requireDashboardTenant } from "@/lib/dashboards";
 import { eurCompact, eurFull, pct } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
+import { liveDiscounts } from "@/lib/smart/live-discounts";
 
 export const metadata: Metadata = { title: "Σήμερα (live)" };
 export const dynamic = "force-dynamic";
@@ -42,7 +43,7 @@ export default async function LivePage({ params }: PageProps<"/dashboards/[tenan
   const day = (d: string) => [{ dimension: S("date"), dateRange: [d, d] as [string, string] }];
   const lday = (d: string) => [{ dimension: L("date"), dateRange: [d, d] as [string, string] }];
 
-  const [{ data, errors }, lastSync] = await Promise.all([
+  const [{ data, errors }, lastSync, discounts] = await Promise.all([
     cubeLoadAll(tenantId, {
       todayHours: { measures: [S("net"), S("invoices"), S("customers")], dimensions: [S("hour")], timeDimensions: day(today) },
       lastWeekHours: { measures: [S("net"), S("invoices")], dimensions: [S("hour")], timeDimensions: day(lastWeek) },
@@ -74,6 +75,7 @@ export default async function LivePage({ params }: PageProps<"/dashboards/[tenan
       orderBy: { finishedAt: "desc" },
       select: { finishedAt: true },
     }),
+    liveDiscounts(tenantId).catch(() => null),
   ]);
 
   const hours = Array.from({ length: 24 }, (_, h) => h);
@@ -189,6 +191,48 @@ export default async function LivePage({ params }: PageProps<"/dashboards/[tenan
           )}
         </ChartCard>
       </div>
+      {discounts && (
+        <ChartCard title="Εκπτώσεις σήμερα ανά χρήστη" description="Ποιος χρήστης του SoftOne έδωσε εκπτώσεις σήμερα, σε ποιους πελάτες και πόσο επί της τιμής πώλησης (τιμή × ποσότητα έναντι καθαρής αξίας γραμμής) — πατήστε για τους πελάτες">
+          {discounts.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Δεν υπάρχουν ακόμα πωλήσεις με τιμή σήμερα.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <div className="grid min-w-[36rem] grid-cols-[1fr_5rem_7rem_7rem_6rem] gap-x-3 border-b pb-1.5 text-xs text-muted-foreground">
+                <span>Χρήστης</span>
+                <span className="text-right">Παραστ.</span>
+                <span className="text-right">Τιμή πώλησης</span>
+                <span className="text-right">Έκπτωση €</span>
+                <span className="text-right">Έκπτωση %</span>
+              </div>
+              {discounts.map((u) => (
+                <details key={u.user} className="group min-w-[36rem] border-b last:border-0">
+                  <summary className="grid cursor-pointer list-none grid-cols-[1fr_5rem_7rem_7rem_6rem] gap-x-3 py-2 text-sm hover:bg-muted/40">
+                    <span className="truncate font-medium">
+                      <span className="mr-1 inline-block transition-transform group-open:rotate-90">›</span>
+                      {u.name}
+                    </span>
+                    <span className="text-right tabular-nums">{u.documents}</span>
+                    <span className="text-right tabular-nums">{eurFull(u.list)}</span>
+                    <span className="text-right font-semibold tabular-nums">{eurFull(u.discount)}</span>
+                    <span className={`text-right font-semibold tabular-nums ${u.pct >= 20 ? "text-red-600" : u.pct >= 10 ? "text-amber-600" : ""}`}>{u.pct.toLocaleString("el-GR")}%</span>
+                  </summary>
+                  <ul className="mb-2 ml-5 space-y-0.5 text-xs">
+                    {u.customers.map((c) => (
+                      <li key={c.trdr} className="grid grid-cols-[1fr_5rem_7rem_7rem_6rem] gap-x-3 text-muted-foreground">
+                        <span className="truncate text-foreground">{c.name}</span>
+                        <span className="text-right tabular-nums">{c.documents}</span>
+                        <span className="text-right tabular-nums">{eurFull(c.list)}</span>
+                        <span className="text-right tabular-nums">{eurFull(c.discount)}</span>
+                        <span className={`text-right tabular-nums ${c.pct >= 20 ? "text-red-600" : c.pct >= 10 ? "text-amber-600" : ""}`}>{c.pct.toLocaleString("el-GR")}%</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ))}
+            </div>
+          )}
+        </ChartCard>
+      )}
       <p className="text-xs text-muted-foreground">
         Τα παραστατικά έρχονται από το SoftOne κάθε 15 λεπτά· οι γραμμές ειδών (προϊόντα, μάρκες) μπορεί να ακολουθούν με λίγα λεπτά καθυστέρηση. Η
         σελίδα ανανεώνεται μόνη της κάθε λεπτό.

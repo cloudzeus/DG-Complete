@@ -3,6 +3,7 @@ import { AlarmClock, CalendarClock, HandCoins, PhoneCall, Wallet } from "lucide-
 import { ComboChart, DonutChart } from "@/components/charts/bi-charts";
 import { ChartCard, Kpi } from "@/components/dashboards/blocks";
 import { AiBrief } from "@/components/smart/ai-brief";
+import { StatementActions } from "@/components/smart/statement-actions";
 import { loadSmart, SmartError, SmartHeader } from "@/components/smart/smart-page";
 import { SmartTable } from "@/components/smart/smart-table";
 import { requireDashboardTenant } from "@/lib/dashboards";
@@ -30,7 +31,7 @@ export default async function CollectionsPage({ params }: PageProps<"/dashboards
       <SmartHeader title="Βοηθός εισπράξεων" icon={HandCoins}>
         Από τις καρτέλες πελατών του SoftOne (πληρωμές αντιστοιχισμένες στα παλαιότερα τιμολόγια): πότε αναμένεται να πληρώσει κάθε πελάτης με βάση τη δική
         του συνήθεια, βαθμός κινδύνου 0–100, ομάδες συμπεριφοράς πληρωμών (data mining), προτεινόμενο πιστωτικό όριο, και ποιον να πάρετε τηλέφωνο σήμερα — με
-        έτοιμο email υπενθύμισης από το AI.
+        έτοιμο email υπενθύμισης από το AI. Για κάθε πελάτη: αναλυτική καρτέλα σε PDF και αποστολή της στο email του.
       </SmartHeader>
       <SmartError error={error} />
       {c && (
@@ -96,7 +97,10 @@ export default async function CollectionsPage({ params }: PageProps<"/dashboards
                         Υπόλοιπο {eurCompact(x.balance)} · συνήθως πληρώνει σε {x.payDays ?? "—"} ημέρες · τελευταία πληρωμή {x.lastPayment ? new Date(x.lastPayment).toLocaleDateString("el-GR") : "—"} ·
                         προτεινόμενο όριο {eurCompact(x.creditLimit)}
                       </p>
-                      <AiBrief tenantId={tenantId} kind="collections" refId={x.trdr} label="Σενάριο κλήσης & email με AI" />
+                      <div className="space-y-2">
+                        <StatementActions tenantId={tenantId} trdr={x.trdr} name={x.name} />
+                        <AiBrief tenantId={tenantId} kind="collections" refId={x.trdr} label="Σενάριο κλήσης & email με AI" />
+                      </div>
                     </div>
                   </details>
                 </li>
@@ -112,6 +116,7 @@ export default async function CollectionsPage({ params }: PageProps<"/dashboards
               idKey="trdr"
               rows={c.customers.map((x) => ({ ...x, details: [x.reason, x.nextPayment ? `Επόμενη αναμενόμενη πληρωμή: ${new Date(x.nextPayment).toLocaleDateString("el-GR")}` : ""].filter(Boolean) }))}
               detailKey="details"
+              statement
               brief={{ kind: "collections", label: "Σενάριο κλήσης & email με AI" }}
               initialSort={{ key: "priority", desc: true }}
               searchPlaceholder="Πελάτης, κωδικός…"

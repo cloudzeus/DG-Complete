@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, ChevronRight, Search } from "lucide-react";
 import type { BriefKind } from "@/app/dashboards/[tenantId]/smart/actions";
 import { ExportButton } from "@/components/dashboards/export-button";
 import { AiBrief } from "@/components/smart/ai-brief";
+import { StatementActions } from "@/components/smart/statement-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,7 @@ export function SmartTable({
   idKey,
   detailKey,
   brief,
+  statement,
   initialSort,
   pageSize = 25,
   searchPlaceholder = "Αναζήτηση…",
@@ -54,6 +56,8 @@ export function SmartTable({
   /** Row field with detail lines (string[]) shown when the row is expanded. */
   detailKey?: string;
   brief?: { kind: BriefKind; label?: string };
+  /** Customer statement buttons (PDF / email) in the expanded row; the row id is the customer (trdr). */
+  statement?: boolean;
   initialSort?: { key: string; desc: boolean };
   pageSize?: number;
   searchPlaceholder?: string;
@@ -63,7 +67,7 @@ export function SmartTable({
   const [shown, setShown] = useState(pageSize);
   const [open, setOpen] = useState<string | null>(null);
   const visible = columns.filter((c) => !c.excelOnly);
-  const expandable = !!(detailKey || brief);
+  const expandable = !!(detailKey || brief || statement);
 
   const list = useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -167,6 +171,7 @@ export function SmartTable({
                             ))}
                           </ul>
                         )}
+                        {statement && <StatementActions tenantId={tenantId} trdr={id} name={String(r.name ?? "")} />}
                         {brief && <AiBrief tenantId={tenantId} kind={brief.kind} refId={id} label={brief.label} />}
                       </td>
                     </tr>

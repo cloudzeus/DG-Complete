@@ -237,10 +237,11 @@ export const TENANT_PRESETS: TenantPreset[] = [
       TRDCATEGORY: "int",
       TRDBUSINESS: "int",
       ISACTIVE: "int",
+      EMAIL: "text", // statements / reminders to the customer
       UPDDATE: "timestamp",
     },
     // Address → geocoding for the map (Γεωγραφική ανάλυση).
-    optional: ["AFM", "ADDRESS", "ZIP", "CITY", "DISTRICT", "COUNTRY", "TRDCATEGORY", "TRDBUSINESS", "ISACTIVE"],
+    optional: ["AFM", "ADDRESS", "ZIP", "CITY", "DISTRICT", "COUNTRY", "TRDCATEGORY", "TRDBUSINESS", "ISACTIVE", "EMAIL"],
     updField: "UPDDATE",
     filter: "COMPANY={COMPANY} AND SODTYPE=13",
     intervalMinutes: 180,
