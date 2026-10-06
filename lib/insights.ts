@@ -299,6 +299,7 @@ export async function buildInsights(tenantId: string, p: Period): Promise<{ insi
         cash ? ` Ταμείο & τράπεζες: ${eurFull(cash)}.` : ""
       }`,
       action: net < 0 ? "Επισπεύστε εισπράξεις ή μεταθέστε πληρωμές όπου γίνεται." : undefined,
+      href: "cash",
       weight: Math.abs(net) / 1000,
     });
   }

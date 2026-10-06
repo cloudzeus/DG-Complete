@@ -7,6 +7,7 @@ import {
   Building2,
   ChartColumnBig,
   ChevronsUpDown,
+  Landmark,
   LayoutDashboard,
   LogOut,
   Scale,
@@ -49,7 +50,13 @@ import { cn } from "@/lib/utils";
 type NavItem = { slug: string; label: string; icon: LucideIcon };
 const NAV: { label: string; items: NavItem[] }[] = [
   { label: "Γενικά", items: [{ slug: "", label: "Επισκόπηση", icon: LayoutDashboard }] },
-  { label: "Οικονομικά", items: [{ slug: "pnl", label: "Αποτελέσματα χρήσης", icon: Scale }] },
+  {
+    label: "Οικονομικά",
+    items: [
+      { slug: "pnl", label: "Αποτελέσματα χρήσης", icon: Scale },
+      { slug: "cash", label: "Ταμειακά", icon: Landmark },
+    ],
+  },
   {
     label: "Πωλήσεις",
     items: [

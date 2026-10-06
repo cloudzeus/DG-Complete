@@ -34,23 +34,36 @@ function rolePassword(id) {
 }
 
 // The data model is versioned in the app's git repo and served by the app (control plane).
-// Cached for 60s; on a failed fetch the last good model keeps serving.
+// Cached for 60s. A response is accepted only if it is a complete model (version + files with
+// content); anything else — the app restarting during a deploy, an error page, a timeout — keeps
+// the last good model and is logged.
 let model = { at: 0, data: null };
+function validModel(d) {
+  if (!d || typeof d.version !== 'string' || !d.version || !Array.isArray(d.files) || d.files.length === 0) return 'no version/files';
+  for (const f of d.files) {
+    if (!f || typeof f.fileName !== 'string' || typeof f.content !== 'string' || !f.content.trim()) return 'empty file ' + (f && f.fileName);
+  }
+  if (model.data && d.files.length < model.data.files.length) return 'fewer files (' + d.files.length + ' < ' + model.data.files.length + ')';
+  return null;
+}
 async function loadModel() {
   if (model.data && Date.now() - model.at < 60000) return model.data;
   try {
     const res = await fetch(process.env.CONTROL_PLANE_URL + '/api/internal/cube/model', {
       headers: { Authorization: 'Bearer ' + process.env.CONTROL_PLANE_TOKEN },
+      signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
+    const problem = validModel(data);
+    if (problem) throw new Error('model rejected: ' + problem);
     if (!model.data || model.data.version !== data.version) {
       console.log('[dgsmart] model version ' + data.version + ': ' + data.files.length + ' files, ' +
         data.files.reduce((n, f) => n + f.content.length, 0) + ' chars');
     }
     model = { at: Date.now(), data: data };
   } catch (err) {
-    console.error('model fetch failed:', err.message);
+    console.error('[dgsmart] model fetch failed, keeping ' + (model.data ? model.data.version : 'nothing') + ': ' + err.message);
     if (!model.data) throw err;
     model.at = Date.now();
   }
