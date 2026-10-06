@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 
 // Today, hour by hour: sales as they are entered in SoftOne (synced every 15 minutes), compared
 // with the same weekday last week and the average of the last 4 same weekdays — up to this hour.
+// Products and brands of the day come from the sales lines.
 
 const S = (m: string) => `sales.${m}`;
 const L = (m: string) => `sales_lines.${m}`;
@@ -66,7 +67,7 @@ export default async function LivePage({ params }: PageProps<"/dashboards/[tenan
         order: { [L("revenue")]: "desc" },
         limit: 8,
       },
-      salesmen: { measures: [L("revenue")], dimensions: [L("salesman")], timeDimensions: lday(today), order: { [L("revenue")]: "desc" }, limit: 8 },
+      brands: { measures: [L("revenue")], dimensions: [L("brand")], timeDimensions: lday(today), order: { [L("revenue")]: "desc" }, limit: 8 },
     }),
     prisma.syncRun.findFirst({
       where: { status: "SUCCESS", job: { name: "Παραστατικά πωλήσεων", connection: { tenantId } } },
@@ -180,16 +181,16 @@ export default async function LivePage({ params }: PageProps<"/dashboards/[tenan
             </p>
           )}
         </ChartCard>
-        <ChartCard title="Πωλητές σήμερα" description="Κατά τζίρο">
-          {data.salesmen.length ? (
-            <RankingChart data={data.salesmen.map((r) => ({ name: String(r[L("salesman")] ?? "—"), value: num(r[L("revenue")]) }))} label="Τζίρος" color="var(--chart-3)" />
+        <ChartCard title="Μάρκες σήμερα" description="Κατά τζίρο">
+          {data.brands.length ? (
+            <RankingChart data={data.brands.map((r) => ({ name: String(r[L("brand")] ?? "—"), value: num(r[L("revenue")]) }))} label="Τζίρος" color="var(--chart-3)" />
           ) : (
             <p className="text-sm text-muted-foreground">Δεν υπάρχουν ακόμα πωλήσεις σήμερα.</p>
           )}
         </ChartCard>
       </div>
       <p className="text-xs text-muted-foreground">
-        Τα παραστατικά έρχονται από το SoftOne κάθε 15 λεπτά· οι γραμμές ειδών (προϊόντα, πωλητές) μπορεί να ακολουθούν με λίγα λεπτά καθυστέρηση. Η
+        Τα παραστατικά έρχονται από το SoftOne κάθε 15 λεπτά· οι γραμμές ειδών (προϊόντα, μάρκες) μπορεί να ακολουθούν με λίγα λεπτά καθυστέρηση. Η
         σελίδα ανανεώνεται μόνη της κάθε λεπτό.
       </p>
     </>
