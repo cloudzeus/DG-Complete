@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Building2,
   Cable,
+  ClipboardList,
   CreditCard,
   DatabaseZap,
   Download,
@@ -38,6 +39,7 @@ import { countRows } from "@/lib/warehouse-writer";
 import { openSoftOneCredentials } from "@/lib/softone";
 import type { Capabilities } from "@/lib/softone-detect";
 import { WarehousePanel } from "./warehouse-panel";
+import { OrderSettings } from "./order-settings";
 
 export async function generateMetadata({
   params,
@@ -206,6 +208,21 @@ export default async function TenantPage({
               />
             </CardContent>
           </Card>
+          {tenantSoftOne && canSources && (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <SectionTitle icon={ClipboardList} tone="amber">
+                    Παραγγελίες αγορών
+                  </SectionTitle>
+                </CardTitle>
+                <CardDescription>Πού γράφονται στο SoftOne οι παραγγελίες που δημιουργούν οι χρήστες από τις προτάσεις παραγγελίας.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <OrderSettings tenantId={tenant.id} />
+              </CardContent>
+            </Card>
+          )}
           <Card>
             <CardHeader>
               <CardTitle>

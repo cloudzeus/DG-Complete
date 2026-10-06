@@ -21,6 +21,10 @@ export type BiSettings = {
   coverDays: number;
   /** No sale for this many days → dead stock. */
   deadStockDays: number;
+  /** SoftOne series (PURDOC) allowed for purchase orders from the order suggestions; empty = disabled. */
+  purchaseOrderSeries?: { id: number; label: string }[];
+  /** Warehouse of those orders; default the first main warehouse. */
+  orderWarehouse?: number | null;
 };
 
 export const DEFAULT_BI_SETTINGS: BiSettings = {

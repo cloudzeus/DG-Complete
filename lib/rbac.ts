@@ -26,6 +26,7 @@ export const PERMISSION_DEFS = {
   "tenant.apikeys.manage": { label: "API keys (webservices)", group: "Εντός tenant" },
   "tenant.dashboards.edit": { label: "Επεξεργασία dashboards", group: "Εντός tenant" },
   "tenant.dashboards.view": { label: "Προβολή dashboards", group: "Εντός tenant" },
+  "tenant.orders.create": { label: "Δημιουργία παραγγελιών αγοράς στο SoftOne", group: "Εντός tenant" },
 } as const;
 
 export type Permission = keyof typeof PERMISSION_DEFS;
@@ -42,8 +43,16 @@ export const DEFAULT_GRANTS: Record<Role, readonly Permission[]> = {
     "tenant.apikeys.manage",
     "tenant.dashboards.edit",
     "tenant.dashboards.view",
+    "tenant.orders.create",
   ],
-  TENANT_ADMIN: ["tenant.users.manage", "tenant.billing.manage", "tenant.apikeys.manage", "tenant.dashboards.edit", "tenant.dashboards.view"],
+  TENANT_ADMIN: [
+    "tenant.users.manage",
+    "tenant.billing.manage",
+    "tenant.apikeys.manage",
+    "tenant.dashboards.edit",
+    "tenant.dashboards.view",
+    "tenant.orders.create",
+  ],
   TENANT_USER: ["tenant.dashboards.view"],
 };
 

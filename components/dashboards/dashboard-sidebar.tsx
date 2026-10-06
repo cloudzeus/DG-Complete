@@ -7,6 +7,7 @@ import {
   Building2,
   ChartColumnBig,
   ChevronsUpDown,
+  ClipboardList,
   Landmark,
   LayoutDashboard,
   LogOut,
@@ -14,6 +15,7 @@ import {
   ShieldCheck,
   Package,
   ShoppingCart,
+  Sparkles,
   Truck,
   Users,
   Warehouse,
@@ -49,7 +51,13 @@ import { cn } from "@/lib/utils";
 
 type NavItem = { slug: string; label: string; icon: LucideIcon };
 const NAV: { label: string; items: NavItem[] }[] = [
-  { label: "Γενικά", items: [{ slug: "", label: "Επισκόπηση", icon: LayoutDashboard }] },
+  {
+    label: "Γενικά",
+    items: [
+      { slug: "", label: "Επισκόπηση", icon: LayoutDashboard },
+      { slug: "kimon", label: "Κίμων — σύμβουλος", icon: Sparkles },
+    ],
+  },
   {
     label: "Οικονομικά",
     items: [
@@ -69,6 +77,7 @@ const NAV: { label: string; items: NavItem[] }[] = [
     label: "Αγορές & Αποθήκη",
     items: [
       { slug: "stock", label: "Αποθήκη & παραγγελίες", icon: Warehouse },
+      { slug: "orders", label: "Παραγγελίες αγορών", icon: ClipboardList },
       { slug: "purchases", label: "Αγορές", icon: ShoppingCart },
       { slug: "suppliers", label: "Προμηθευτές", icon: Truck },
     ],
