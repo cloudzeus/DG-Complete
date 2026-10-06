@@ -216,17 +216,15 @@ async function buildItemStats(db: Client, schema: string, settings: BiSettings, 
      main_supplier AS (
        ${
          has.purchases
-           ? // The item's own supplier (most bought from: last 2 years first, then all history), else the
-             // supplier of its brand (the one most of the brand's items are bought from).
-             `SELECT i.mtrl, COALESCE(recent.trdr, ever.trdr, bs.trdr) AS trdr,
-                     CASE WHEN COALESCE(recent.trdr, ever.trdr) IS NOT NULL THEN 'item' WHEN bs.trdr IS NOT NULL THEN 'brand' END AS source
+           ? // The item's own supplier: the one it was first bought from (oldest purchase date; ties →
+             // the larger quantity), else the supplier of its brand (the one most of the brand's items
+             // are bought from).
+             `SELECT i.mtrl, COALESCE(fb.trdr, bs.trdr) AS trdr,
+                     CASE WHEN fb.trdr IS NOT NULL THEN 'item' WHEN bs.trdr IS NOT NULL THEN 'brand' END AS source
               FROM ${s}.items i
               LEFT JOIN (SELECT DISTINCT ON (mtrl) mtrl, trdr FROM (
-                SELECT mtrl, trdr, SUM(qty) AS q FROM ${s}.f_purchase_lines WHERE trndate >= now() - interval '730 days' AND qty > 0 GROUP BY 1, 2
-              ) x ORDER BY mtrl, q DESC) recent ON recent.mtrl = i.mtrl
-              LEFT JOIN (SELECT DISTINCT ON (mtrl) mtrl, trdr FROM (
-                SELECT mtrl, trdr, MAX(trndate) AS last, SUM(qty) AS q FROM ${s}.f_purchase_lines WHERE qty > 0 GROUP BY 1, 2
-              ) x ORDER BY mtrl, last DESC, q DESC) ever ON ever.mtrl = i.mtrl
+                SELECT mtrl, trdr, MIN(trndate) AS first_buy, SUM(qty) AS q FROM ${s}.f_purchase_lines WHERE qty > 0 GROUP BY 1, 2
+              ) x ORDER BY mtrl, first_buy ASC, q DESC) fb ON fb.mtrl = i.mtrl
               LEFT JOIN (SELECT DISTINCT ON (mtrmark) mtrmark, trdr FROM (
                 SELECT it.mtrmark, p.trdr, COUNT(DISTINCT p.mtrl) AS n, MAX(p.trndate) AS last
                 FROM ${s}.f_purchase_lines p JOIN ${s}.items it ON it.mtrl = p.mtrl
