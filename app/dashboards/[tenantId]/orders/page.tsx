@@ -1,14 +1,17 @@
 import type { Metadata } from "next";
 import { DashboardErrors } from "@/components/dashboards/blocks";
 import { OrderEditor } from "@/components/orders/order-editor";
+import { OrdersTabs } from "@/components/orders/orders-tabs";
 import { requireDashboardTenant } from "@/lib/dashboards";
 import { orderBrands, orderSuppliers, orderTarget, type OrderBrand, type OrderSupplier } from "@/lib/purchase-orders";
 import { can } from "@/lib/rbac";
 
 export const metadata: Metadata = { title: "Παραγγελίες αγορών" };
 
-export default async function OrdersPage({ params }: PageProps<"/dashboards/[tenantId]/orders">) {
+export default async function OrdersPage({ params, searchParams }: PageProps<"/dashboards/[tenantId]/orders">) {
   const { tenantId } = await params;
+  const sp = await searchParams;
+  const initialBrand = Number(sp.brand) || null;
   const { user } = await requireDashboardTenant(tenantId, "orders");
   const canCreate = can(user, "tenant.orders.create", tenantId);
   let suppliers: OrderSupplier[] = [];
@@ -30,8 +33,9 @@ export default async function OrdersPage({ params }: PageProps<"/dashboards/[ten
           αφαιρέστε γραμμές, κατεβάστε σε Excel ή δημιουργήστε την παραγγελία απευθείας στο SoftOne.
         </p>
       </div>
+      <OrdersTabs tenantId={tenantId} active="editor" />
       {error && <DashboardErrors errors={[error]} />}
-      <OrderEditor tenantId={tenantId} suppliers={suppliers} brands={brands} canCreate={canCreate} problem={target?.problem ?? null} series={target?.series ?? []} />
+      <OrderEditor tenantId={tenantId} suppliers={suppliers} brands={brands} initialBrand={initialBrand} canCreate={canCreate} problem={target?.problem ?? null} series={target?.series ?? []} />
     </>
   );
 }

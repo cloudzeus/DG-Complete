@@ -140,6 +140,7 @@ model Tenant {
   emailLogs          EmailLog[]
   emailSuppressions  EmailSuppression[]
   docSeriesOverrides DocSeriesOverride[]
+  itemSubstitutes    ItemSubstitute[]
   apiKeys            ApiKey[]
   industry           IndustrySegmentation?
   /// BI settings, e.g. { mainWarehouses: [1000], receivablePrefixes: ["30"], payablePrefixes: ["50"] }
@@ -858,4 +859,20 @@ model DocSeriesOverride {
 
   @@id([tenantId, series])
   @@map("doc_series_override")
+}
+
+// Is item B a real substitute for item A (another brand)? Judged by AI (or by the descriptions when AI
+// is off) once per pair and kept, so the brand order page doesn't pay for it again.
+model ItemSubstitute {
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  mtrl      Int
+  altMtrl   Int
+  match     Int // 0–100
+  reason    String
+  source    String // ai | text
+  createdAt DateTime @default(now())
+
+  @@id([tenantId, mtrl, altMtrl])
+  @@map("item_substitute")
 }

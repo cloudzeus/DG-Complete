@@ -49,7 +49,15 @@ export type OrderLine = {
   supplierSource: "item" | "brand" | null;
   brand: string | null;
   category: string | null;
+  /** Item group (ομάδα) — narrower than the category. */
+  group: string | null;
   revenue12m: number;
+  unitCost: number | null;
+  marginPct: number | null;
+  /** Average selling price over the last 12 months. */
+  avgPrice: number | null;
+  supplierId: number | null;
+  categoryId: number | null;
   lastSale: string | null;
   /** Expected sales of the next 3 calendar months. */
   forecast: number[];
@@ -249,7 +257,7 @@ export async function itemOrderLines(tenantId: string, mtrls: number[]): Promise
   return orderLinesWhere(tenantId, `m.mtrl = ANY($1::bigint[])`, [mtrls]);
 }
 
-async function orderLinesWhere(
+export async function orderLinesWhere(
   tenantId: string,
   where: string,
   params: unknown[],
@@ -259,7 +267,7 @@ async function orderLinesWhere(
   const s = qi(schema);
   return withWarehouse(async (db) => {
     const has = async (t: string) => !!(await db.query("SELECT to_regclass($1) AS t", [`${s}.${t}`])).rows[0]?.t;
-    const [brands, categories] = [await has("brands"), await has("item_categories")];
+    const [brands, categories, groups] = [await has("brands"), await has("item_categories"), await has("item_groups")];
     // Marts built before the supplier source existed (rebuilt on the next sync).
     const source = (await db.query("SELECT 1 FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'm_item_stats' AND column_name = 'supplier_source'", [schema])).rowCount
       ? "m.supplier_source"
@@ -267,11 +275,13 @@ async function orderLinesWhere(
     const r = await db.query(
       `SELECT m.mtrl, i.code, i.name, m.abc, m.stock_qty, m.days_of_cover, m.lead_days, m.qty_12m, m.qty_prev_12m, m.qty_90d,
               m.suggested_order_qty, ${source} AS supplier_source, sp.name AS supplier_name, m.revenue_12m, m.last_sale,
-              ${brands ? "b.name" : "NULL"} AS brand_name, ${categories ? "c.name" : "NULL"} AS category_name, i.mtrcategory, i.mtrmark
+              ${brands ? "b.name" : "NULL"} AS brand_name, ${categories ? "c.name" : "NULL"} AS category_name, i.mtrcategory, i.mtrmark,
+              m.unit_cost, m.margin_pct, m.main_supplier, ${groups ? "g.name" : "NULL"} AS group_name
        FROM ${s}.m_item_stats m LEFT JOIN ${s}.items i ON i.mtrl = m.mtrl
        LEFT JOIN ${s}.suppliers sp ON sp.trdr = m.main_supplier
        ${brands ? `LEFT JOIN ${s}.brands b ON b.mtrmark = i.mtrmark` : ""}
        ${categories ? `LEFT JOIN ${s}.item_categories c ON c.mtrcategory = i.mtrcategory` : ""}
+       ${groups ? `LEFT JOIN ${s}.item_groups g ON g.mtrgroup = i.mtrgroup` : ""}
        WHERE ${where}
        ORDER BY ${opts.orderBy ?? "m.suggested_order_qty DESC NULLS LAST, m.qty_12m DESC NULLS LAST"}
        LIMIT ${Math.min(Math.max(opts.limit ?? 500, 1), 3000)}`,
@@ -325,7 +335,13 @@ async function orderLinesWhere(
           supplier: (x.supplier_name as string | null) ?? null,
           brand: (x.brand_name as string | null) ?? null,
           category: (x.category_name as string | null) ?? null,
+          group: (x.group_name as string | null) ?? null,
           revenue12m: Number(x.revenue_12m ?? 0),
+          unitCost: x.unit_cost === null ? null : Number(x.unit_cost),
+          marginPct: x.margin_pct === null ? null : Number(x.margin_pct),
+          avgPrice: Number(x.qty_12m) > 0 ? Number(x.revenue_12m ?? 0) / Number(x.qty_12m) : null,
+          supplierId: x.main_supplier === null ? null : Number(x.main_supplier),
+          categoryId: x.mtrcategory === null ? null : Number(x.mtrcategory),
           lastSale: x.last_sale ? new Date(x.last_sale).toISOString().slice(0, 10) : null,
           supplierSource: (x.supplier_source as "item" | "brand" | null) ?? null,
           ...base,

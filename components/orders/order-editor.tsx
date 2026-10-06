@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState, useTransition } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { CheckCircle2, Loader2, Plus, Search, Send, Trash2, TrendingDown, TrendingUp, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -64,6 +64,7 @@ export function OrderEditor({
   tenantId,
   suppliers,
   brands,
+  initialBrand = null,
   canCreate,
   problem,
   series: allowedSeries,
@@ -71,6 +72,8 @@ export function OrderEditor({
   tenantId: string;
   suppliers: OrderSupplier[];
   brands: OrderBrand[];
+  /** Open this brand right away (from «Προτάσεις ανά μάρκα»). */
+  initialBrand?: number | null;
   canCreate: boolean;
   /** Series the order may be written to (domestic / EU / third country …). */
   series: { id: number; label: string }[];
@@ -89,7 +92,7 @@ export function OrderEditor({
   const [recipient, setRecipient] = useState<OrderSupplier | null>(null);
   const byTrdr = useMemo(() => new Map(suppliers.filter((s) => s.trdr !== null).map((s) => [s.trdr!, s])), [suppliers]);
 
-  const [mode, setMode] = useState<"supplier" | "brand">("supplier");
+  const [mode, setMode] = useState<"supplier" | "brand">(initialBrand ? "brand" : "supplier");
   const [query, setQuery] = useState("");
   const deferred = useDeferredValue(query);
   const [allItems, setAllItems] = useState(false);
@@ -136,6 +139,20 @@ export function OrderEditor({
       }
     });
   }
+
+  // Opened from «Προτάσεις ανά μάρκα»: start on that brand.
+  const opened = useRef(false);
+  useEffect(() => {
+    if (opened.current || !initialBrand) return;
+    const b = brands.find((x) => x.mtrmark === initialBrand);
+    if (!b) return;
+    const t = setTimeout(() => {
+      opened.current = true;
+      pick({ kind: "brand", id: b.mtrmark, name: b.name, items: b.items, total: b.total, recipient: b.supplier });
+    }, 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialBrand, brands]);
 
   const [recipientQuery, setRecipientQuery] = useState("");
   const recipientOptions = useMemo(() => {
