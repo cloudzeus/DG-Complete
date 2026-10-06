@@ -116,6 +116,8 @@ export function ComboChart({
     >
       <ComposedChart
         data={data}
+        // Negative values in a stack go below zero (e.g. days of supplier credit).
+        stackOffset="sign"
         margin={{ top: 8, right: 8, left: 4, bottom: 0 }}
       >
         <CartesianGrid vertical={false} />

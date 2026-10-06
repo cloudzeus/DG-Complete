@@ -18,7 +18,7 @@ export const SERVICES: ServiceDef[] = [
     key: "finance",
     name: "Οικονομικά",
     description: "Αποτελέσματα χρήσης (P&L), ταμείο & τράπεζες, πρόβλεψη ταμειακών ροών, ανοιχτά υπόλοιπα.",
-    pages: ["pnl", "cash"],
+    pages: ["pnl", "cash", "working-capital"],
     cubes: ["pnl", "cash", "cash_forecast", "open_items"],
   },
   {
