@@ -160,11 +160,16 @@ export async function rebuildFinFact(tenantId: string): Promise<number> {
         ];
         for (const d of docs) {
           if (!d.ok || !rules.some((r) => r.source === d.source)) continue;
+          const vatOnly = (await db.query("SELECT 1 FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 AND column_name = 'vatamnt'", [schema, d.table])).rowCount
+            ? "CASE WHEN coalesce(f.netamnt, 0) <> 0 AND f.vatamnt IS NOT NULL AND abs(coalesce(f.sumamnt, 0) - f.vatamnt) < 0.01 THEN 0 ELSE 1 END"
+            : "1";
           await db.query(
             `INSERT INTO ${s}.fin_fact (source, line_code, trndate, fiscprd, period, branch, trdr, series, amount)
              SELECT $1, r.line_code, f.trndate, coalesce(f.fiscprd, extract(year FROM f.trndate)::int),
                     coalesce(f.period, extract(month FROM f.trndate)::int), f.branch, f.trdr, f.series,
                     coalesce(f.lnetamnt, f.netamnt, 0) * $2 * CASE WHEN r.negate THEN -1 ELSE 1 END
+                      -- documents that only credit VAT (exemption) don't move revenue/cost
+                      * ${vatOnly}
              FROM ${s}.${d.table} f
              JOIN _rules r ON r.source = $1 AND (r.pattern = '*' OR r.pattern = f.series::text)
              WHERE coalesce(f.iscancel, 0) = 0`,

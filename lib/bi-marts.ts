@@ -107,6 +107,13 @@ const UNIT_COST_CTE = (s: string, hasPurchases: boolean) => `
     }
   )`;
 
+/**
+ * Documents whose total is only VAT (e.g. «Πιστωτικό έκπτωσης απαλλαγής ΦΠΑ»: the line carries the
+ * net value, but only the VAT is credited) — they don't move revenue and are left out of sales.
+ */
+export const VAT_ONLY_SQL = (d: string) =>
+  `(COALESCE(${d}.netamnt, 0) <> 0 AND ${d}.vatamnt IS NOT NULL AND abs(COALESCE(${d}.sumamnt, 0) - ${d}.vatamnt) < 0.01)`;
+
 async function buildSalesFacts(db: Client, schema: string, hasPurchases: boolean) {
   const s = qi(schema);
   // The SoftOne user who entered the document (FINDOC.INSUSER) — synced since the per-user analysis.
@@ -127,7 +134,7 @@ async function buildSalesFacts(db: Client, schema: string, hasPurchases: boolean
             (l.qty1 * ds.sign * uc.unit_cost)::numeric(19,2) AS cost
      FROM ${s}.sales_lines l
      JOIN ${s}.sales_docs d ON d.findoc = l.findoc AND COALESCE(d.iscancel, 0) = 0
-     JOIN ${s}.doc_series ds ON ds.series = d.series AND ds.sign <> 0
+     JOIN ${s}.doc_series ds ON ds.series = d.series AND ds.sign <> 0 AND NOT ${VAT_ONLY_SQL("d")}
      LEFT JOIN cost_year cy ON cy.mtrl = l.mtrl AND cy.fiscprd = d.fiscprd
      LEFT JOIN cost_latest cl ON cl.mtrl = l.mtrl
      LEFT JOIN cost_purchase cp ON cp.mtrl = l.mtrl
@@ -316,7 +323,7 @@ async function buildCustomerStats(db: Client, schema: string) {
     `WITH docs AS (
        SELECT d.trdr, d.findoc, d.trndate, COALESCE(d.lnetamnt, d.netamnt, 0) * ds.sign AS net, ds.sign
        FROM ${s}.sales_docs d JOIN ${s}.doc_series ds ON ds.series = d.series AND ds.sign <> 0
-       WHERE COALESCE(d.iscancel, 0) = 0 AND d.trdr IS NOT NULL AND d.trndate >= now() - interval '730 days'
+       WHERE COALESCE(d.iscancel, 0) = 0 AND d.trdr IS NOT NULL AND d.trndate >= now() - interval '730 days' AND NOT ${VAT_ONLY_SQL("d")}
      ),
      agg AS (
        SELECT trdr,
@@ -454,7 +461,7 @@ export async function buildBiMarts(tenantId: string): Promise<MartsReport> {
         await db.query("ROLLBACK");
         throw err;
       }
-      const docCols = { lnetamnt: "numeric(19,6)", sumlamnt: "numeric(19,6)", insdate: "timestamp", salesman: "bigint", payment: "bigint" };
+      const docCols = { lnetamnt: "numeric(19,6)", sumlamnt: "numeric(19,6)", vatamnt: "numeric(19,6)", insdate: "timestamp", salesman: "bigint", payment: "bigint" };
       const lineCols = { lnetlineval: "numeric(19,6)", netlineval: "numeric(19,6)", salesman: "bigint", findocs: "bigint", whouse: "bigint" };
       const has = {
         sales: (await ensureColumns(db, schema, "sales_docs", docCols)) && (await ensureColumns(db, schema, "sales_lines", lineCols)),

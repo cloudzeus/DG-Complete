@@ -118,7 +118,7 @@ async function computeCustomerInsights(tenantId: string): Promise<CustomerInsigh
       clv.sort((a, b) => b.clv - a.clv);
     }
 
-    // ── Customer P&L (12 months): margin − documents × cost − financing of the balance − returns handling.
+    // ── Customer P&L (12 months): margin − documents × cost − financing of the credit − returns handling.
     const balances = (await has(db, s, "m_partner_balances"))
       ? new Map(
           (await db.query(`SELECT trdr, balance::float AS b, avg_payment_days::float AS d, payment_grade AS g, open_90_plus::float AS o FROM ${s}.m_partner_balances WHERE kind = 'R'`)).rows.map((x) => [
@@ -127,16 +127,27 @@ async function computeCustomerInsights(tenantId: string): Promise<CustomerInsigh
           ]),
         )
       : new Map<number, { balance: number; days: number | null; grade: string | null; overdue90: number }>();
+    // Line margin: net − cost; lines without a cost or with an implausible one (cost errors in the
+    // ERP, cost > 1.5× the price) use the item's usual margin (0–60%), else the company's.
+    const companyPct = Number(
+      (await db.query(`SELECT 100 * SUM(net - cost) / NULLIF(SUM(net), 0) AS p FROM ${s}.f_sales_lines WHERE trndate >= now() - interval '12 months' AND cost IS NOT NULL AND net > 0 AND cost <= 1.5 * net`)).rows[0]?.p ?? 25,
+    );
     const plQ = await db.query(
-      `SELECT f.trdr, MAX(c.name) AS name, SUM(f.net)::float AS rev, SUM(f.net - COALESCE(f.cost, 0))::float AS margin,
+      `SELECT f.trdr, MAX(c.name) AS name, SUM(f.net)::float AS rev,
+              SUM(CASE WHEN f.cost IS NULL OR (f.net > 0 AND f.cost > 1.5 * f.net) OR (f.net < 0 AND f.cost < 1.5 * f.net)
+                       THEN f.net * LEAST(60, GREATEST(0, COALESCE(m.margin_pct, $1))) / 100
+                       ELSE f.net - f.cost END)::float AS margin,
               COUNT(DISTINCT f.findoc)::int AS docs, SUM(CASE WHEN f.net < 0 THEN -f.net ELSE 0 END)::float AS returns
-       FROM ${s}.f_sales_lines f LEFT JOIN ${s}.customers c ON c.trdr = f.trdr
+       FROM ${s}.f_sales_lines f LEFT JOIN ${s}.customers c ON c.trdr = f.trdr LEFT JOIN ${s}.m_item_stats m ON m.mtrl = f.mtrl
        WHERE f.trdr IS NOT NULL AND f.trndate >= now() - interval '12 months'
        GROUP BY f.trdr HAVING SUM(f.net) > 0`,
+      [Number.isFinite(companyPct) ? companyPct : 25],
     );
     const pl: CustomerPl[] = plQ.rows.map((x) => {
       const b = balances.get(Number(x.trdr));
-      const serveCost = Number(x.docs) * SERVE.perDocument + Math.max(0, b?.balance ?? 0) * SERVE.financingRate + Number(x.returns) * SERVE.returnsHandling;
+      // Financing only of the credit this year's sales created (old debts are credit risk, shown separately).
+      const financed = Math.min(Math.max(0, b?.balance ?? 0), Number(x.rev) * 1.24);
+      const serveCost = Number(x.docs) * SERVE.perDocument + financed * SERVE.financingRate + Number(x.returns) * SERVE.returnsHandling;
       const net = Number(x.margin) - serveCost;
       return {
         name: x.name ?? `Πελάτης ${x.trdr}`,

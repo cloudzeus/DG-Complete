@@ -9,8 +9,11 @@ cubes:
     description: Παραστατικά τιμολόγησης πωλήσεων (καθαρή αξία, πιστωτικά αφαιρούνται).
     sql: >
       SELECT d.findoc, d.trndate, d.insdate, d.fiscprd, d.branch, d.trdr, s.sign,
-             COALESCE(d.lnetamnt, d.netamnt) * s.sign AS net,
-             (COALESCE(d.sumlamnt, d.sumamnt) - COALESCE(d.lnetamnt, d.netamnt)) * s.sign AS vat,
+             -- A document whose total is only VAT (credit of the VAT for an exemption) moves VAT, not revenue.
+             CASE WHEN COALESCE(d.netamnt, 0) <> 0 AND d.vatamnt IS NOT NULL AND abs(COALESCE(d.sumamnt, 0) - d.vatamnt) < 0.01 THEN 0
+                  ELSE COALESCE(d.lnetamnt, d.netamnt) * s.sign END AS net,
+             CASE WHEN COALESCE(d.netamnt, 0) <> 0 AND d.vatamnt IS NOT NULL AND abs(COALESCE(d.sumamnt, 0) - d.vatamnt) < 0.01 THEN COALESCE(d.sumlamnt, d.sumamnt) * s.sign
+                  ELSE (COALESCE(d.sumlamnt, d.sumamnt) - COALESCE(d.lnetamnt, d.netamnt)) * s.sign END AS vat,
              COALESCE(d.sumlamnt, d.sumamnt) * s.sign AS gross,
              s.name AS series_name, c.code AS customer_code, c.name AS customer_name, c.city AS customer_city
       FROM sales_docs d
@@ -121,8 +124,11 @@ cubes:
     description: Παραστατικά τιμολόγησης αγορών (καθαρή αξία, πιστωτικά αφαιρούνται).
     sql: >
       SELECT d.findoc, d.trndate, d.fiscprd, d.branch, d.trdr, s.sign,
-             COALESCE(d.lnetamnt, d.netamnt) * s.sign AS net,
-             (COALESCE(d.sumlamnt, d.sumamnt) - COALESCE(d.lnetamnt, d.netamnt)) * s.sign AS vat,
+             -- A document whose total is only VAT (credit of the VAT for an exemption) moves VAT, not revenue.
+             CASE WHEN COALESCE(d.netamnt, 0) <> 0 AND d.vatamnt IS NOT NULL AND abs(COALESCE(d.sumamnt, 0) - d.vatamnt) < 0.01 THEN 0
+                  ELSE COALESCE(d.lnetamnt, d.netamnt) * s.sign END AS net,
+             CASE WHEN COALESCE(d.netamnt, 0) <> 0 AND d.vatamnt IS NOT NULL AND abs(COALESCE(d.sumamnt, 0) - d.vatamnt) < 0.01 THEN COALESCE(d.sumlamnt, d.sumamnt) * s.sign
+                  ELSE (COALESCE(d.sumlamnt, d.sumamnt) - COALESCE(d.lnetamnt, d.netamnt)) * s.sign END AS vat,
              COALESCE(d.sumlamnt, d.sumamnt) * s.sign AS gross,
              s.name AS series_name, p.code AS supplier_code, p.name AS supplier_name, p.city AS supplier_city
       FROM purchase_docs d
