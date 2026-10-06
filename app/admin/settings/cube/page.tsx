@@ -5,6 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { buildCubeCompose } from "@/lib/cube-compose";
 import { getCubeDeployment, JWT_ISSUER, jwtAudience } from "@/lib/cube";
+import { readCubeModel } from "@/lib/cube-model";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/rbac";
 import { TENANT_GROUP } from "@/lib/warehouse";
@@ -26,6 +27,7 @@ export default async function CubePage() {
   ]);
 
   const wh = deployment?.warehouseConnection;
+  const model = await readCubeModel(deployment?.modelExclude ?? []);
   const dev = deployment?.devConnection;
   const yaml =
     deployment && wh
@@ -37,6 +39,7 @@ export default async function CubePage() {
           jwtAudience: jwtAudience(deployment.apiUrl),
           warehouse: { host: wh.host, port: wh.port, database: wh.database, ssl: wh.ssl },
           dev: dev ? { host: dev.host, port: dev.port, database: dev.database, ssl: dev.ssl } : null,
+          modelFiles: model.files,
         })
       : null;
 

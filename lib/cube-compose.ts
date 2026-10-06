@@ -13,6 +13,8 @@ export type ComposeInput = {
   jwtAudience: string;
   warehouse: ComposeTarget;
   dev: ComposeTarget | null;
+  /** The data model (cube/model/*.yml), embedded as files under /cube/conf/model. */
+  modelFiles: { fileName: string; content: string }[];
 };
 
 // Embedded as the content of /cube/conf/cube.js. Must not contain "$" (Coolify/compose interpolation).
@@ -33,42 +35,9 @@ function rolePassword(id) {
   return crypto.createHmac('sha256', process.env.WH_ROLE_SECRET).update(id).digest('hex');
 }
 
-// The data model is versioned in the app's git repo and served by the app (control plane).
-// Cached for 60s. A response is accepted only if it is a complete model (version + files with
-// content); anything else — the app restarting during a deploy, an error page, a timeout — keeps
-// the last good model and is logged.
-let model = { at: 0, data: null };
-function validModel(d) {
-  if (!d || typeof d.version !== 'string' || !d.version || !Array.isArray(d.files) || d.files.length === 0) return 'no version/files';
-  for (const f of d.files) {
-    if (!f || typeof f.fileName !== 'string' || typeof f.content !== 'string' || !f.content.trim()) return 'empty file ' + (f && f.fileName);
-  }
-  if (model.data && d.files.length < model.data.files.length) return 'fewer files (' + d.files.length + ' < ' + model.data.files.length + ')';
-  return null;
-}
-async function loadModel() {
-  if (model.data && Date.now() - model.at < 60000) return model.data;
-  try {
-    const res = await fetch(process.env.CONTROL_PLANE_URL + '/api/internal/cube/model', {
-      headers: { Authorization: 'Bearer ' + process.env.CONTROL_PLANE_TOKEN },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-    const problem = validModel(data);
-    if (problem) throw new Error('model rejected: ' + problem);
-    if (!model.data || model.data.version !== data.version) {
-      console.log('[dgsmart] model version ' + data.version + ': ' + data.files.length + ' files, ' +
-        data.files.reduce((n, f) => n + f.content.length, 0) + ' chars');
-    }
-    model = { at: Date.now(), data: data };
-  } catch (err) {
-    console.error('[dgsmart] model fetch failed, keeping ' + (model.data ? model.data.version : 'nothing') + ': ' + err.message);
-    if (!model.data) throw err;
-    model.at = Date.now();
-  }
-  return model.data;
-}
+// The data model is baked into this compose file (/cube/conf/model/*.yml, standard Cube file
+// repository) — Cube no longer fetches it from the app, so app deploys and restarts cannot affect
+// the compiled model. Changing the model = re-paste the compose from Ρυθμίσεις → Cube server.
 
 function memberCubes(q) {
   const cubes = new Set();
@@ -93,28 +62,8 @@ module.exports = {
       console.log('[cube] ' + msg + ' ' + p.slice(0, 1500));
     }
   },
-  // A new model version gets its own app id → a fresh compile (hot recompiles of a running app
-  // were observed to yield an empty model). The previous version's compiler ages out of the cache.
-  contextToAppId: ({ securityContext }) =>
-    'CUBE_APP_' + tenantOf(securityContext) + '_' + (model.data ? model.data.version : 'init'),
+  contextToAppId: ({ securityContext }) => 'CUBE_APP_' + tenantOf(securityContext),
   contextToOrchestratorId: ({ securityContext }) => 'CUBE_ORCH_' + tenantOf(securityContext),
-  schemaVersion: async () => (await loadModel()).version,
-  // Each repository (one per compiled app) sees the files with a unique trailing comment, so a
-  // compile never reuses anything cached from another compile; every call is logged.
-  repositoryFactory: ({ securityContext }) => {
-    const nonce = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-    return {
-      dataSchemaFiles: async () => {
-        const m = await loadModel();
-        console.log('[dgsmart] dataSchemaFiles tenant=' + (securityContext && securityContext.tenantId) +
-          ' version=' + m.version + ' files=' + m.files.length + ' nonce=' + nonce);
-        return m.files.map((f) => ({
-          fileName: f.fileName,
-          content: f.content + (f.fileName.endsWith('.js') ? '\\n// ' : '\\n# ') + nonce + '\\n',
-        }));
-      },
-    };
-  },
 
   driverFactory: ({ securityContext }) => {
     const id = tenantOf(securityContext);
@@ -202,7 +151,24 @@ ${envList([
       - cubestore_data:/cube/data`;
 }
 
+/** Bind mounts for cube.js + every model file, each with inline content (written by Coolify). */
+function confVolumes(files: ComposeInput["modelFiles"]) {
+  const mount = (source: string, target: string, content: string) => {
+    if (content.includes("$")) throw new Error(`${source} must not contain '$'`);
+    return `      - type: bind
+        source: ${source}
+        target: ${target}
+        content: |
+${indent(content.trimEnd(), 10)}`;
+  };
+  return [
+    mount("./cube.js", "/cube/conf/cube.js", CUBE_JS),
+    ...files.map((f) => mount(`./model/${f.fileName}`, `/cube/conf/model/${f.fileName}`, f.content)),
+  ].join("\n");
+}
+
 export function buildCubeCompose(input: ComposeInput): string {
+  if (!input.modelFiles.length) throw new Error("Cube model is empty");
   const sharedProdEnv = [
     "CUBEJS_DEV_MODE=false",
     "CUBEJS_TELEMETRY=false",
@@ -223,7 +189,9 @@ export function buildCubeCompose(input: ComposeInput): string {
     "CUBEJS_SCHEDULED_REFRESH_DEFAULT=true",
     // The native (Rust) YAML transpiler silently dropped every cube of our model; use the JS one.
     "CUBEJS_TRANSPILATION_NATIVE=false",
+    "CUBEJS_SCHEMA_PATH=model",
   ];
+  const volumes = confVolumes(input.modelFiles);
 
   const header = `# DGsmart BI — Cube.dev stack για Coolify (παράχθηκε από την εφαρμογή DGsmart BI)
 # Coolify → New Resource → Docker Compose Empty → επικόλληση.
@@ -243,11 +211,7 @@ export function buildCubeCompose(input: ComposeInput): string {
     environment:
 ${envList([...sharedProdEnv, "CUBEJS_REFRESH_WORKER=false"])}
     volumes:
-      - type: bind
-        source: ./cube.js
-        target: /cube/conf/cube.js
-        content: |
-${indent(CUBE_JS.trimEnd(), 10)}
+${volumes}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
@@ -264,9 +228,7 @@ ${indent(CUBE_JS.trimEnd(), 10)}
     environment:
 ${envList([...sharedProdEnv, "CUBEJS_REFRESH_WORKER=true"])}
     volumes:
-      - type: bind
-        source: ./cube.js
-        target: /cube/conf/cube.js`;
+${volumes}`;
 
   const dev = input.dev
     ? `  cube_dev:
