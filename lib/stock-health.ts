@@ -29,10 +29,13 @@ export type SupplierScore = {
 };
 
 export type StockHealth = {
-  lost: { revenue: number; margin: number; serviceLevel: number | null; itemsOut: number; incomplete: number; checked: number; reliable: boolean; coveragePct: number; items: LostItem[]; bySupplier: { name: string; value: number }[]; weekly: { week: string; out: number }[] };
+  lost: { revenue: number; margin: number; serviceLevel: number | null; itemsOut: number; incomplete: number; checked: number; reliable: boolean; coveragePct: number; toOrder: number; items: LostItem[]; bySupplier: { name: string; value: number }[]; weekly: { week: string; out: number }[] };
   dead: { value: number; freed: number; byAction: { action: DeadItem["action"]; value: number; freed: number; items: number }[]; items: DeadItem[] };
   suppliers: SupplierScore[];
 };
+
+/** Share of the demand on out-of-stock days that is lost for good. */
+export const LOST_SHARE = 0.5;
 
 const RECOVERY = { return: 0.9, offer: 0.7, liquidate: 0.35 } as const;
 
@@ -45,10 +48,10 @@ async function computeStockHealth(tenantId: string): Promise<StockHealth> {
     const sup = (await has(db, s, "suppliers")) ? `LEFT JOIN ${s}.suppliers sp ON sp.trdr = m.main_supplier` : "";
     const supName = sup ? "sp.name" : "NULL";
 
-    // Stock data must cover most items that sell (some installations import only some warehouses).
+    // Share of the items that sell which are kept in stock (the rest is sold to order / drop-shipped).
     const cov = (await db.query(`SELECT COUNT(*) FILTER (WHERE stock_qty > 0)::float AS instock, COUNT(*) FILTER (WHERE qty_12m > 0)::float AS selling FROM ${s}.m_item_stats`)).rows[0];
     const coverage = Number(cov.selling) > 0 ? Number(cov.instock) / Number(cov.selling) : 0;
-    const reliable = coverage >= 0.3;
+    const reliable = true;
 
     // ── Lost sales on the A/B items that sell.
     const items = await db.query(
@@ -56,7 +59,7 @@ async function computeStockHealth(tenantId: string): Promise<StockHealth> {
               m.revenue_12m::float AS rev, COALESCE(m.margin_12m, 0)::float AS margin
        FROM ${s}.m_item_stats m JOIN ${s}.items i ON i.mtrl = m.mtrl ${sup}
        WHERE m.qty_12m > 0 AND m.revenue_12m > 0 AND m.abc IN ('A', 'B') ${goods ? "AND COALESCE(i.sodtype, 51) = 51" : ""}
-       ORDER BY m.revenue_12m DESC LIMIT ${reliable ? 2500 : 0}`,
+       ORDER BY m.revenue_12m DESC LIMIT 2500`,
     );
     const ids = items.rows.map((x) => Number(x.mtrl));
     const flows = new Map<number, Map<number, number>>(); // item → day index → stock change (+ bought, − sold)
@@ -83,6 +86,7 @@ async function computeStockHealth(tenantId: string): Promise<StockHealth> {
     const weeklyOut = Array(Math.ceil(WINDOW / 7)).fill(0) as number[];
     let weightedService = 0;
     let incomplete = 0;
+    let toOrder = 0;
     let weightTotal = 0;
     for (const x of items.rows) {
       const id = Number(x.mtrl);
@@ -117,13 +121,19 @@ async function computeStockHealth(tenantId: string): Promise<StockHealth> {
         continue;
       }
       const pace = inDays > 0 ? soldInStock / inDays : Number(x.q12) / 365;
-      const rate = Math.max(pace, Number(x.q12) / 365 * 0.5);
+      // Conservative: the slower of the in-stock and the 12-month pace, and only part of the demand
+      // on empty-shelf days is really lost (the rest waits or takes another item).
+      const rate = Math.min(pace, Number(x.q12) / 365) * LOST_SHARE;
+      // Only items the company keeps in stock (in stock on ≥ 30% of the days); the rest is sold to
+      // order — an empty shelf there is not a lost sale.
+      if (inDays / days < 0.3) {
+        toOrder++;
+        continue;
+      }
       for (const w of itemWeeks) weeklyOut[w]++;
-      const service = 1 - outDays / days;
-      weightedService += service * Number(x.rev);
+      weightedService += (1 - outDays / days) * Number(x.rev);
       weightTotal += Number(x.rev);
-      // Items out of stock nearly all the time are sold to order — not lost sales.
-      if (outDays < 3 || outDays / days > 0.8) continue;
+      if (outDays < 3) continue;
       const unitPrice = Number(x.rev) / Number(x.q12);
       const unitMargin = Math.max(0, Number(x.margin) / Number(x.q12)); // wrong costs can make it negative
       const lostQty = outDays * rate;
@@ -235,6 +245,7 @@ async function computeStockHealth(tenantId: string): Promise<StockHealth> {
         checked: items.rows.length,
         reliable,
         coveragePct: Math.round(coverage * 100),
+        toOrder,
         items: lostItems.slice(0, 20),
         bySupplier: [...bySup].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, value]) => ({ name, value })),
         weekly,

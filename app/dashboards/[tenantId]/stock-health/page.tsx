@@ -6,7 +6,7 @@ import { ChartCard, DashboardErrors, Kpi } from "@/components/dashboards/blocks"
 import { ACTION, DeadTable, LostTable, ScoreTable } from "@/components/stock/health-tables";
 import { requireDashboardTenant } from "@/lib/dashboards";
 import { eurCompact } from "@/lib/format";
-import { stockHealth, type StockHealth } from "@/lib/stock-health";
+import { LOST_SHARE, stockHealth, type StockHealth } from "@/lib/stock-health";
 
 export const metadata: Metadata = { title: "Απόθεμα & προμηθευτές 360°" };
 
@@ -37,7 +37,7 @@ function Body({ h }: { h: StockHealth }) {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="Επίπεδο εξυπηρέτησης" value={l.reliable && l.serviceLevel !== null ? `${Math.round(l.serviceLevel)}%` : "—"} hint="ημέρες με απόθεμα στα είδη Α/Β, 180 ημ." icon={ShieldCheck} tone="green" />
+        <Kpi label="Επίπεδο εξυπηρέτησης" value={l.reliable && l.serviceLevel !== null ? `${Math.round(l.serviceLevel)}%` : "—"} hint={`ημέρες με απόθεμα στα είδη αποθήκης Α/Β, 180 ημ.${l.coveragePct < 50 ? ` · απόθεμα κρατάτε στο ${l.coveragePct}% των ειδών που πουλάτε` : ""}`} icon={ShieldCheck} tone="green" />
         <Kpi label="Χαμένες πωλήσεις (εκτίμηση)" value={l.reliable ? eurCompact(l.revenue) : "—"} hint={l.reliable ? `κέρδος ${eurCompact(l.margin)} · 180 ημέρες` : "ελλιπή δεδομένα αποθήκης"} icon={CircleSlash} tone="red" />
         <Kpi label="Νεκρό απόθεμα" value={eurCompact(h.dead.value)} hint={`${h.dead.byAction.reduce((a, x) => a + x.items, 0)} είδη (κόστος)`} icon={PackageX} tone="amber" />
         <Kpi label="Μετρητά από ρευστοποίηση" value={eurCompact(h.dead.freed)} hint="με το προτεινόμενο σχέδιο (εκτίμηση)" icon={Banknote} tone="teal" />
@@ -60,7 +60,7 @@ function Body({ h }: { h: StockHealth }) {
           </div>
           <ChartCard
             title="Είδη με τις μεγαλύτερες χαμένες πωλήσεις"
-            description={`Ημέρες χωρίς απόθεμα (και χωρίς πώληση) × ρυθμός πωλήσεων όταν υπήρχε απόθεμα. Εξαιρούνται είδη κατά παραγγελία και ${l.incomplete} είδη με ελλιπή κίνηση αποθήκης.`}
+            description={`Ημέρες χωρίς απόθεμα (και χωρίς πώληση) × ο χαμηλότερος ρυθμός πωλήσεων (με απόθεμα ή 12μήνου) × ${Math.round(LOST_SHARE * 100)}% (οι υπόλοιποι πελάτες περιμένουν ή παίρνουν άλλο είδος), μόνο για είδη που κρατάτε σε απόθεμα. Εξαιρούνται ${l.toOrder} είδη που πωλούνται κατά παραγγελία και ${l.incomplete} με ελλιπή κίνηση αποθήκης.`}
           >
             <LostTable rows={l.items} />
           </ChartCard>
