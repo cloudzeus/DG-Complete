@@ -14,6 +14,20 @@ import { hasService } from "@/lib/tenant-services";
 // name, replies to the user who sent it. Optional short AI note to the customer inside the PDF.
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/**
+ * Who signs the email and receives the replies: the sender if they belong to the company; for
+ * platform staff, the company's administrator or first user (else the company name only).
+ */
+async function signer(tenantId: string, user: { id: string; name: string; email: string }) {
+  const own = await prisma.membership.findUnique({ where: { userId_tenantId: { userId: user.id, tenantId } }, select: { id: true } });
+  if (own) return { name: user.name, email: user.email };
+  // The company's administrator, else its first user.
+  const admin =
+    (await prisma.membership.findFirst({ where: { tenantId, role: "TENANT_ADMIN" }, orderBy: { createdAt: "asc" }, select: { user: { select: { name: true, email: true } } } })) ??
+    (await prisma.membership.findFirst({ where: { tenantId }, orderBy: { createdAt: "asc" }, select: { user: { select: { name: true, email: true } } } }));
+  return admin ? { name: admin.user.name, email: admin.user.email } : { name: null, email: null };
+}
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const eur = (v: number) => `${v.toLocaleString("el-GR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 
@@ -77,7 +91,7 @@ export async function sendCustomerStatement(
           .split(/\n{2,}/)
           .map((p) => `<p>${esc(p).replace(/\n/g, "<br>")}</p>`)
           .join("")}</div>`,
-        replyTo: user.email,
+        replyTo: (await signer(tenantId, user)).email,
         tags: ["customer_statement"],
         variables: { logId },
         trackOpens: settings.trackOpens,
@@ -103,10 +117,11 @@ export async function statementDraft(tenantId: string, trdr: number) {
   const s = await customerStatement(tenantId, Number(trdr));
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
   const company = tenant?.name ?? "";
+  const sign = await signer(tenantId, user);
   return {
     to: s.customer.email ?? "",
     subject: `Καρτέλα πελάτη — ${company}`,
-    message: `Αγαπητοί συνεργάτες,\n\nσας επισυνάπτουμε την αναλυτική καρτέλα σας στις ${new Date().toLocaleDateString("el-GR")}, με υπόλοιπο ${eur(s.closing)}${s.overdue > 0 ? `, από το οποίο ληξιπρόθεσμο ${eur(s.overdue)}` : ""}.\n\nΓια οποιαδήποτε διευκρίνιση είμαστε στη διάθεσή σας — απαντήστε απευθείας σε αυτό το email.\n\nΜε εκτίμηση,\n${user.name}\n${company}`,
+    message: `Αγαπητοί συνεργάτες,\n\nσας επισυνάπτουμε την αναλυτική καρτέλα σας στις ${new Date().toLocaleDateString("el-GR")}, με υπόλοιπο ${eur(s.closing)}${s.overdue > 0 ? `, από το οποίο ληξιπρόθεσμο ${eur(s.overdue)}` : ""}.\n\nΓια οποιαδήποτε διευκρίνιση είμαστε στη διάθεσή σας — απαντήστε απευθείας σε αυτό το email.\n\nΜε εκτίμηση,\n${sign.name ? `${sign.name}\n` : ""}${company}`,
     canSend: can(user, "tenant.dashboards.edit", tenantId),
   };
 }
