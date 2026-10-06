@@ -5,7 +5,7 @@ import { CreditTable, PeerTable, PlTable, RuleCards } from "@/components/custome
 import { ChartCard, DashboardErrors } from "@/components/dashboards/blocks";
 import { Findings } from "@/components/purchases/purchase-analysis";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { customerInsights, SERVE, type CustomerInsights } from "@/lib/customer-insights";
+import { customerInsights, type CustomerInsights } from "@/lib/customer-insights";
 import { requireDashboardTenant } from "@/lib/dashboards";
 
 export const metadata: Metadata = { title: "Ανάλυση πελατών" };
@@ -37,6 +37,7 @@ export default async function CustomerInsightsPage({ params }: PageProps<"/dashb
 }
 
 function Body({ c }: { c: CustomerInsights }) {
+  const SERVE = c.assumptions;
   return (
     <div className="space-y-5">
       <Findings items={c.findings} />

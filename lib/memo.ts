@@ -19,3 +19,8 @@ export function memo<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promi
 }
 
 export const MEMO_TTL = 15 * 60_000;
+
+/** Drops cached results whose key starts with the prefix (e.g. after the assumptions change). */
+export function memoForget(prefix: string) {
+  for (const k of store.keys()) if (k.startsWith(prefix) || k.includes(prefix)) store.delete(k);
+}

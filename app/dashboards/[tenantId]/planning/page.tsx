@@ -7,6 +7,7 @@ import { CashScenarios } from "@/components/finance/cash-scenarios";
 import { PlanningSettingsForm } from "@/components/finance/planning-settings";
 import { requireDashboardTenant } from "@/lib/dashboards";
 import { eurCompact, MONTHS_SHORT } from "@/lib/format";
+import { DEFAULT_ASSUMPTIONS } from "@/lib/assumptions";
 import { planning, type Planning } from "@/lib/planning";
 import { can } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
@@ -136,8 +137,13 @@ function Body({ p, tenantId, budget, edit }: { p: Planning; tenantId: string; bu
       )}
 
       {edit && (
-        <ChartCard title="Παράμετροι" description="Για το σημείο νεκρού και το όριο ταμείου των σεναρίων">
-          <PlanningSettingsForm tenantId={tenantId} fixed={p.settings.fixedCostsMonthly} minCash={p.settings.minCash} needFixed={be.source !== "gl"} />
+        <ChartCard title="Παράμετροι" description="Για το σημείο νεκρού, το όριο ταμείου των σεναρίων και τις εκτιμήσεις των αναλύσεων">
+          <PlanningSettingsForm
+            tenantId={tenantId}
+            values={p.settings}
+            needFixed={be.source !== "gl"}
+            defaults={{ perDocument: DEFAULT_ASSUMPTIONS.perDocument, financingRatePct: DEFAULT_ASSUMPTIONS.financingRate * 100, lostSharePct: DEFAULT_ASSUMPTIONS.lostShare * 100 }}
+          />
         </ChartCard>
       )}
     </div>

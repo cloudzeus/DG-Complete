@@ -2,6 +2,7 @@ import "server-only";
 import { memo, MEMO_TTL } from "@/lib/memo";
 import type { Client } from "pg";
 import { purchasePayback } from "@/lib/purchase-payback";
+import { getAssumptions } from "@/lib/assumptions";
 import { schemaName } from "@/lib/warehouse";
 import { withWarehouse } from "@/lib/warehouse-writer";
 
@@ -29,19 +30,17 @@ export type SupplierScore = {
 };
 
 export type StockHealth = {
-  lost: { revenue: number; margin: number; serviceLevel: number | null; itemsOut: number; incomplete: number; checked: number; reliable: boolean; coveragePct: number; toOrder: number; items: LostItem[]; bySupplier: { name: string; value: number }[]; weekly: { week: string; out: number }[] };
+  lost: { revenue: number; margin: number; serviceLevel: number | null; itemsOut: number; incomplete: number; checked: number; reliable: boolean; coveragePct: number; toOrder: number; lostShare: number; items: LostItem[]; bySupplier: { name: string; value: number }[]; weekly: { week: string; out: number }[] };
   dead: { value: number; freed: number; byAction: { action: DeadItem["action"]; value: number; freed: number; items: number }[]; items: DeadItem[] };
   suppliers: SupplierScore[];
 };
-
-/** Share of the demand on out-of-stock days that is lost for good. */
-export const LOST_SHARE = 0.5;
 
 const RECOVERY = { return: 0.9, offer: 0.7, liquidate: 0.35 } as const;
 
 async function computeStockHealth(tenantId: string): Promise<StockHealth> {
   const s = qi(schemaName(tenantId));
   const payback = await purchasePayback(tenantId).catch(() => null);
+  const LOST_SHARE = (await getAssumptions(tenantId)).lostShare;
   return withWarehouse(async (db) => {
     const since = new Date(Date.now() - WINDOW * DAY);
     const goods = (await db.query("SELECT 1 FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'items' AND column_name = 'sodtype'", [schemaName(tenantId)])).rowCount;
@@ -246,6 +245,7 @@ async function computeStockHealth(tenantId: string): Promise<StockHealth> {
         reliable,
         coveragePct: Math.round(coverage * 100),
         toOrder,
+        lostShare: LOST_SHARE,
         items: lostItems.slice(0, 20),
         bySupplier: [...bySup].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, value]) => ({ name, value })),
         weekly,

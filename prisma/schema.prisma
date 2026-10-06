@@ -955,6 +955,10 @@ model PlanningSettings {
   tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   fixedCostsMonthly Decimal? @db.Decimal(14, 2)
   minCash           Decimal? @db.Decimal(14, 2) // alert below this cash balance (scenarios)
+  // Assumptions of the analyses (null = defaults): cost to serve a customer, lost demand on empty shelves.
+  costPerDocument   Decimal? @db.Decimal(10, 2)
+  financingRatePct  Decimal? @db.Decimal(5, 2)
+  lostSharePct      Decimal? @db.Decimal(5, 2)
   updatedAt         DateTime @updatedAt
 
   @@map("planning_settings")

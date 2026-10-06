@@ -6,7 +6,7 @@ import { ChartCard, DashboardErrors, Kpi } from "@/components/dashboards/blocks"
 import { ACTION, DeadTable, LostTable, ScoreTable } from "@/components/stock/health-tables";
 import { requireDashboardTenant } from "@/lib/dashboards";
 import { eurCompact } from "@/lib/format";
-import { LOST_SHARE, stockHealth, type StockHealth } from "@/lib/stock-health";
+import { stockHealth, type StockHealth } from "@/lib/stock-health";
 
 export const metadata: Metadata = { title: "Απόθεμα & προμηθευτές 360°" };
 
@@ -60,7 +60,7 @@ function Body({ h }: { h: StockHealth }) {
           </div>
           <ChartCard
             title="Είδη με τις μεγαλύτερες χαμένες πωλήσεις"
-            description={`Ημέρες χωρίς απόθεμα (και χωρίς πώληση) × ο χαμηλότερος ρυθμός πωλήσεων (με απόθεμα ή 12μήνου) × ${Math.round(LOST_SHARE * 100)}% (οι υπόλοιποι πελάτες περιμένουν ή παίρνουν άλλο είδος), μόνο για είδη που κρατάτε σε απόθεμα. Εξαιρούνται ${l.toOrder} είδη που πωλούνται κατά παραγγελία και ${l.incomplete} με ελλιπή κίνηση αποθήκης.`}
+            description={`Ημέρες χωρίς απόθεμα (και χωρίς πώληση) × ο χαμηλότερος ρυθμός πωλήσεων (με απόθεμα ή 12μήνου) × ${Math.round(l.lostShare * 100)}% (οι υπόλοιποι πελάτες περιμένουν ή παίρνουν άλλο είδος), μόνο για είδη που κρατάτε σε απόθεμα. Εξαιρούνται ${l.toOrder} είδη που πωλούνται κατά παραγγελία και ${l.incomplete} με ελλιπή κίνηση αποθήκης.`}
           >
             <LostTable rows={l.items} />
           </ChartCard>

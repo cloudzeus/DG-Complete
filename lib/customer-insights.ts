@@ -1,6 +1,7 @@
 import "server-only";
 import { memo, MEMO_TTL } from "@/lib/memo";
 import type { Client } from "pg";
+import { getAssumptions, type Assumptions } from "@/lib/assumptions";
 import { schemaName } from "@/lib/warehouse";
 import { withWarehouse } from "@/lib/warehouse-writer";
 
@@ -12,8 +13,6 @@ const qi = (v: string) => `"${v.replace(/"/g, '""')}"`;
 const eur = (v: number) => `${Math.round(v).toLocaleString("el-GR")} €`;
 const has = async (db: Client, s: string, t: string) => !!(await db.query("SELECT to_regclass($1) AS t", [`${s}.${t}`])).rows[0]?.t;
 
-/** Cost-to-serve assumptions (shown on the page). */
-export const SERVE = { perDocument: 8, financingRate: 0.08, returnsHandling: 0.05 };
 
 export type Cohorts = { quarters: string[]; rows: { cohort: string; size: number; values: (number | null)[] }[]; flow: { quarter: string; active: number; new: number; lost: number }[] };
 export type ClvRow = { name: string; customers: number; annualMargin: number; lifetimeYears: number; clv: number };
@@ -31,6 +30,7 @@ export type CustomerInsights = {
   rules: Rule[];
   peers: PeerGap[];
   findings: { level: "risk" | "warning" | "opportunity" | "info"; title: string; detail: string }[];
+  assumptions: Assumptions;
 };
 
 const quarterOf = (d: Date) => `${d.getFullYear()}-Q${Math.floor(d.getMonth() / 3) + 1}`;
@@ -38,6 +38,7 @@ const qIndex = (q: string) => Number(q.slice(0, 4)) * 4 + Number(q.slice(6)) - 1
 
 async function computeCustomerInsights(tenantId: string): Promise<CustomerInsights> {
   const s = qi(schemaName(tenantId));
+  const SERVE = await getAssumptions(tenantId);
   return withWarehouse(async (db) => {
     // ── Activity per customer and quarter (positive sales).
     const act = await db.query(
@@ -321,6 +322,7 @@ async function computeCustomerInsights(tenantId: string): Promise<CustomerInsigh
       rules,
       peers,
       findings,
+      assumptions: SERVE,
     };
   });
 }

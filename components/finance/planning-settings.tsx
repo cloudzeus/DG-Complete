@@ -6,35 +6,55 @@ import { savePlanningSettings } from "@/app/dashboards/[tenantId]/planning/actio
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-export function PlanningSettingsForm({ tenantId, fixed, minCash, needFixed }: { tenantId: string; fixed: number | null; minCash: number | null; needFixed: boolean }) {
-  const [f, setF] = useState(fixed ? String(Math.round(fixed)) : "");
-  const [m, setM] = useState(minCash ? String(Math.round(minCash)) : "");
+type Values = { fixedCostsMonthly: number | null; minCash: number | null; costPerDocument: number | null; financingRatePct: number | null; lostSharePct: number | null };
+
+export function PlanningSettingsForm({ tenantId, values, needFixed, defaults }: { tenantId: string; values: Values; needFixed: boolean; defaults: { perDocument: number; financingRatePct: number; lostSharePct: number } }) {
+  const str = (v: number | null) => (v === null ? "" : String(v));
+  const [f, setF] = useState({
+    fixedCostsMonthly: str(values.fixedCostsMonthly),
+    minCash: str(values.minCash),
+    costPerDocument: str(values.costPerDocument),
+    financingRatePct: str(values.financingRatePct),
+    lostSharePct: str(values.lostSharePct),
+  });
   const [pending, start] = useTransition();
   const n = (v: string) => (v.trim() === "" ? null : Number(v.replace(/\./g, "").replace(",", ".")));
+  const field = (key: keyof typeof f, label: string, placeholder: string, width = "w-40") => (
+    <label className="space-y-1 text-xs">
+      <span className="block">{label}</span>
+      <Input value={f[key]} onChange={(e) => setF({ ...f, [key]: e.target.value })} inputMode="decimal" className={`h-10 ${width}`} placeholder={placeholder} />
+    </label>
+  );
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      {needFixed && (
-        <label className="space-y-1 text-xs">
-          <span className="block">Σταθερά έξοδα ανά μήνα (€) — ενοίκια, μισθοδοσία, λειτουργικά</span>
-          <Input value={f} onChange={(e) => setF(e.target.value)} inputMode="numeric" className="h-10 w-56" placeholder="π.χ. 85000" />
-        </label>
-      )}
-      <label className="space-y-1 text-xs">
-        <span className="block">Ελάχιστο ταμείο (€)</span>
-        <Input value={m} onChange={(e) => setM(e.target.value)} inputMode="numeric" className="h-10 w-40" placeholder="π.χ. 100000" />
-      </label>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-end gap-3">
+        {needFixed && field("fixedCostsMonthly", "Σταθερά έξοδα ανά μήνα (€)", "π.χ. 85000", "w-48")}
+        {field("minCash", "Ελάχιστο ταμείο (€)", "π.χ. 100000")}
+        {field("costPerDocument", "Κόστος ανά παραστατικό πελάτη (€)", `προεπιλογή ${defaults.perDocument}`)}
+        {field("financingRatePct", "Κόστος χρήματος (% ετησίως)", `προεπιλογή ${defaults.financingRatePct}`)}
+        {field("lostSharePct", "Χαμένη ζήτηση σε έλλειψη (%)", `προεπιλογή ${defaults.lostSharePct}`)}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Χρησιμοποιούνται στην πραγματική κερδοφορία πελατών (κόστος εξυπηρέτησης) και στις χαμένες πωλήσεις. Κενό = προεπιλογή.
+      </p>
       <Button
         variant="outline"
         disabled={pending}
         onClick={() =>
           start(async () => {
-            const r = await savePlanningSettings(tenantId, n(f), n(m));
+            const r = await savePlanningSettings(tenantId, {
+              fixedCostsMonthly: n(f.fixedCostsMonthly),
+              minCash: n(f.minCash),
+              costPerDocument: n(f.costPerDocument),
+              financingRatePct: n(f.financingRatePct),
+              lostSharePct: n(f.lostSharePct),
+            });
             if (r.ok) toast.success(r.message);
             else toast.error(r.message);
           })
         }
       >
-        Αποθήκευση
+        Αποθήκευση παραμέτρων
       </Button>
     </div>
   );

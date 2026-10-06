@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { audit } from "@/lib/audit";
+import { memoForget } from "@/lib/memo";
 import { suggestBudget } from "@/lib/planning";
 import { prisma } from "@/lib/prisma";
 import { can, requireUser } from "@/lib/rbac";
@@ -46,17 +47,24 @@ export async function proposeBudget(tenantId: string, year: number, growthPct: n
   return suggestBudget(tenantId, year, Math.max(-50, Math.min(100, growthPct)));
 }
 
-export async function savePlanningSettings(tenantId: string, fixedCostsMonthly: number | null, minCash: number | null): Promise<Result> {
+export async function savePlanningSettings(
+  tenantId: string,
+  v: { fixedCostsMonthly: number | null; minCash: number | null; costPerDocument: number | null; financingRatePct: number | null; lostSharePct: number | null },
+): Promise<Result> {
   try {
     const user = await editor(tenantId);
-    const v = (x: number | null) => (x === null || !Number.isFinite(x) || x < 0 ? null : x.toFixed(2));
-    await prisma.planningSettings.upsert({
-      where: { tenantId },
-      update: { fixedCostsMonthly: v(fixedCostsMonthly), minCash: v(minCash) },
-      create: { tenantId, fixedCostsMonthly: v(fixedCostsMonthly), minCash: v(minCash) },
-    });
-    await audit({ actorId: user.id, action: "planning.settings", entity: "Tenant", entityId: tenantId, tenantId, meta: { fixedCostsMonthly, minCash } });
-    revalidatePath(`/dashboards/${tenantId}/planning`);
+    const d = (x: number | null, max = 1e12) => (x === null || !Number.isFinite(x) || x < 0 || x > max ? null : x.toFixed(2));
+    const data = {
+      fixedCostsMonthly: d(v.fixedCostsMonthly),
+      minCash: d(v.minCash),
+      costPerDocument: d(v.costPerDocument, 10_000),
+      financingRatePct: d(v.financingRatePct, 100),
+      lostSharePct: d(v.lostSharePct, 100),
+    };
+    await prisma.planningSettings.upsert({ where: { tenantId }, update: data, create: { tenantId, ...data } });
+    memoForget(tenantId); // cached analyses use these assumptions
+    await audit({ actorId: user.id, action: "planning.settings", entity: "Tenant", entityId: tenantId, tenantId, meta: v });
+    revalidatePath(`/dashboards/${tenantId}`, "layout");
     return { ok: true, message: "Αποθηκεύτηκε." };
   } catch (err) {
     return { ok: false, message: (err as Error).message };

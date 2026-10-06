@@ -40,7 +40,7 @@ export type Planning = {
     fixedParts: { name: string; value: number }[];
   };
   cash: { balance: number; weeks: { week: number; start: string; inflow: number; outflow: number }[]; minCash: number | null };
-  settings: { fixedCostsMonthly: number | null; minCash: number | null };
+  settings: { fixedCostsMonthly: number | null; minCash: number | null; costPerDocument: number | null; financingRatePct: number | null; lostSharePct: number | null };
 };
 
 const SECTION_NAMES: Record<string, string> = { OPEX: "Λειτουργικά έξοδα", DEPRECIATION: "Αποσβέσεις", FINANCIAL: "Χρηματοοικονομικά" };
@@ -160,7 +160,13 @@ export async function planning(tenantId: string, year = new Date().getFullYear()
       pace: { ytd, recent, used },
       breakEven: { source, fixedYear, marginRatio, revenue12m: rev12, breakEvenRevenue, safetyPct: breakEvenRevenue && rev12 > 0 ? ((rev12 - breakEvenRevenue) / rev12) * 100 : null, fixedParts },
       cash: { balance, weeks, minCash: settings?.minCash ? Number(settings.minCash) : null },
-      settings: { fixedCostsMonthly: settings?.fixedCostsMonthly ? Number(settings.fixedCostsMonthly) : null, minCash: settings?.minCash ? Number(settings.minCash) : null },
+      settings: {
+        fixedCostsMonthly: settings?.fixedCostsMonthly ? Number(settings.fixedCostsMonthly) : null,
+        minCash: settings?.minCash ? Number(settings.minCash) : null,
+        costPerDocument: settings?.costPerDocument != null ? Number(settings.costPerDocument) : null,
+        financingRatePct: settings?.financingRatePct != null ? Number(settings.financingRatePct) : null,
+        lostSharePct: settings?.lostSharePct != null ? Number(settings.lostSharePct) : null,
+      },
     };
   });
 }
