@@ -55,7 +55,8 @@ export async function geocodeTenant(tenantId: string, limit: number): Promise<Ge
     );
     const todo = rows
       .map((r) => ({ trdr: Number(r.trdr), query: addressQuery(r), old: r.address_key as string | null }))
-      .filter((r) => r.query && keyOf(r.query) !== r.old);
+      // Placeholders like «., . .» are not addresses — not worth a paid lookup.
+      .filter((r) => /[\p{L}\p{N}]{2,}/u.test(r.query) && keyOf(r.query) !== r.old);
     const batch = todo.slice(0, limit);
     const result: GeoRun = { tenantId, geocoded: 0, notFound: 0, errors: 0, pending: todo.length - batch.length };
 
@@ -70,7 +71,9 @@ export async function geocodeTenant(tenantId: string, limit: number): Promise<Ge
           } catch (err) {
             error = (err as Error).message.slice(0, 300);
           }
-          const status = error ? "error" : g ? "ok" : "not_found";
+          // A country / region level match would put the customer in the middle of nowhere.
+          const vague = g && ["country", "region"].includes(g.precision);
+          const status = error ? "error" : g && !vague ? "ok" : "not_found";
           if (status === "ok") result.geocoded++;
           else if (status === "not_found") result.notFound++;
           else result.errors++;
