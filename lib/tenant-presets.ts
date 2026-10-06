@@ -32,6 +32,8 @@ export type TenantPreset = {
   filter?: string; // {COMPANY} → connection company (dropped if the table has no COMPANY column)
   intervalMinutes: number;
   options?: JobOptions;
+  /** Always-false condition used to verify the fields (default 1=0; some tables reject it). */
+  probe?: string;
 };
 
 const DAY = 1440;
@@ -184,6 +186,21 @@ export const TENANT_PRESETS: TenantPreset[] = [
     optional: ["CITY", "ISACTIVE"],
     filter: "COMPANY={COMPANY}",
     intervalMinutes: DAY,
+  },
+  {
+    // Document types: names the series that the SERIES table does not return (rights / missing rows).
+    key: "doc_types",
+    name: "Τύποι παραστατικών",
+    group: "Μητρώα",
+    requires: "ANY",
+    table: "FPRMS",
+    targetTable: "doc_types",
+    keyField: "SOSOURCE,FPRMS",
+    columns: { SOSOURCE: "int", FPRMS: "int", CODE: "text", NAME: "text", TFPRMS: "int" },
+    optional: ["CODE", "TFPRMS"],
+    filter: "COMPANY={COMPANY} AND SOSOURCE IN (1351,1251)",
+    intervalMinutes: DAY,
+    probe: "FPRMS=-1",
   },
   {
     key: "series",

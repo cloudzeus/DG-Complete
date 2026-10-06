@@ -83,14 +83,14 @@ export function classifySeries(name: string): { include: boolean; negate: boolea
   return { include: invoice && !excluded, negate };
 }
 
-export type SeriesInfo = { series: number; name: string; sosource: number | null };
+export type SeriesInfo = { series: number; name: string; sosource: number | null; sign?: number };
 
 /** Εμπορικό (χωρίς Γενική Λογιστική): πωλήσεις & αγορές από τα παραστατικά τιμολόγησης. */
 export function commercialTemplate(series: SeriesInfo[]): TemplateLine[] {
   const rules = (sosource: number, source: "SALES" | "PURCHASES") =>
     series
       .filter((s) => s.sosource === sosource)
-      .map((s) => ({ s, c: classifySeries(s.name) }))
+      .map((s) => ({ s, c: s.sign === undefined ? classifySeries(s.name) : { include: s.sign !== 0, negate: s.sign < 0 } }))
       .filter(({ c }) => c.include)
       .map(({ s, c }) => ({ source, pattern: String(s.series), negate: c.negate }));
   return [

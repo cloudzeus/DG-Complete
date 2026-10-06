@@ -253,7 +253,7 @@ async function runWarehouseJob(
       const chunks = options.chunkField && options.chunkValues?.length ? options.chunkValues : [null];
       for (const c of chunks) {
         const chunkFilter = c === null ? null : `${options.chunkField}=${Number(c)}`;
-        rows.push(...(await s1GetTable(job.connectionId, job.table, fields, and(baseFilter, `${yf}=${y}`, chunkFilter))));
+        append(rows, await s1GetTable(job.connectionId, job.table, fields, and(baseFilter, `${yf}=${y}`, chunkFilter)));
       }
       read += rows.length;
       written += await replaceWhere(target, rows, { column: yf, values: [y] });
@@ -275,7 +275,7 @@ async function runWarehouseJob(
     const rows: Row[] = [];
     for (let m = monthStart(from); m <= new Date(); m = addMonths(m, 1)) {
       const a = m < from ? from : m;
-      rows.push(...(await s1GetTable(job.connectionId, job.table, fields, and(baseFilter, range(job.dateField, a, addMonths(m, 1))))));
+      append(rows, await s1GetTable(job.connectionId, job.table, fields, and(baseFilter, range(job.dateField, a, addMonths(m, 1)))));
     }
     track(rows);
     return { read: rows.length, written: await replaceRows(target, rows, { dateField: job.dateField, from }), maxUpdated };
@@ -301,7 +301,7 @@ async function runWarehouseJob(
     const all: Row[] = [];
     const slice = async (from: Date, to: Date): Promise<void> => {
       try {
-        all.push(...(await s1GetTable(job.connectionId, job.table, fields, and(baseFilter, range(updField, from, to)))));
+        append(all, await s1GetTable(job.connectionId, job.table, fields, and(baseFilter, range(updField, from, to))));
       } catch (err) {
         const timeout = (err as Error).name === "TimeoutError" || /timeout/i.test((err as Error).message);
         if (!timeout || to.getTime() - from.getTime() <= DAY_MS) throw err;
@@ -311,7 +311,7 @@ async function runWarehouseJob(
       }
     };
     const first = new Date(2000, 0, 1);
-    all.push(...(await s1GetTable(job.connectionId, job.table, fields, and(baseFilter, `(${updField} IS NULL OR ${updField}<'${formatS1Date(first)}')`))));
+    append(all, await s1GetTable(job.connectionId, job.table, fields, and(baseFilter, `(${updField} IS NULL OR ${updField}<'${formatS1Date(first)}')`)));
     const end = new Date(Date.now() + DAY_MS);
     for (let y = first; y < end; y = new Date(y.getFullYear() + 1, 0, 1)) await slice(y, new Date(Math.min(new Date(y.getFullYear() + 1, 0, 1).getTime(), end.getTime())));
     track(all);
@@ -323,6 +323,11 @@ async function runWarehouseJob(
 }
 
 const DAY_MS = 24 * 3600_000;
+
+/** push(...rows) overflows the call stack on large reads (100k+ rows). */
+function append<T>(target: T[], rows: T[]) {
+  for (const r of rows) target.push(r);
+}
 
 async function finishJob(job: SyncJob, status: "SUCCESS" | "FAILED") {
   const now = new Date();
@@ -538,7 +543,7 @@ export async function seedTenantJobs(connectionId: string, opts: { enabled?: boo
     let lastError = "";
     for (const a of attempts) {
       try {
-        await s1GetTable(conn.id, p.table, a.fields, [a.filter ? `(${a.filter})` : null, "1=0"].filter(Boolean).join(" AND "));
+        await s1GetTable(conn.id, p.table, a.fields, [a.filter ? `(${a.filter})` : null, p.probe ?? "1=0"].filter(Boolean).join(" AND "));
         chosen = a;
         break;
       } catch (err) {
@@ -588,7 +593,7 @@ async function upgradeTenantJob(connectionId: string, company: string | null, p:
   const added: string[] = [];
   for (const f of missing) {
     try {
-      await s1GetTable(connectionId, job.table, [...Object.keys(columns), f], [job.filter ? `(${resolveFilter(job.filter, company ?? "")})` : null, "1=0"].filter(Boolean).join(" AND "));
+      await s1GetTable(connectionId, job.table, [...Object.keys(columns), f], [job.filter ? `(${resolveFilter(job.filter, company ?? "")})` : null, p.probe ?? "1=0"].filter(Boolean).join(" AND "));
       columns[f] = p.columns[f];
       added.push(f);
     } catch {

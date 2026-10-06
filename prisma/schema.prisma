@@ -139,6 +139,7 @@ model Tenant {
   plan               Plan?               @relation(fields: [planId], references: [id], onDelete: SetNull)
   emailLogs          EmailLog[]
   emailSuppressions  EmailSuppression[]
+  docSeriesOverrides DocSeriesOverride[]
   apiKeys            ApiKey[]
   industry           IndustrySegmentation?
   /// BI settings, e.g. { mainWarehouses: [1000], receivablePrefixes: ["30"], payablePrefixes: ["50"] }
@@ -843,4 +844,18 @@ model AuditLog {
   @@index([tenantId, createdAt])
   @@index([entity, entityId])
   @@map("audit_log")
+}
+
+// Admin correction of how a document series counts in sales / purchases (1 invoice, -1 credit,
+// 0 excluded), when the automatic classification by name gets it wrong.
+model DocSeriesOverride {
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  series      Int
+  sign        Int
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+
+  @@id([tenantId, series])
+  @@map("doc_series_override")
 }

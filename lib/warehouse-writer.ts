@@ -66,6 +66,19 @@ async function ensureTable(db: Client, t: WriteTarget) {
   for (const [f, type] of Object.entries(t.columns)) {
     await db.query(`ALTER TABLE ${schema}.${table} ADD COLUMN IF NOT EXISTS ${q(col(f))} ${PG_TYPE[type]}`);
   }
+  // Tables created elsewhere (e.g. the empty placeholders of the BI marts) may lack the sync
+  // column and the key that ON CONFLICT needs.
+  await db.query(`ALTER TABLE ${schema}.${table} ADD COLUMN IF NOT EXISTS "_synced_at" timestamp NOT NULL DEFAULT now()`);
+  const { rows } = await db.query(
+    `SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid = i.indrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = $1 AND c.relname = $2 AND (i.indisprimary OR i.indisunique) LIMIT 1`,
+    [schemaName(t.tenantId), t.table],
+  );
+  if (!rows.length) {
+    // Duplicates would block the key; a fresh sync rewrites the rows anyway.
+    await db.query(`DELETE FROM ${schema}.${table} a USING ${schema}.${table} b WHERE a.ctid < b.ctid AND ${t.keyFields.map((k) => `a.${q(col(k))} IS NOT DISTINCT FROM b.${q(col(k))}`).join(" AND ")}`);
+    await db.query(`ALTER TABLE ${schema}.${table} ADD PRIMARY KEY (${pk})`);
+  }
 }
 
 /** Keeps the last row per primary key (a table read without the COMPANY filter may repeat ids). */

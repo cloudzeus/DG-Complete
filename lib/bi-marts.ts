@@ -2,6 +2,7 @@ import "server-only";
 import type { Client } from "pg";
 import { prisma } from "@/lib/prisma";
 import { schemaName } from "@/lib/warehouse";
+import { buildDocSeries } from "@/lib/doc-series";
 import { withWarehouse } from "@/lib/warehouse-writer";
 import { buildLedgerMarts } from "@/lib/bi-ledger";
 
@@ -425,6 +426,15 @@ export async function buildBiMarts(tenantId: string): Promise<MartsReport> {
   try {
     await withWarehouse(async (db) => {
       await db.query("SET statement_timeout = '300s'");
+      // Series used in new documents count from the first rebuild (see lib/doc-series).
+      await db.query("BEGIN");
+      try {
+        await buildDocSeries(db, tenantId);
+        await db.query("COMMIT");
+      } catch (err) {
+        await db.query("ROLLBACK");
+        throw err;
+      }
       const docCols = { lnetamnt: "numeric(19,6)", sumlamnt: "numeric(19,6)", insdate: "timestamp", salesman: "bigint", payment: "bigint" };
       const lineCols = { lnetlineval: "numeric(19,6)", netlineval: "numeric(19,6)", salesman: "bigint", findocs: "bigint", whouse: "bigint" };
       const has = {
@@ -436,7 +446,7 @@ export async function buildBiMarts(tenantId: string): Promise<MartsReport> {
         stock: await tableExists(db, schema, "stock_balances"),
       };
       if (!has.costs) {
-        await db.query(`CREATE TABLE IF NOT EXISTS ${qi(schema)}.item_costs (mtrl bigint, fiscprd int, standcost numeric(19,6), purlprice numeric(19,6), purprice1 numeric(19,6))`);
+        await db.query(`CREATE TABLE IF NOT EXISTS ${qi(schema)}.item_costs (mtrl bigint, fiscprd int, standcost numeric(19,6), purlprice numeric(19,6), purprice1 numeric(19,6), "_synced_at" timestamp NOT NULL DEFAULT now(), PRIMARY KEY (mtrl, fiscprd))`);
       }
       if (has.purchases && has.series) {
         await buildPurchaseFacts(db, schema);

@@ -3,8 +3,8 @@ import type { Client } from "pg";
 import { prisma } from "@/lib/prisma";
 import { schemaName } from "@/lib/warehouse";
 import { withWarehouse } from "@/lib/warehouse-writer";
+import { buildDocSeries, rebuildDocSeries } from "@/lib/doc-series";
 import {
-  classifySeries,
   commercialTemplate,
   EGLS_TEMPLATE,
   SECTION_ORDER,
@@ -41,59 +41,22 @@ async function rebuildMartsIfStale(tenantId: string) {
 }
 
 /** Tables whose refresh changes the P&L. */
-export const PNL_SOURCE_TABLES = new Set(["gl_lines", "gl_accounts", "sales_docs", "purchase_docs", "series"]);
+export const PNL_SOURCE_TABLES = new Set(["gl_lines", "gl_accounts", "sales_docs", "purchase_docs", "series", "doc_types"]);
 
 const exists = async (db: Client, schema: string, table: string) =>
   !!(await db.query("SELECT to_regclass($1) AS t", [`${schema}.${table}`])).rows[0]?.t;
 
+/** All series (doc_series: SERIES + series used in documents, named, with their sign). */
 async function readSeries(tenantId: string): Promise<SeriesInfo[]> {
   return withWarehouse(async (db) => {
     const schema = schemaName(tenantId);
+    if (await exists(db, schema, "doc_series")) {
+      const res = await db.query(`SELECT series::int AS series, COALESCE(name, '') AS name, sosource::int AS sosource, sign::int AS sign FROM "${schema}".doc_series`);
+      return res.rows as SeriesInfo[];
+    }
     if (!(await exists(db, schema, "series"))) return [];
     const res = await db.query(`SELECT series::int AS series, name, sosource::int AS sosource FROM "${schema}".series`);
     return res.rows as SeriesInfo[];
-  });
-}
-
-/**
- * doc_series: the invoicing series of the tenant with their sign (1 invoice/receipt, -1 credit
- * note/return, 0 = not a sale/purchase: orders, offers, delivery notes). Used by the sales and
- * purchases cubes. Rebuilt with fin_fact and after every series import.
- */
-async function buildDocSeries(db: Client, schema: string) {
-  const s = `"${schema}"`;
-  await db.query(`CREATE TABLE IF NOT EXISTS ${s}.doc_series (
-    series bigint PRIMARY KEY, sosource int, name text, sign int NOT NULL)`);
-  await db.query(`DELETE FROM ${s}.doc_series`);
-  // The cubes read company-currency amounts; tables imported before they were added get them (NULL → NETAMNT).
-  for (const t of ["sales_docs", "purchase_docs"]) {
-    if (await exists(db, schema, t)) {
-      await db.query(`ALTER TABLE ${s}.${t} ADD COLUMN IF NOT EXISTS lnetamnt numeric(19,6), ADD COLUMN IF NOT EXISTS sumlamnt numeric(19,6)`);
-    }
-  }
-  if (!(await exists(db, schema, "series"))) return;
-  const rows = (await db.query(`SELECT series::bigint AS series, sosource::int AS sosource, name FROM ${s}.series`)).rows as SeriesInfo[];
-  const data = rows.map((r) => {
-    const c = classifySeries(r.name ?? "");
-    return { series: r.series, sosource: r.sosource, name: r.name, sign: c.include ? (c.negate ? -1 : 1) : 0 };
-  });
-  await db.query(
-    `INSERT INTO ${s}.doc_series SELECT * FROM jsonb_to_recordset($1::jsonb) AS r(series bigint, sosource int, name text, sign int)
-     ON CONFLICT (series) DO NOTHING`,
-    [JSON.stringify(data)],
-  );
-}
-
-export async function rebuildDocSeries(tenantId: string) {
-  await withWarehouse(async (db) => {
-    await db.query("BEGIN");
-    try {
-      await buildDocSeries(db, schemaName(tenantId));
-      await db.query("COMMIT");
-    } catch (err) {
-      await db.query("ROLLBACK");
-      throw err;
-    }
   });
 }
 
@@ -145,7 +108,7 @@ export async function rebuildFinFact(tenantId: string): Promise<number> {
       await db.query("BEGIN");
       try {
         await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`fin_fact:${tenantId}`]);
-        await buildDocSeries(db, schema);
+        await buildDocSeries(db, tenantId);
         await db.query(`CREATE TABLE IF NOT EXISTS ${s}.pnl_lines (
           code text PRIMARY KEY, name text NOT NULL, section text NOT NULL,
           section_sort int NOT NULL, sort_order int NOT NULL)`);
@@ -231,7 +194,7 @@ export async function rebuildAfterImport(tenantId: string, table: string | null)
   if (!table) return;
   if (MART_SOURCE_TABLES.has(table)) await rebuildMartsIfStale(tenantId);
   if (!PNL_SOURCE_TABLES.has(table)) return;
-  if (table === "series") await rebuildDocSeries(tenantId).catch(() => undefined);
+  if (table === "series" || table === "doc_types") await rebuildDocSeries(tenantId).catch(() => undefined);
   if (!(await prisma.pnlConfig.findUnique({ where: { tenantId }, select: { tenantId: true } }))) return;
   await rebuildFinFact(tenantId).catch(() => undefined);
 }

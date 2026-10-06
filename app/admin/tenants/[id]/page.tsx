@@ -11,6 +11,7 @@ import {
   DatabaseZap,
   Download,
   Factory,
+  ListChecks,
   MapPinned,
   Plug,
   Scale,
@@ -47,6 +48,7 @@ import { TenantUsers } from "./tenant-users";
 import { SubscriptionForm } from "./subscription-form";
 import { GeoPanel } from "./geo-panel";
 import { IndustryPanel } from "./industry-panel";
+import { SeriesPanel } from "./series-panel";
 import { hasService } from "@/lib/tenant-services";
 
 export async function generateMetadata({
@@ -230,6 +232,24 @@ export default async function TenantPage({
               />
             </CardContent>
           </Card>
+          {tenantSoftOne && canSources && (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <SectionTitle icon={ListChecks} tone="blue">
+                    Σειρές παραστατικών
+                  </SectionTitle>
+                </CardTitle>
+                <CardDescription>
+                  Ποιες σειρές μετρούν ως πωλήσεις / αγορές (τιμολόγια +, πιστωτικά −, παραγγελίες και δελτία εκτός). Ελέγχεται αυτόματα σε κάθε
+                  ενημέρωση· διορθώστε όπου η αυτόματη κατάταξη κάνει λάθος.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <SeriesPanel tenantId={tenant.id} />
+              </CardContent>
+            </Card>
+          )}
           {tenantSoftOne && canSources && (
             <Card>
               <CardHeader>
