@@ -138,6 +138,7 @@ model Tenant {
   planId             String?
   plan               Plan?               @relation(fields: [planId], references: [id], onDelete: SetNull)
   emailLogs          EmailLog[]
+  emailSuppressions  EmailSuppression[]
   apiKeys            ApiKey[]
   industry           IndustrySegmentation?
   /// BI settings, e.g. { mainWarehouses: [1000], receivablePrefixes: ["30"], payablePrefixes: ["50"] }
@@ -634,6 +635,10 @@ model EmailSettings {
   lastTestAt    DateTime?
   lastTestOk    Boolean?
   lastTestError String?
+  // Mailgun webhooks (opens, deliveries, failures, unsubscribes): HTTP webhook signing key, encrypted.
+  webhookKeyEnc  String?
+  webhookKeyHint String?
+  trackOpens     Boolean   @default(true)
   updatedAt     DateTime  @updatedAt
 
   @@map("email_settings")
@@ -663,10 +668,55 @@ model EmailLog {
   // Reminders are sent once: e.g. renewal:<tenant>:<endsAt>:14
   dedupeKey String?  @unique
   createdAt DateTime @default(now())
+  // From Mailgun webhooks (first time each happened; opens are counted).
+  deliveredAt  DateTime?
+  openedAt     DateTime?
+  lastOpenedAt DateTime?
+  openCount    Int          @default(0)
+  failedAt     DateTime?
+  failReason   String?
+  events       EmailEvent[]
 
   @@index([createdAt])
   @@index([tenantId, createdAt])
+  @@index([messageId])
   @@map("email_log")
+}
+
+// One row per Mailgun webhook event (delivered, opened, clicked, failed, unsubscribed, complained).
+model EmailEvent {
+  id        String    @id // Mailgun event id → a re-delivered webhook is stored once
+  logId     String?
+  log       EmailLog? @relation(fields: [logId], references: [id], onDelete: Cascade)
+  event     String
+  severity  String?
+  recipient String
+  at        DateTime
+  client    String? // e.g. «Gmail · mobile · iOS»
+  country   String?
+  city      String?
+  url       String?
+  reason    String?
+  createdAt DateTime  @default(now())
+
+  @@index([logId])
+  @@index([event, at])
+  @@index([recipient])
+  @@map("email_event")
+}
+
+// Addresses that must not receive non-essential emails (reminders): unsubscribed via the link in the
+// email or in Mailgun, spam complaints, or added by an admin. Account / receipt emails still go out.
+model EmailSuppression {
+  email     String   @id
+  reason    String // unsubscribe | complaint | admin
+  source    String // link | mailgun | admin
+  template  String?
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@map("email_suppression")
 }
 
 // Κίμων — the AI business advisor. One conversation per thread, private to its user and tenant.

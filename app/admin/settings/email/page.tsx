@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
-import { History, Mail, MailCheck, Palette } from "lucide-react";
+import Link from "next/link";
+import { BarChart3, History, Mail, MailCheck, Palette } from "lucide-react";
 import { PageHeader, SectionTitle } from "@/components/admin/page-header";
 import { StatusPill } from "@/components/admin/tone";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { templateText } from "@/lib/email";
 import { TEMPLATES } from "@/lib/email-templates";
@@ -30,7 +32,16 @@ export default async function EmailSettingsPage() {
         description="Αποστολή email της πλατφόρμας μέσω Mailgun (EU): απώλεια κωδικού, καλωσόρισμα χρηστών, υπενθυμίσεις ανανέωσης και πληρωμής, αποδεικτικά πληρωμής."
         icon={Mail}
         tone="blue"
-        actions={settings.enabled ? <StatusPill tone="green">Ενεργό</StatusPill> : <StatusPill tone="slate">Ανενεργό</StatusPill>}
+        actions={
+          <>
+            {settings.enabled ? <StatusPill tone="green">Ενεργό</StatusPill> : <StatusPill tone="slate">Ανενεργό</StatusPill>}
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/admin/settings/email/stats">
+                <BarChart3 className="size-4" /> Στατιστικά & διαγραφές
+              </Link>
+            </Button>
+          </>
+        }
       />
       <div className="space-y-6">
         <Card>
@@ -97,7 +108,8 @@ export default async function EmailSettingsPage() {
                     <th className="py-2 pr-3 font-medium">Πρότυπο</th>
                     <th className="py-2 pr-3 font-medium">Προς</th>
                     <th className="py-2 pr-3 font-medium">Πελάτης</th>
-                    <th className="py-2 font-medium">Αποτέλεσμα</th>
+                    <th className="py-2 pr-3 font-medium">Αποτέλεσμα</th>
+                    <th className="py-2 font-medium">Άνοιξε</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -107,7 +119,20 @@ export default async function EmailSettingsPage() {
                       <td className="py-2 pr-3">{names[l.template] ?? l.template}</td>
                       <td className="max-w-64 truncate py-2 pr-3">{l.to}</td>
                       <td className="max-w-48 truncate py-2 pr-3">{l.tenant?.name ?? "—"}</td>
-                      <td className="py-2">{l.ok ? <StatusPill tone="green">Στάλθηκε</StatusPill> : <span className="text-xs text-destructive">{l.error}</span>}</td>
+                      <td className="py-2 pr-3">
+                        {!l.ok ? (
+                          <span className="text-xs text-destructive">{l.error}</span>
+                        ) : l.failedAt ? (
+                          <span className="text-xs text-destructive" title={l.failReason ?? undefined}>Απορρίφθηκε</span>
+                        ) : l.deliveredAt ? (
+                          <StatusPill tone="green">Παραδόθηκε</StatusPill>
+                        ) : (
+                          <StatusPill tone="blue">Στάλθηκε</StatusPill>
+                        )}
+                      </td>
+                      <td className="py-2 whitespace-nowrap tabular-nums">
+                        {l.openedAt ? `${l.openedAt.toLocaleString("el-GR", { timeZone: "Europe/Athens", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}${l.openCount > 1 ? ` ×${l.openCount}` : ""}` : "—"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

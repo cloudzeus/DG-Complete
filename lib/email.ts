@@ -1,6 +1,7 @@
 import "server-only";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { renderEmail, templateDef, type Vars } from "@/lib/email-templates";
+import { normEmail, suppressedSet, unsubscribeOneClickUrl, unsubscribePageUrl } from "@/lib/email-tracking";
 import { getEmailSettings, mailgunConfig, mailgunSend } from "@/lib/mailgun";
 import { prisma } from "@/lib/prisma";
 
@@ -36,48 +37,81 @@ export async function sendTemplate(opts: {
   /** Unsaved text from the template editor (test sends). */
   override?: { subject: string; body: string };
 }): Promise<SendResult> {
-  const to = [...new Set(opts.to.map((e) => e.trim().toLowerCase()).filter((e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)))];
+  let to = [...new Set(opts.to.map(normEmail).filter((e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)))];
   if (!to.length) return { ok: false, skipped: true, error: "Δεν υπάρχει παραλήπτης." };
-  if (opts.dedupeKey && (await prisma.emailLog.findUnique({ where: { dedupeKey: opts.dedupeKey }, select: { id: true } }))) {
-    return { ok: true, skipped: true };
+  // Each recipient gets its own message (own open tracking, own unsubscribe link) and log row.
+  // Rows from before per-recipient sending carry the bare key.
+  const key = (e: string) => (opts.dedupeKey ? `${opts.dedupeKey}|${e}` : null);
+  if (opts.dedupeKey) {
+    if (await prisma.emailLog.findUnique({ where: { dedupeKey: opts.dedupeKey }, select: { id: true } })) return { ok: true, skipped: true };
+    const done = await prisma.emailLog.findMany({ where: { dedupeKey: { in: to.map((e) => key(e)!) } }, select: { dedupeKey: true } });
+    const sent = new Set(done.map((d) => d.dedupeKey));
+    to = to.filter((e) => !sent.has(key(e)));
+    if (!to.length) return { ok: true, skipped: true };
+  }
+  const def = templateDef(opts.template);
+  if (def?.optional && !opts.force) {
+    const off = await suppressedSet(to);
+    to = to.filter((e) => !off.has(e));
+    if (!to.length) return { ok: true, skipped: true, error: "Οι παραλήπτες έχουν ζητήσει να μη λαμβάνουν υπενθυμίσεις." };
   }
   const settings = await getEmailSettings();
   if (!settings.enabled && !opts.force) return { ok: false, skipped: true, error: "Η αποστολή email είναι απενεργοποιημένη." };
 
-  const { subject: s, body } = opts.override ?? (await templateText(opts.template));
-  const msg = renderEmail({ subject: s, body }, opts.vars);
-  let result: SendResult;
+  const text = opts.override ?? (await templateText(opts.template));
+  let cfg: Awaited<ReturnType<typeof mailgunConfig>> | null = null;
+  let setupError: string | null = null;
   try {
-    const cfg = await mailgunConfig();
+    cfg = await mailgunConfig();
     if (!settings.fromEmail) throw new Error("Δεν έχει οριστεί email αποστολέα.");
-    const messageId = await mailgunSend(cfg, {
-      from: `${settings.fromName} <${settings.fromEmail}>`,
-      to,
-      subject: msg.subject,
-      html: msg.html,
-      text: msg.text,
-      replyTo: settings.replyTo,
-      bcc: opts.force ? null : settings.bcc,
-      tags: [opts.template],
-    });
-    result = { ok: true, messageId };
   } catch (err) {
-    result = { ok: false, error: (err as Error).message.slice(0, 500) };
+    setupError = (err as Error).message;
   }
-  await prisma.emailLog.create({
-    data: {
-      template: opts.template,
-      to: to.join(", "),
-      subject: msg.subject,
-      ok: result.ok,
-      messageId: result.messageId ?? null,
-      error: result.error ?? null,
-      tenantId: opts.tenantId ?? null,
-      // Only a successful send blocks a retry of the same reminder.
-      dedupeKey: result.ok ? (opts.dedupeKey ?? null) : null,
-    },
-  });
-  return result;
+
+  const results: SendResult[] = [];
+  for (const [i, email] of to.entries()) {
+    const logId = randomUUID();
+    const unsubscribe = def?.optional ? { page: unsubscribePageUrl(email), oneClick: unsubscribeOneClickUrl(email) } : null;
+    const msg = renderEmail(text, opts.vars, { unsubscribeUrl: unsubscribe?.page });
+    let result: SendResult;
+    try {
+      if (!cfg || setupError) throw new Error(setupError ?? "Mailgun");
+      const messageId = await mailgunSend(cfg, {
+        from: `${settings.fromName} <${settings.fromEmail}>`,
+        to: [email],
+        subject: msg.subject,
+        html: msg.html,
+        text: msg.text,
+        replyTo: settings.replyTo,
+        // One copy per email, not one per recipient.
+        bcc: opts.force || i > 0 ? null : settings.bcc,
+        tags: [opts.template],
+        variables: { logId },
+        trackOpens: settings.trackOpens,
+        headers: unsubscribe ? { "List-Unsubscribe": `<${unsubscribe.oneClick}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : undefined,
+      });
+      result = { ok: true, messageId };
+    } catch (err) {
+      result = { ok: false, error: (err as Error).message.slice(0, 500) };
+    }
+    await prisma.emailLog.create({
+      data: {
+        id: logId,
+        template: opts.template,
+        to: email,
+        subject: msg.subject,
+        ok: result.ok,
+        messageId: result.messageId ?? null,
+        error: result.error ?? null,
+        tenantId: opts.tenantId ?? null,
+        // Only a successful send blocks a retry of the same reminder.
+        dedupeKey: result.ok ? key(email) : null,
+      },
+    });
+    results.push(result);
+  }
+  const failed = results.find((r) => !r.ok);
+  return failed ? { ok: false, error: failed.error } : { ok: true, messageId: results[0]?.messageId };
 }
 
 // ───────────── Account emails ─────────────

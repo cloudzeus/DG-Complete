@@ -57,6 +57,10 @@ export type OutgoingMessage = {
   replyTo?: string | null;
   bcc?: string | null;
   tags?: string[];
+  headers?: Record<string, string>;
+  /** Custom variables, returned in every webhook event (user-variables). */
+  variables?: Record<string, string>;
+  trackOpens?: boolean;
 };
 
 export async function mailgunSend(cfg: MailgunConfig, m: OutgoingMessage): Promise<string> {
@@ -69,6 +73,11 @@ export async function mailgunSend(cfg: MailgunConfig, m: OutgoingMessage): Promi
   form.set("text", m.text);
   if (m.replyTo) form.set("h:Reply-To", m.replyTo);
   for (const t of m.tags ?? []) form.append("o:tag", t);
+  for (const [k, v] of Object.entries(m.headers ?? {})) form.set(`h:${k}`, v);
+  for (const [k, v] of Object.entries(m.variables ?? {})) form.set(`v:${k}`, v);
+  // Opens only: click tracking would rewrite the password / welcome links through Mailgun.
+  form.set("o:tracking-opens", m.trackOpens ? "yes" : "no");
+  form.set("o:tracking-clicks", "no");
   const res = await fetch(`${apiBase(cfg.region)}/v3/${encodeURIComponent(cfg.domain)}/messages`, {
     method: "POST",
     headers: { Authorization: auth(cfg.apiKey) },
@@ -78,4 +87,71 @@ export async function mailgunSend(cfg: MailgunConfig, m: OutgoingMessage): Promi
   });
   if (!res.ok) throw await mgError(res);
   return ((await res.json()) as { id?: string }).id ?? "";
+}
+
+// ───────────── Webhooks & suppressions ─────────────
+
+export const sealWebhookKey = (key: string) => encrypt(key, `${AAD}:webhook`);
+export const openWebhookKey = (enc: string) => decrypt(enc, `${AAD}:webhook`);
+
+export const WEBHOOK_EVENTS = ["delivered", "opened", "clicked", "permanent_fail", "temporary_fail", "unsubscribed", "complained"] as const;
+
+async function mg(cfg: MailgunConfig, path: string, init: RequestInit = {}) {
+  const res = await fetch(`${apiBase(cfg.region)}${path}`, {
+    ...init,
+    headers: { Authorization: auth(cfg.apiKey) },
+    cache: "no-store",
+    signal: AbortSignal.timeout(20_000),
+  });
+  return res;
+}
+
+/** Points every tracked event of the domain at our webhook URL (keeps other URLs already there). */
+export async function registerWebhooks(cfg: MailgunConfig, url: string) {
+  const d = encodeURIComponent(cfg.domain);
+  const res = await mg(cfg, `/v3/domains/${d}/webhooks`);
+  if (!res.ok) throw await mgError(res);
+  const current = ((await res.json()) as { webhooks?: Record<string, { urls?: string[] }> }).webhooks ?? {};
+  const changed: string[] = [];
+  for (const id of WEBHOOK_EVENTS) {
+    const urls = current[id]?.urls ?? [];
+    if (urls.includes(url)) continue;
+    const form = new FormData();
+    for (const u of [...urls.slice(0, 2), url]) form.append("url", u);
+    let r: Response;
+    if (current[id]) {
+      r = await mg(cfg, `/v3/domains/${d}/webhooks/${id}`, { method: "PUT", body: form });
+    } else {
+      form.set("id", id);
+      r = await mg(cfg, `/v3/domains/${d}/webhooks`, { method: "POST", body: form });
+    }
+    if (!r.ok) throw await mgError(r);
+    changed.push(id);
+  }
+  return { changed };
+}
+
+/** Unsubscribes + spam complaints stored in Mailgun for the domain. */
+export async function mailgunSuppressions(cfg: MailgunConfig) {
+  const out: { email: string; reason: "unsubscribe" | "complaint"; at: Date }[] = [];
+  for (const [kind, reason] of [["unsubscribes", "unsubscribe"], ["complaints", "complaint"]] as const) {
+    let path: string | null = `/v3/${encodeURIComponent(cfg.domain)}/${kind}?limit=1000`;
+    for (let page = 0; path && page < 20; page++) {
+      const res = await mg(cfg, path);
+      if (!res.ok) throw await mgError(res);
+      const body = (await res.json()) as { items?: { address: string; created_at?: string }[]; paging?: { next?: string } };
+      const items = body.items ?? [];
+      for (const i of items) out.push({ email: i.address.toLowerCase(), reason, at: i.created_at ? new Date(i.created_at) : new Date() });
+      path = items.length && body.paging?.next ? body.paging.next.replace(/^https:\/\/[^/]+/, "") : null;
+    }
+  }
+  return out;
+}
+
+/** Lets Mailgun deliver to the address again (no error if it was not listed). */
+export async function removeMailgunSuppression(cfg: MailgunConfig, email: string) {
+  for (const kind of ["unsubscribes", "complaints"]) {
+    const res = await mg(cfg, `/v3/${encodeURIComponent(cfg.domain)}/${kind}/${encodeURIComponent(email)}`, { method: "DELETE" });
+    if (!res.ok && res.status !== 404) throw await mgError(res);
+  }
 }

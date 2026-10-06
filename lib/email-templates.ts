@@ -7,7 +7,16 @@
 //   {{var}} → value; a list line whose variables are all empty is dropped.
 
 export type TemplateVar = { key: string; label: string; sample: string };
-export type TemplateDef = { key: string; name: string; description: string; vars: TemplateVar[]; subject: string; body: string };
+export type TemplateDef = {
+  key: string;
+  name: string;
+  description: string;
+  vars: TemplateVar[];
+  subject: string;
+  body: string;
+  /** Reminders: the recipient can unsubscribe (link in the footer). Account and receipt emails always go out. */
+  optional?: boolean;
+};
 
 const V = {
   name: { key: "name", label: "Όνομα παραλήπτη", sample: "Γιάννης Παπαδόπουλος" },
@@ -58,6 +67,7 @@ export const TEMPLATES: TemplateDef[] = [
   },
   {
     key: "renewal_reminder",
+    optional: true,
     name: "Υπενθύμιση ανανέωσης",
     description: "Πριν λήξει η συνδρομή (οι ημέρες ορίζονται παραπάνω). Στέλνεται στο email του πελάτη και στους διαχειριστές του.",
     vars: [V.tenant, V.endsAt, V.daysLeft, V.amount, V.period, V.loginUrl],
@@ -75,6 +85,7 @@ export const TEMPLATES: TemplateDef[] = [
   },
   {
     key: "payment_overdue",
+    optional: true,
     name: "Υπενθύμιση πληρωμής (ληγμένη συνδρομή)",
     description: "Μετά τη λήξη, όσο δεν έχει καταχωρηθεί πληρωμή (οι ημέρες ορίζονται παραπάνω).",
     vars: [V.tenant, V.endsAt, V.amount, V.period],
@@ -172,7 +183,7 @@ function bodyText(body: string) {
     .trim();
 }
 
-export function renderEmail(t: { subject: string; body: string }, vars: Vars) {
+export function renderEmail(t: { subject: string; body: string }, vars: Vars, opts: { unsubscribeUrl?: string } = {}) {
   const filledText = fill(dropEmptyLines(t.body, vars), vars);
   const escapedVars = Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, v === null || v === undefined ? v : esc(String(v))]));
   const filledHtml = fill(esc(dropEmptyLines(t.body, vars)).replace(/&quot;/g, '"'), escapedVars);
@@ -184,9 +195,10 @@ export function renderEmail(t: { subject: string; body: string }, vars: Vars) {
 <tr><td style="height:4px;background:${BRAND};font-size:0;line-height:0">&nbsp;</td></tr>
 <tr><td style="padding:22px 28px 6px;font-size:18px;font-weight:700;letter-spacing:-0.2px"><span style="color:${BRAND}">DG</span>smart <span style="color:#8a817a;font-weight:600">BI</span></td></tr>
 <tr><td style="padding:12px 28px 8px;font-size:15px;line-height:1.6">${bodyHtml(filledHtml)}</td></tr>
-<tr><td style="padding:16px 28px 22px;border-top:1px solid #efeae4;font-size:12px;line-height:1.5;color:#8a817a">DGsoft · DGsmart BI — επιχειρηματική ευφυΐα για τα δεδομένα του SoftOne σας<br>Αυτό το μήνυμα στάλθηκε αυτόματα από το bi.dgsmart.gr.</td></tr>
+<tr><td style="padding:16px 28px 22px;border-top:1px solid #efeae4;font-size:12px;line-height:1.5;color:#8a817a">DGsoft · DGsmart BI — επιχειρηματική ευφυΐα για τα δεδομένα του SoftOne σας<br>Αυτό το μήνυμα στάλθηκε αυτόματα από το bi.dgsmart.gr.${opts.unsubscribeUrl ? `<br><a href="${esc(opts.unsubscribeUrl)}" style="color:#8a817a">Δεν θέλω να λαμβάνω υπενθυμίσεις</a>` : ""}</td></tr>
 </table></td></tr></table></body></html>`;
-  return { subject, html, text: `${bodyText(filledText)}\n\n— DGsmart BI · bi.dgsmart.gr` };
+  const unsubscribe = opts.unsubscribeUrl ? `\nΔεν θέλω να λαμβάνω υπενθυμίσεις: ${opts.unsubscribeUrl}` : "";
+  return { subject, html, text: `${bodyText(filledText)}\n\n— DGsmart BI · bi.dgsmart.gr${unsubscribe}` };
 }
 
 export const sampleVars = (t: TemplateDef): Vars => Object.fromEntries(t.vars.map((v) => [v.key, v.sample]));
