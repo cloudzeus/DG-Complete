@@ -61,6 +61,7 @@ export default async function EmailSettingsPage() {
             <EmailForm
               values={{
                 keyHint: settings.keyHint,
+                webhookKeyHint: settings.webhookKeyHint,
                 domain: settings.domain ?? "",
                 region: settings.region,
                 fromName: settings.fromName,

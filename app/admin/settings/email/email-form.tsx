@@ -10,6 +10,7 @@ import { saveEmailSettings, type EmailFormState } from "./actions";
 
 export type EmailSettingsValues = {
   keyHint: string | null;
+  webhookKeyHint: string | null;
   domain: string;
   region: string;
   fromName: string;
@@ -44,6 +45,13 @@ export function EmailForm({ values }: { values: EmailSettingsValues }) {
           "Mailgun API key",
           <Input id="em-apiKey" name="apiKey" type="password" autoComplete="off" placeholder={values.keyHint ? `αποθηκευμένο ${values.keyHint} — αφήστε κενό` : "key-…"} />,
           "Mailgun → Account → API keys (Private API key). Κρυπτογραφείται.",
+          true,
+        )}
+        {field(
+          "webhookKey",
+          "HTTP webhook signing key",
+          <Input id="em-webhookKey" name="webhookKey" type="password" autoComplete="off" placeholder={values.webhookKeyHint ? `αποθηκευμένο ${values.webhookKeyHint} — αφήστε κενό` : "Mailgun → Settings → API Security"} />,
+          "Για τα στατιστικά (ανοίγματα, παραδόσεις, διαγραφές): επαληθεύει ότι τα γεγονότα έρχονται από το Mailgun. Κρυπτογραφείται.",
           true,
         )}
         {field("domain", "Domain αποστολής", <Input id="em-domain" name="domain" defaultValue={values.domain} placeholder="mg.dgsmart.gr" required />, "Το verified domain στο Mailgun.")}

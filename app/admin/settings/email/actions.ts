@@ -5,12 +5,12 @@ import { z } from "zod";
 import { audit } from "@/lib/audit";
 import { sendTemplate } from "@/lib/email";
 import { sampleVars, templateDef } from "@/lib/email-templates";
-import { checkMailgun, getEmailSettings, sealMailgunKey } from "@/lib/mailgun";
+import { checkMailgun, getEmailSettings, sealMailgunKey, sealWebhookKey } from "@/lib/mailgun";
 import { decrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/rbac";
 
-type Field = "apiKey" | "domain" | "fromEmail" | "replyTo" | "bcc" | "reminderDays" | "overdueDays" | "fromName";
+type Field = "apiKey" | "webhookKey" | "domain" | "fromEmail" | "replyTo" | "bcc" | "reminderDays" | "overdueDays" | "fromName";
 export type EmailFormState = { ok?: boolean; message?: string; errors?: Partial<Record<Field, string>> };
 
 const days = z
@@ -22,6 +22,11 @@ const optEmail = z.union([z.literal(""), z.email("Μη έγκυρο email")]);
 
 const schema = z.object({
   apiKey: z.string().trim().max(200).optional(),
+  webhookKey: z
+    .string()
+    .trim()
+    .regex(/^[\w-]{16,200}$/, "Δεν μοιάζει με έγκυρο signing key")
+    .optional(),
   domain: z.string().trim().toLowerCase().regex(/^[a-z0-9.-]+\.[a-z]{2,}$/, "π.χ. mg.dgsmart.gr"),
   region: z.enum(["EU", "US"]),
   fromName: z.string().trim().min(2, "Υποχρεωτικό").max(80),
@@ -39,6 +44,7 @@ export async function saveEmailSettings(_prev: EmailFormState, fd: FormData): Pr
   const user = await requirePermission("platform.settings.manage");
   const parsed = schema.safeParse({
     apiKey: fd.get("apiKey") || undefined,
+    webhookKey: fd.get("webhookKey") || undefined,
     domain: fd.get("domain"),
     region: fd.get("region") || "EU",
     fromName: fd.get("fromName"),
@@ -71,6 +77,7 @@ export async function saveEmailSettings(_prev: EmailFormState, fd: FormData): Pr
     where: { id: "default" },
     data: {
       ...(v.apiKey ? { apiKeyEnc: sealMailgunKey(v.apiKey), keyHint: `…${v.apiKey.slice(-4)}` } : {}),
+      ...(v.webhookKey ? { webhookKeyEnc: sealWebhookKey(v.webhookKey), webhookKeyHint: `…${v.webhookKey.slice(-4)}` } : {}),
       domain: v.domain,
       region: v.region,
       fromName: v.fromName,
@@ -85,7 +92,7 @@ export async function saveEmailSettings(_prev: EmailFormState, fd: FormData): Pr
       lastTestError: null,
     },
   });
-  await audit({ actorId: user.id, action: "email.settings", entity: "EmailSettings", entityId: "default", meta: { domain: v.domain, region: v.region, enabled: v.enabled, keyChanged: !!v.apiKey } });
+  await audit({ actorId: user.id, action: "email.settings", entity: "EmailSettings", entityId: "default", meta: { domain: v.domain, region: v.region, enabled: v.enabled, keyChanged: !!v.apiKey, webhookKeyChanged: !!v.webhookKey } });
   refresh();
   return {
     ok: true,
