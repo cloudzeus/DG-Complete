@@ -87,5 +87,6 @@ export const FEATURE_NAMES: Record<string, string> = {
   chat: "Κίμων",
   industry: "Κλαδική ανάλυση",
   substitutes: "Εναλλακτικά είδη",
+  weekly_report: "Εβδομαδιαία αναφορά",
   test: "Δοκιμή",
 };

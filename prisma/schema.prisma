@@ -165,6 +165,8 @@ model Membership {
   userId    String
   tenantId  String
   role      TenantRole @default(TENANT_USER)
+  // Κίμων's weekly report by email (every Monday morning); opt-in.
+  weeklyReport Boolean   @default(false)
   createdAt DateTime   @default(now())
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

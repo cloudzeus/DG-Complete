@@ -36,6 +36,12 @@ const V = {
   threshold: { key: "threshold", label: "Όριο ειδοποίησης", sample: "$20,00" },
   tenantsLow: { key: "tenantsLow", label: "Πελάτες χωρίς tokens", sample: "ΑΦΟΙ ΠΑΡΑΔΕΙΓΜΑ ΑΕ (0 tokens)" },
   pending: { key: "pending", label: "Αιτήματα tokens σε αναμονή", sample: "2" },
+  week: { key: "week", label: "Εβδομάδα", sample: "29/9 – 5/10" },
+  summary: {
+    key: "summary",
+    label: "Σύνοψη του Κίμωνα",
+    sample: "**Η εβδομάδα με μια ματιά:** πωλήσεις 48.200 € (+12% έναντι της προηγούμενης).\n\n**Τι θέλει προσοχή**\n- 3 πελάτες άνω των 90 ημερών\n- 12 είδη τελειώνουν πριν την παράδοση\n\n**Τι να κάνετε**\n- Τηλεφωνήστε στον μεγαλύτερο ληξιπρόθεσμο πελάτη",
+  },
 
 } satisfies Record<string, TemplateVar>;
 
@@ -159,6 +165,20 @@ TEMPLATES.push({
 [[Άνοιγμα αιτημάτων|{{link}}]]`,
 });
 
+TEMPLATES.push({
+  key: "weekly_report",
+  name: "Εβδομαδιαία αναφορά του Κίμωνα",
+  description: "Κάθε Δευτέρα πρωί, στους χρήστες που την έχουν ενεργοποιήσει (σελίδα «Ειδοποιήσεις»). Η σύνοψη γράφεται από τον Κίμωνα με τα δεδομένα της εβδομάδας.",
+  optional: true,
+  vars: [V.name, V.tenant, V.week, V.summary, V.link],
+  subject: "Η εβδομάδα σας στο DGsmart BI — {{tenant}} ({{week}})",
+  body: `Καλημέρα {{name}},
+
+{{summary}}
+
+[[Άνοιγμα του DGsmart BI|{{link}}]]`,
+});
+
 export const templateDef = (key: string) => TEMPLATES.find((t) => t.key === key);
 
 export type Vars = Record<string, string | number | null | undefined>;
@@ -204,11 +224,30 @@ function bodyHtml(body: string) {
       if (button) {
         return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 16px"><tr><td style="border-radius:6px;background:${BLUE}"><a href="${button[2].trim()}" style="display:inline-block;padding:12px 22px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px">${inline(button[1].trim())}</a></td></tr></table>`;
       }
-      const lines = b.split("\n");
-      if (lines.every((l) => /^\s*-\s/.test(l))) {
-        return `<ul style="margin:0 0 16px;padding-left:20px">${lines.map((l) => `<li style="margin:4px 0">${inline(l.replace(/^\s*-\s/, ""))}</li>`).join("")}</ul>`;
+      // Runs of «- » lines become a list, the other lines a paragraph (a title above a list works).
+      const out: string[] = [];
+      let text: string[] = [];
+      let items: string[] = [];
+      const flush = (beforeList = false) => {
+        if (text.length) out.push(`<p style="margin:0 0 ${beforeList ? 6 : 16}px">${text.map(inline).join("<br>")}</p>`);
+        text = [];
+      };
+      const flushList = () => {
+        if (items.length) out.push(`<ul style="margin:0 0 16px;padding-left:20px">${items.map((l) => `<li style="margin:4px 0">${inline(l)}</li>`).join("")}</ul>`);
+        items = [];
+      };
+      for (const l of b.split("\n")) {
+        if (/^\s*-\s/.test(l)) {
+          flush(true);
+          items.push(l.replace(/^\s*-\s/, ""));
+        } else {
+          flushList();
+          text.push(l);
+        }
       }
-      return `<p style="margin:0 0 16px">${lines.map(inline).join("<br>")}</p>`;
+      flushList();
+      flush();
+      return out.join("");
     })
     .join("");
 }

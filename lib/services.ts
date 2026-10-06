@@ -100,4 +100,4 @@ export function withRequirements(keys: string[]): ServiceKey[] {
 
 export const cubesOf = (services: Iterable<string>) => [...new Set([...services].flatMap((s) => serviceDef(s)?.cubes ?? []))];
 // Always open: the overview and the tenant's AI tokens.
-export const pagesOf = (services: Iterable<string>) => new Set(["", "ai-tokens", ...[...services].flatMap((s) => serviceDef(s)?.pages ?? [])]);
+export const pagesOf = (services: Iterable<string>) => new Set(["", "ai-tokens", "notifications", ...[...services].flatMap((s) => serviceDef(s)?.pages ?? [])]);
