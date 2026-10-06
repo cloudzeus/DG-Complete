@@ -23,7 +23,7 @@ import {
   Users,
   Warehouse,
   Webhook,
-  type LucideIcon, Bell, FileBarChart, FilePlus2, Coins, Radar, RefreshCw, Target, TrendingUp, UserSearch } from "lucide-react";
+  type LucideIcon, Bell, FileBarChart, FilePlus2, Tags, HandCoins, Siren, HeartHandshake, Handshake, BadgeCheck, Coins, Radar, RefreshCw, Target, TrendingUp, UserSearch } from "lucide-react";
 import { DgLogo } from "@/components/brand/dg-logo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -89,6 +89,17 @@ const NAV: { label: string; items: NavItem[] }[] = [
       { slug: "orders", label: "Παραγγελίες αγορών", icon: ClipboardList },
       { slug: "purchases", label: "Αγορές", icon: ShoppingCart },
       { slug: "suppliers", label: "Προμηθευτές", icon: Truck },
+    ],
+  },
+  {
+    label: "Έξυπνα εργαλεία",
+    items: [
+      { slug: "pricing", label: "Τιμολόγηση & εκπτώσεις", icon: Tags },
+      { slug: "collections", label: "Βοηθός εισπράξεων", icon: HandCoins },
+      { slug: "anomalies", label: "Έξυπνες ειδοποιήσεις", icon: Siren },
+      { slug: "winback", label: "Επαναπροσέλκυση πελατών", icon: HeartHandshake },
+      { slug: "negotiation", label: "Διαπραγμάτευση προμηθευτών", icon: Handshake },
+      { slug: "salespeople", label: "Απόδοση χρηστών", icon: BadgeCheck },
     ],
   },
   {

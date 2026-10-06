@@ -1,6 +1,6 @@
 // The services a package (plan) can include — shared by the server (enforcement) and the wizard.
 
-export type ServiceKey = "finance" | "sales" | "purchasing" | "geo" | "industry" | "kimon" | "purchase_orders" | "smart_orders" | "budget" | "reports" | "api";
+export type ServiceKey = "finance" | "sales" | "purchasing" | "geo" | "industry" | "kimon" | "purchase_orders" | "smart_orders" | "budget" | "reports" | "pricing" | "collections" | "anomalies" | "winback" | "negotiation" | "salespeople" | "api";
 
 export type ServiceDef = {
   key: ServiceKey;
@@ -90,6 +90,55 @@ export const SERVICES: ServiceDef[] = [
     description: "Έτοιμες αναφορές με κριτήρια και δημιουργία δικών σας με drag & drop: pivot tables, γραφήματα και πίνακες πάνω στα δεδομένα των υπηρεσιών του πακέτου, αποθήκευση, κοινή χρήση και εξαγωγή σε Excel / PDF.",
     pages: ["reports", "reports/builder"],
     cubes: [],
+  },
+  {
+    key: "pricing",
+    name: "Τιμολόγηση & εκπτώσεις (AI)",
+    description:
+      "Ελαστικότητα τιμής ανά είδος από το ιστορικό πωλήσεων, προτεινόμενη τιμή με το αναμενόμενο κέρδος, εκπτώσεις χωρίς λόγο (ομάδες πελατών με data mining), αυξήσεις κόστους που δεν περάστηκαν.",
+    pages: ["pricing"],
+    cubes: [],
+    requires: ["sales"],
+  },
+  {
+    key: "collections",
+    name: "Βοηθός εισπράξεων (AI)",
+    description: "Πρόβλεψη πότε θα πληρώσει κάθε πελάτης, βαθμός κινδύνου, προτεινόμενο πιστωτικό όριο, λίστα «ποιον να πάρετε τηλέφωνο σήμερα» και σχέδιο email υπενθύμισης με AI.",
+    pages: ["collections"],
+    cubes: [],
+    requires: ["sales"],
+  },
+  {
+    key: "anomalies",
+    name: "Έξυπνες ειδοποιήσεις (AI)",
+    description: "Εντοπίζει αυτόματα ό,τι ξεφεύγει από το συνηθισμένο — πτώσεις πωλήσεων, πελάτες που σταμάτησαν, λάθος τιμές, πτώση περιθωρίου — με βάση το μοτίβο του καθενός, και εξηγεί με AI γιατί.",
+    pages: ["anomalies"],
+    cubes: [],
+    requires: ["sales"],
+  },
+  {
+    key: "winback",
+    name: "Επαναπροσέλκυση πελατών (AI)",
+    description: "Πιθανότητα να χαθεί κάθε πελάτης, αξία σε κίνδυνο, μάρκες που σταμάτησε να αγοράζει, τι αγοράζουν οι όμοιοί του, και εξατομικευμένη πρόταση/email με AI.",
+    pages: ["winback"],
+    cubes: [],
+    requires: ["sales"],
+  },
+  {
+    key: "negotiation",
+    name: "Διαπραγμάτευση προμηθευτών (AI)",
+    description: "Για κάθε προμηθευτή: πορεία τιμών (δείκτης ίδιων ειδών), καθυστερήσεις, εξάρτηση, όροι πληρωμής και φάκελος διαπραγμάτευσης με συγκεκριμένα αιτήματα από το AI.",
+    pages: ["negotiation"],
+    cubes: [],
+    requires: ["purchasing"],
+  },
+  {
+    key: "salespeople",
+    name: "Απόδοση χρηστών (AI)",
+    description: "Για κάθε χρήστη του SoftOne που καταχωρεί παραστατικά πωλήσεων: τζίρος, περιθώριο, ποσοστό και ποσό εκπτώσεων, νέοι πελάτες, στυλ πώλησης (data mining), κατάταξη και προτάσεις με AI.",
+    pages: ["salespeople"],
+    cubes: [],
+    requires: ["sales"],
   },
   {
     key: "api",

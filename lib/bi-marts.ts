@@ -109,13 +109,17 @@ const UNIT_COST_CTE = (s: string, hasPurchases: boolean) => `
 
 async function buildSalesFacts(db: Client, schema: string, hasPurchases: boolean) {
   const s = qi(schema);
+  // The SoftOne user who entered the document (FINDOC.INSUSER) — synced since the per-user analysis.
+  const insuser = (await db.query("SELECT 1 FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'sales_docs' AND column_name = 'insuser'", [schema])).rowCount
+    ? "d.insuser"
+    : "NULL::int";
   await swapTable(
     db,
     schema,
     "f_sales_lines",
     `WITH ${UNIT_COST_CTE(s, hasPurchases)}
      SELECT l.findoc, l.mtrlines, d.trndate, d.insdate, d.fiscprd, d.branch, d.trdr, d.series,
-            COALESCE(NULLIF(l.salesman, 0), NULLIF(d.salesman, 0)) AS salesman,
+            COALESCE(NULLIF(l.salesman, 0), NULLIF(d.salesman, 0)) AS salesman, ${insuser} AS insuser,
             l.mtrl, l.whouse, ds.sign,
             (l.qty1 * ds.sign)::numeric(19,4) AS qty,
             (COALESCE(l.lnetlineval, l.netlineval, 0) * ds.sign)::numeric(19,2) AS net,

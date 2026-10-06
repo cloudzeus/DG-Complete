@@ -88,5 +88,11 @@ export const FEATURE_NAMES: Record<string, string> = {
   industry: "Κλαδική ανάλυση",
   substitutes: "Εναλλακτικά είδη",
   weekly_report: "Εβδομαδιαία αναφορά",
+  pricing: "Τιμολόγηση",
+  collections: "Εισπράξεις",
+  anomalies: "Έξυπνες ειδοποιήσεις",
+  winback: "Επαναπροσέλκυση πελατών",
+  negotiation: "Διαπραγμάτευση προμηθευτών",
+  salespeople: "Απόδοση χρηστών",
   test: "Δοκιμή",
 };

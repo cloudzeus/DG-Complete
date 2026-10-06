@@ -115,10 +115,11 @@ export const TENANT_PRESETS: TenantPreset[] = [
       ISCANCEL: "int",
       INSDATE: "timestamp", // entry time → intraday (live) analysis
       SALESMAN: "int",
+      INSUSER: "int", // SoftOne user who entered the document (always set) → per-user analysis
       PAYMENT: "int",
       UPDDATE: "timestamp",
     },
-    optional: ["FISCPRD", "PERIOD", "FPRMS", "TFPRMS", "BRANCH", "VATAMNT", "LNETAMNT", "SUMLAMNT", "ISCANCEL", "INSDATE", "SALESMAN", "PAYMENT"],
+    optional: ["FISCPRD", "PERIOD", "FPRMS", "TFPRMS", "BRANCH", "VATAMNT", "LNETAMNT", "SUMLAMNT", "ISCANCEL", "INSDATE", "SALESMAN", "INSUSER", "PAYMENT"],
     updField: "UPDDATE",
     dateField: "TRNDATE",
     filter: "COMPANY={COMPANY} AND SOSOURCE=1351",
@@ -446,6 +447,18 @@ export const TENANT_PRESETS: TenantPreset[] = [
     columns: { PRSN: "int", CODE: "text", NAME: "text", NAME2: "text" },
     optional: ["CODE", "NAME2"],
     filter: "COMPANY={COMPANY} AND SODTYPE=20",
+    intervalMinutes: DAY,
+  },
+  {
+    key: "users",
+    name: "Χρήστες SoftOne",
+    group: "Μητρώα",
+    requires: "ANY",
+    table: "USERS",
+    targetTable: "s1_users",
+    keyField: "USERS",
+    columns: { USERS: "int", CODE: "text", NAME: "text" },
+    optional: ["CODE"],
     intervalMinutes: DAY,
   },
 
