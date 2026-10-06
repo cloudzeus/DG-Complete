@@ -13,7 +13,8 @@
     "seed:admin": "tsx scripts/seed-admin.ts",
     "typecheck": "tsc --noEmit",
     "postmigrate": "prisma generate",
-    "fluid-type": "node scripts/fluid-type.mjs"
+    "fluid-type": "node scripts/fluid-type.mjs",
+    "maplibre:worker": "node scripts/copy-maplibre-worker.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",

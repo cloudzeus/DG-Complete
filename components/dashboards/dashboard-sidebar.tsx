@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Activity,
   ArrowLeftRight,
   Building2,
   ChartColumnBig,
@@ -70,6 +71,7 @@ const NAV: { label: string; items: NavItem[] }[] = [
   {
     label: "Πωλήσεις",
     items: [
+      { slug: "live", label: "Σήμερα (live)", icon: Activity },
       { slug: "sales", label: "Πωλήσεις", icon: ChartColumnBig },
       { slug: "products", label: "Προϊόντα", icon: Package },
       { slug: "customers", label: "Πελάτες", icon: Users },

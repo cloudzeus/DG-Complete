@@ -62,6 +62,8 @@ export function SalesMap({ points, token, brands }: { points: GeoPoint[]; token:
     (async () => {
       const maplibre = await import("maplibre-gl");
       if (disposed || !el.current) return;
+      // The module worker is served from public/ (bundlers can't resolve its own URL).
+      maplibre.setWorkerUrl("/vendor/maplibre/maplibre-gl-worker.mjs");
       const m = new maplibre.Map({
         container: el.current,
         style: {
@@ -69,8 +71,8 @@ export function SalesMap({ points, token, brands }: { points: GeoPoint[]; token:
           sources: {
             base: {
               type: "raster",
-              tiles: [`https://api.mapbox.com/styles/v1/mapbox/light-v11/tiles/256/{z}/{x}/{y}@2x?access_token=${token}`],
-              tileSize: 256,
+              tiles: [`https://api.mapbox.com/styles/v1/mapbox/light-v11/tiles/512/{z}/{x}/{y}@2x?access_token=${token}`],
+              tileSize: 512,
               attribution: "© Mapbox © OpenStreetMap",
             },
           },
@@ -90,8 +92,8 @@ export function SalesMap({ points, token, brands }: { points: GeoPoint[]; token:
           layout: { visibility: "none" },
           paint: {
             "heatmap-weight": ["interpolate", ["linear"], ["get", "revenue"], 0, 0, 1, 1],
-            "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 5, 1, 12, 3],
-            "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 5, 12, 12, 30],
+            "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 5, 0.6, 12, 2],
+            "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 5, 10, 12, 28],
             "heatmap-opacity": 0.85,
           },
         });
@@ -139,7 +141,8 @@ export function SalesMap({ points, token, brands }: { points: GeoPoint[]; token:
     const heat = mode === "heat";
     m.setLayoutProperty("heat", "visibility", heat ? "visible" : "none");
     m.setLayoutProperty("bubbles", "visibility", heat ? "none" : "visible");
-    m.setPaintProperty("heat", "heatmap-weight", ["/", ["get", "revenue"], maxRevenue]);
+    // Log scale: one very large customer must not hide every other area.
+    m.setPaintProperty("heat", "heatmap-weight", ["/", ["ln", ["+", 1, ["max", ["get", "revenue"], 0]]], Math.log(1 + maxRevenue)]);
     const size: ExpressionSpecification =
       mode === "frequency"
         ? ["interpolate", ["linear"], ["sqrt", ["get", "documents"]], 0, 2.5, Math.sqrt(maxDocs), 22]

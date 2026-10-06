@@ -14,7 +14,10 @@ import { replaceRows, replaceWhere, upsertRows, type Columns } from "@/lib/wareh
 
 export const CUSTOMERS_JOB_NAME = "Πελάτες";
 const CUSTOMER_FIELDS = ["TRDR", "CODE", "NAME", "AFM", "EMAIL", "PHONE01", "ADDRESS", "CITY", "ZIP", "ISACTIVE", "UPDDATE"];
-const OVERLAP_MS = 60 * 60 * 1000;
+// Incremental runs re-read this much before the last watermark. 4 hours, not 1: some SoftOne
+// installations store UPDDATE in UTC while we send Athens wall time (up to 3 hours ahead), which
+// silently skipped every recent change. Re-reading is harmless (upsert / replace per parent).
+const OVERLAP_MS = 4 * 60 * 60 * 1000;
 const STALE_MS = 30 * 60 * 1000;
 const BATCH = 500;
 export const IDENT = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
