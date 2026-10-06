@@ -33,6 +33,7 @@ model User {
   memberships        Membership[]
   createdConnections DataConnection[]
   payments           Payment[]
+  kimonChats         KimonChat[]
   auditLogs          AuditLog[]
 
   @@map("user")
@@ -137,6 +138,7 @@ model Tenant {
   pnlConfig          PnlConfig?
   pnlLines           PnlLine[]
   aiUsage            AiUsage[]
+  kimonChats         KimonChat[]
   auditLogs          AuditLog[]
 
   @@map("tenant")
@@ -496,6 +498,39 @@ model AiUsage {
   @@index([tenantId, createdAt])
   @@index([createdAt])
   @@map("ai_usage")
+}
+
+// Κίμων — the AI business advisor. One conversation per thread, private to its user and tenant.
+model KimonChat {
+  id        String         @id @default(cuid())
+  tenantId  String
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  messages  KimonMessage[]
+
+  @@index([userId, tenantId, updatedAt])
+  @@map("kimon_chat")
+}
+
+model KimonMessage {
+  id        String    @id @default(cuid())
+  chatId    String
+  chat      KimonChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  role      String // user | assistant
+  content   String
+  // Tables / charts / links the answer produced (rendered under the text, exportable).
+  artifacts Json?
+  // Page the user was on when asking (dashboard + period) — context for the answer.
+  context   Json?
+  error     String?
+  createdAt DateTime  @default(now())
+
+  @@index([chatId, createdAt])
+  @@map("kimon_message")
 }
 
 // ───────────────────────── Payments ─────────────────────────

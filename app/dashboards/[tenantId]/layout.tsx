@@ -1,4 +1,5 @@
 import { DashboardSidebar } from "@/components/dashboards/dashboard-sidebar";
+import { KimonLauncher } from "@/components/kimon/kimon-launcher";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { dashboardTenants, requireDashboardTenant } from "@/lib/dashboards";
@@ -26,7 +27,8 @@ export default async function DashboardsLayout({ children, params }: LayoutProps
             <span className="rounded-full bg-amber-50 px-2 py-0.5 text-2xs font-semibold text-amber-700 ring-1 ring-amber-200 ring-inset">Demo</span>
           )}
         </header>
-        <main className="mx-auto w-full max-w-7xl min-w-0 space-y-5 px-4 py-5 sm:px-6">{children}</main>
+        <main className="mx-auto w-full max-w-7xl min-w-0 space-y-5 px-4 pt-5 pb-24 has-[[data-kimon-page]]:pb-5 sm:px-6">{children}</main>
+        <KimonLauncher tenantId={tenant.id} />
       </SidebarInset>
     </SidebarProvider>
   );

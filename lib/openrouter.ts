@@ -96,12 +96,17 @@ export async function listModels(): Promise<ModelInfo[]> {
   return models;
 }
 
-export type ChatMessage = { role: "system" | "user" | "assistant" | "tool"; content: string; name?: string; tool_call_id?: string };
+export type ToolCall = { id: string; type: "function"; function: { name: string; arguments: string } };
+
+export type ChatMessage =
+  | { role: "system" | "user"; content: string }
+  | { role: "assistant"; content: string | null; tool_calls?: ToolCall[] }
+  | { role: "tool"; content: string; tool_call_id: string };
 
 type ChatResponse = {
   id: string;
   model: string;
-  choices: { message: { role: string; content: string | null; tool_calls?: unknown[] }; finish_reason: string }[];
+  choices: { message: { role: string; content: string | null; tool_calls?: ToolCall[] }; finish_reason: string }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
 };
 
