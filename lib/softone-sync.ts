@@ -4,8 +4,8 @@ import { prisma } from "@/lib/prisma";
 import type { SyncJob } from "@/lib/generated/prisma/client";
 import { formatS1Date, getDgsoftConnection, parseS1Date, s1GetTable, type Row } from "@/lib/softone";
 import { JOB_PRESETS, resolveFilter, stripCompany } from "@/lib/softone-presets";
-import { TENANT_PRESETS } from "@/lib/tenant-presets";
-import { replaceRows, upsertRows, type Columns } from "@/lib/warehouse-writer";
+import { TENANT_PRESETS, type JobOptions } from "@/lib/tenant-presets";
+import { replaceRows, replaceWhere, upsertRows, type Columns } from "@/lib/warehouse-writer";
 
 // SoftOne (DGsoft) → app synchronisation engine.
 //  · Every sync is a SyncJob ("cron job"): CUSTOMERS (built-in → s1_customer + tenants) or TABLE (any table → s1_record).
@@ -73,10 +73,14 @@ export async function runSyncJob(
     orderBy: { startedAt: "desc" },
     select: { watermarkTo: true },
   });
-  const canIncrement = !!job.updField || (job.destination === "WAREHOUSE" && !!job.dateField && !!job.windowDays);
+  const options = (job.options ?? {}) as JobOptions;
+  const canIncrement =
+    !!job.updField ||
+    (job.destination === "WAREHOUSE" && ((!!job.dateField && !!job.windowDays) || !!options.parent || !!options.yearField));
   const incremental = canIncrement && (opts.mode ?? (last?.watermarkTo ? "INCREMENTAL" : "FULL")) === "INCREMENTAL";
   const mode = incremental && last?.watermarkTo ? "INCREMENTAL" : "FULL";
-  const from = mode === "INCREMENTAL" && job.updField ? new Date(last!.watermarkTo!.getTime() - OVERLAP_MS) : null;
+  const from =
+    mode === "INCREMENTAL" && (job.updField || options.parent) ? new Date(last!.watermarkTo!.getTime() - OVERLAP_MS) : null;
 
   let run;
   try {
@@ -179,6 +183,80 @@ async function runWarehouseJob(
   };
   const range = (f: string, a: Date, b?: Date) =>
     `${f}>='${formatS1Date(a)}'${b ? ` AND ${f}<'${formatS1Date(b)}'` : ""}`;
+  const options = (job.options ?? {}) as JobOptions;
+
+  // Child rows of documents (e.g. MTRLINES of FINDOC): follow the parents' dates / updates and
+  // replace all lines of every touched parent, so edited and removed lines are reflected.
+  if (options.parent) {
+    const p = options.parent;
+    const conn = await prisma.softOneConnection.findUnique({ where: { id: job.connectionId }, select: { company: true } });
+    const parentBase = resolveFilter(p.filter, conn?.company ?? "");
+    const started = new Date();
+    const keyCol = p.key;
+    if (mode === "INCREMENTAL" && updFrom) {
+      const parents = await s1GetTable(job.connectionId, p.table, [p.key, p.updField], and(parentBase, range(p.updField, updFrom)));
+      const ids = [...new Set(parents.map((r) => String(r[p.key.toUpperCase()] ?? "")).filter((x) => /^\d+$/.test(x)))];
+      let read = 0;
+      let written = 0;
+      for (let i = 0; i < ids.length; i += 400) {
+        const chunk = ids.slice(i, i + 400);
+        const rows = await s1GetTable(job.connectionId, job.table, fields, and(baseFilter, `${keyCol} IN (${chunk.join(",")})`));
+        read += rows.length;
+        written += await replaceWhere(target, rows, { column: keyCol, values: chunk });
+      }
+      return { read, written, maxUpdated: started };
+    }
+    if (!job.historyFrom) throw new Error("Λείπει η αρχή του ιστορικού.");
+    await replaceRows(target, [], null);
+    let read = 0;
+    let written = 0;
+    for (let m = monthStart(job.historyFrom); m <= new Date(); m = addMonths(m, 1)) {
+      const sub = `${keyCol} IN (SELECT ${p.key} FROM ${p.table} WHERE ${and(parentBase, range(p.dateField, m, addMonths(m, 1)))})`;
+      const rows = await s1GetTable(job.connectionId, job.table, fields, and(baseFilter, sub));
+      read += rows.length;
+      written += await upsertRows(target, rows);
+    }
+    return { read, written, maxUpdated: started };
+  }
+
+  // Per fiscal year (e.g. MTRBALSHEET): FULL = every year since the history start, INCREMENTAL =
+  // the current year (and the previous one in Jan–Feb, for late postings), chunked by period.
+  if (options.yearField) {
+    const yf = options.yearField;
+    const now = new Date();
+    let firstYear = job.historyFrom ? job.historyFrom.getFullYear() : now.getFullYear() - 2;
+    if (options.allYears && mode === "FULL") {
+      // Walk back year by year until two consecutive years have no rows (company start).
+      let empty = 0;
+      for (let y = now.getFullYear() - 1; y > 1990 && empty < 2; y--) {
+        const probe = await s1GetTable(job.connectionId, job.table, [yf], and(baseFilter, `${yf}=${y}`, options.chunkField ? `${options.chunkField}=12` : null));
+        if (probe.length) {
+          firstYear = Math.min(firstYear, y);
+          empty = 0;
+        } else empty++;
+      }
+    }
+    const years =
+      mode === "INCREMENTAL"
+        ? now.getMonth() < 2
+          ? [now.getFullYear() - 1, now.getFullYear()]
+          : [now.getFullYear()]
+        : Array.from({ length: now.getFullYear() - firstYear + 1 }, (_, i) => firstYear + i);
+    if (mode === "FULL") await replaceRows(target, [], null);
+    let read = 0;
+    let written = 0;
+    for (const y of years) {
+      const rows: Row[] = [];
+      const chunks = options.chunkField && options.chunkValues?.length ? options.chunkValues : [null];
+      for (const c of chunks) {
+        const chunkFilter = c === null ? null : `${options.chunkField}=${Number(c)}`;
+        rows.push(...(await s1GetTable(job.connectionId, job.table, fields, and(baseFilter, `${yf}=${y}`, chunkFilter))));
+      }
+      read += rows.length;
+      written += await replaceWhere(target, rows, { column: yf, values: [y] });
+    }
+    return { read, written, maxUpdated: now };
+  }
 
   // INCREMENTAL by update timestamp → upsert the changed rows.
   if (mode === "INCREMENTAL" && updField && updFrom) {
@@ -391,7 +469,7 @@ export async function runDueJobs(budgetMs = 50_000) {
  * what detection found (GL and/or commercial). Each is verified live first: full fields with the
  * COMPANY clause → without it → without the optional fields.
  */
-export async function seedTenantJobs(connectionId: string) {
+export async function seedTenantJobs(connectionId: string, opts: { enabled?: boolean } = {}) {
   const conn = await prisma.softOneConnection.findUnique({ where: { id: connectionId } });
   if (!conn || conn.scope !== "TENANT" || !conn.tenantId) throw new Error("Η σύνδεση SoftOne πελάτη δεν βρέθηκε.");
   const caps = (conn.capabilities ?? null) as { gl?: { available: boolean }; sales?: { available: boolean }; purchases?: { available: boolean }; fiscalYears?: { year: number; from: string | null }[] } | null;
@@ -417,7 +495,7 @@ export async function seedTenantJobs(connectionId: string) {
       continue;
     }
     if (existing.has(p.name)) {
-      report.push({ name: p.name, status: "exists" });
+      report.push({ name: p.name, status: "exists", note: await upgradeTenantJob(conn.id, conn.company, p) });
       continue;
     }
     const all = Object.keys(p.columns);
@@ -458,7 +536,9 @@ export async function seedTenantJobs(connectionId: string) {
         updField: p.updField && chosen.fields.includes(p.updField) ? p.updField : null,
         dateField: p.dateField && chosen.fields.includes(p.dateField) ? p.dateField : null,
         windowDays: p.windowDays ?? null,
-        historyFrom: p.dateField ? historyFrom : null,
+        historyFrom: p.dateField || p.options ? historyFrom : null,
+        options: p.options ?? undefined,
+        enabled: opts.enabled ?? true,
         filter: chosen.filter || null,
         intervalMinutes: p.intervalMinutes,
       },
@@ -466,4 +546,41 @@ export async function seedTenantJobs(connectionId: string) {
     report.push({ name: p.name, status: "created", note: chosen.note });
   }
   return report;
+}
+
+/**
+ * Brings an existing tenant import up to its preset: adds new (verified) columns and the
+ * interval / options. New columns fill on the next FULL run. Returns a note, or undefined.
+ */
+async function upgradeTenantJob(connectionId: string, company: string | null, p: (typeof TENANT_PRESETS)[number]) {
+  const job = await prisma.syncJob.findUnique({ where: { connectionId_name: { connectionId, name: p.name } } });
+  if (!job || job.destination !== "WAREHOUSE") return undefined;
+  const columns = { ...((job.columns ?? {}) as Columns) };
+  const missing = Object.keys(p.columns).filter((f) => !(f in columns));
+  const added: string[] = [];
+  for (const f of missing) {
+    try {
+      await s1GetTable(connectionId, job.table, [...Object.keys(columns), f], [job.filter ? `(${resolveFilter(job.filter, company ?? "")})` : null, "1=0"].filter(Boolean).join(" AND "));
+      columns[f] = p.columns[f];
+      added.push(f);
+    } catch {
+      // field not available in this installation
+    }
+  }
+  const canon = (v: unknown): string =>
+    v && typeof v === "object" && !Array.isArray(v)
+      ? `{${Object.keys(v).sort().map((k) => `${k}:${canon((v as Record<string, unknown>)[k])}`).join(",")}}`
+      : JSON.stringify(v);
+  const optionsChanged = !!p.options && canon(job.options ?? null) !== canon(p.options);
+  if (!added.length && !optionsChanged && job.intervalMinutes === p.intervalMinutes) return undefined;
+  await prisma.syncJob.update({
+    where: { id: job.id },
+    data: {
+      columns,
+      fields: Object.keys(columns).join(","),
+      intervalMinutes: p.intervalMinutes,
+      ...(p.options ? { options: p.options } : {}),
+    },
+  });
+  return added.length ? `νέα πεδία: ${added.join(", ")} (συμπληρώνονται στην επόμενη πλήρη εκτέλεση)` : "ενημερώθηκαν οι ρυθμίσεις";
 }

@@ -5,10 +5,20 @@
 
 import type { Columns } from "@/lib/warehouse-writer";
 
+/** Extra sync modes (stored on the job): child rows of documents, or rows per fiscal year. */
+export type JobOptions = {
+  parent?: { table: string; key: string; filter?: string; dateField: string; updField: string };
+  yearField?: string;
+  /** yearField mode: FULL imports every fiscal year of the company (not only the BI history). */
+  allYears?: boolean;
+  chunkField?: string;
+  chunkValues?: number[];
+};
+
 export type TenantPreset = {
   key: string;
   name: string;
-  group: "Λογιστική" | "Παραστατικά" | "Μητρώα";
+  group: "Λογιστική" | "Παραστατικά" | "Αποθήκη" | "Μητρώα";
   requires: "GL" | "SALES" | "PURCHASES" | "ANY";
   table: string;
   targetTable: string;
@@ -21,6 +31,7 @@ export type TenantPreset = {
   windowDays?: number;
   filter?: string; // {COMPANY} → connection company (dropped if the table has no COMPANY column)
   intervalMinutes: number;
+  options?: JobOptions;
 };
 
 const DAY = 1440;
@@ -100,13 +111,16 @@ export const TENANT_PRESETS: TenantPreset[] = [
       LNETAMNT: "numeric", // company currency (€) — use these for BI
       SUMLAMNT: "numeric",
       ISCANCEL: "int",
+      INSDATE: "timestamp", // entry time → intraday (live) analysis
+      SALESMAN: "int",
+      PAYMENT: "int",
       UPDDATE: "timestamp",
     },
-    optional: ["FISCPRD", "PERIOD", "FPRMS", "TFPRMS", "BRANCH", "VATAMNT", "LNETAMNT", "SUMLAMNT", "ISCANCEL"],
+    optional: ["FISCPRD", "PERIOD", "FPRMS", "TFPRMS", "BRANCH", "VATAMNT", "LNETAMNT", "SUMLAMNT", "ISCANCEL", "INSDATE", "SALESMAN", "PAYMENT"],
     updField: "UPDDATE",
     dateField: "TRNDATE",
     filter: "COMPANY={COMPANY} AND SOSOURCE=1351",
-    intervalMinutes: 30,
+    intervalMinutes: 15,
   },
   {
     key: "purchase_docs",
@@ -133,9 +147,12 @@ export const TENANT_PRESETS: TenantPreset[] = [
       LNETAMNT: "numeric", // company currency (€) — use these for BI
       SUMLAMNT: "numeric",
       ISCANCEL: "int",
+      INSDATE: "timestamp", // entry time → intraday (live) analysis
+      SALESMAN: "int",
+      PAYMENT: "int",
       UPDDATE: "timestamp",
     },
-    optional: ["FISCPRD", "PERIOD", "FPRMS", "TFPRMS", "BRANCH", "VATAMNT", "LNETAMNT", "SUMLAMNT", "ISCANCEL"],
+    optional: ["FISCPRD", "PERIOD", "FPRMS", "TFPRMS", "BRANCH", "VATAMNT", "LNETAMNT", "SUMLAMNT", "ISCANCEL", "INSDATE", "SALESMAN", "PAYMENT"],
     updField: "UPDDATE",
     dateField: "TRNDATE",
     filter: "COMPANY={COMPANY} AND SOSOURCE=1251",
@@ -217,10 +234,256 @@ export const TENANT_PRESETS: TenantPreset[] = [
     table: "MTRL",
     targetTable: "items",
     keyField: "MTRL",
-    columns: { MTRL: "int", CODE: "text", NAME: "text", SODTYPE: "int", MTRCATEGORY: "int", MTRGROUP: "int", ISACTIVE: "int", UPDDATE: "timestamp" },
-    optional: ["SODTYPE", "MTRCATEGORY", "MTRGROUP", "ISACTIVE"],
+    columns: {
+      MTRL: "int",
+      CODE: "text",
+      NAME: "text",
+      SODTYPE: "int",
+      MTRCATEGORY: "int",
+      MTRGROUP: "int",
+      MTRMARK: "int",
+      MTRMANFCTR: "int",
+      MTRUNIT1: "int",
+      PRICEW: "numeric",
+      PRICER: "numeric",
+      ISACTIVE: "int",
+      UPDDATE: "timestamp",
+    },
+    optional: ["SODTYPE", "MTRCATEGORY", "MTRGROUP", "MTRMARK", "MTRMANFCTR", "MTRUNIT1", "PRICEW", "PRICER", "ISACTIVE"],
     updField: "UPDDATE",
     filter: "COMPANY={COMPANY}",
     intervalMinutes: 180,
+  },
+
+  // ── Γραμμές παραστατικών (follow their documents: dates for history, UPDDATE for changes)
+  {
+    key: "sales_lines",
+    name: "Γραμμές πωλήσεων",
+    group: "Παραστατικά",
+    requires: "SALES",
+    table: "MTRLINES",
+    targetTable: "sales_lines",
+    keyField: "FINDOC,MTRLINES",
+    columns: {
+      MTRLINES: "int",
+      FINDOC: "int",
+      LINENUM: "int",
+      MTRL: "int",
+      WHOUSE: "int",
+      QTY1: "numeric",
+      PRICE: "numeric",
+      DISC1PRC: "numeric",
+      LNETLINEVAL: "numeric",
+      NETLINEVAL: "numeric",
+      SALESMAN: "int",
+      FINDOCS: "int",
+    },
+    optional: ["LINENUM", "WHOUSE", "PRICE", "DISC1PRC", "NETLINEVAL", "SALESMAN", "FINDOCS"],
+    filter: "COMPANY={COMPANY} AND SOSOURCE=1351",
+    intervalMinutes: 15,
+    options: { parent: { table: "FINDOC", key: "FINDOC", filter: "COMPANY={COMPANY} AND SOSOURCE=1351", dateField: "TRNDATE", updField: "UPDDATE" } },
+  },
+  {
+    key: "purchase_lines",
+    name: "Γραμμές αγορών & παραγγελιών",
+    group: "Παραστατικά",
+    requires: "PURCHASES",
+    table: "MTRLINES",
+    targetTable: "purchase_lines",
+    keyField: "FINDOC,MTRLINES",
+    columns: {
+      MTRLINES: "int",
+      FINDOC: "int",
+      LINENUM: "int",
+      MTRL: "int",
+      WHOUSE: "int",
+      QTY1: "numeric",
+      PRICE: "numeric",
+      DISC1PRC: "numeric",
+      LNETLINEVAL: "numeric",
+      NETLINEVAL: "numeric",
+      SALESMAN: "int",
+      FINDOCS: "int",
+    },
+    optional: ["LINENUM", "WHOUSE", "PRICE", "DISC1PRC", "NETLINEVAL", "SALESMAN", "FINDOCS"],
+    filter: "COMPANY={COMPANY} AND SOSOURCE=1251",
+    intervalMinutes: 60,
+    options: { parent: { table: "FINDOC", key: "FINDOC", filter: "COMPANY={COMPANY} AND SOSOURCE=1251", dateField: "TRNDATE", updField: "UPDDATE" } },
+  },
+
+  // ── Αποθήκη
+  {
+    key: "stock_balances",
+    name: "Υπόλοιπα αποθήκης (ανά μήνα)",
+    group: "Αποθήκη",
+    requires: "ANY",
+    table: "MTRBALSHEET",
+    targetTable: "stock_balances",
+    keyField: "MTRL,FISCPRD,PERIOD,WHOUSE",
+    columns: {
+      MTRL: "int",
+      FISCPRD: "int",
+      PERIOD: "int",
+      WHOUSE: "int",
+      IMPQTY1: "numeric",
+      EXPQTY1: "numeric",
+      SALQTY: "numeric",
+      SALVAL: "numeric",
+      PURQTY: "numeric",
+      PURVAL: "numeric",
+    },
+    optional: ["SALQTY", "SALVAL", "PURQTY", "PURVAL"],
+    filter: "COMPANY={COMPANY} AND (IMPQTY1<>0 OR EXPQTY1<>0)",
+    intervalMinutes: 60,
+    options: { yearField: "FISCPRD", chunkField: "PERIOD", chunkValues: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
+  },
+  {
+    key: "item_costs",
+    name: "Κόστος ειδών",
+    group: "Αποθήκη",
+    requires: "ANY",
+    table: "MTRCPRICES",
+    targetTable: "item_costs",
+    keyField: "MTRL,FISCPRD",
+    columns: { MTRL: "int", FISCPRD: "int", STANDCOST: "numeric", PURLPRICE: "numeric", PURPRICE1: "numeric" },
+    optional: ["PURPRICE1"],
+    filter: "COMPANY={COMPANY} AND PERIOD=0 AND (STANDCOST<>0 OR PURLPRICE<>0)",
+    intervalMinutes: DAY,
+    options: { yearField: "FISCPRD" },
+  },
+  {
+    key: "warehouses",
+    name: "Αποθηκευτικοί χώροι",
+    group: "Μητρώα",
+    requires: "ANY",
+    table: "WHOUSE",
+    targetTable: "warehouses",
+    keyField: "WHOUSE",
+    columns: { WHOUSE: "int", NAME: "text", ISACTIVE: "int" },
+    optional: ["ISACTIVE"],
+    filter: "COMPANY={COMPANY}",
+    intervalMinutes: DAY,
+  },
+  {
+    key: "item_categories",
+    name: "Εμπορικές κατηγορίες ειδών",
+    group: "Μητρώα",
+    requires: "ANY",
+    table: "MTRCATEGORY",
+    targetTable: "item_categories",
+    keyField: "MTRCATEGORY",
+    columns: { MTRCATEGORY: "int", CODE: "text", NAME: "text" },
+    optional: ["CODE"],
+    filter: "COMPANY={COMPANY}",
+    intervalMinutes: DAY,
+  },
+  {
+    key: "item_groups",
+    name: "Ομάδες ειδών",
+    group: "Μητρώα",
+    requires: "ANY",
+    table: "MTRGROUP",
+    targetTable: "item_groups",
+    keyField: "MTRGROUP",
+    columns: { MTRGROUP: "int", CODE: "text", NAME: "text" },
+    optional: ["CODE"],
+    filter: "COMPANY={COMPANY}",
+    intervalMinutes: DAY,
+  },
+  {
+    key: "brands",
+    name: "Μάρκες",
+    group: "Μητρώα",
+    requires: "ANY",
+    table: "MTRMARK",
+    targetTable: "brands",
+    keyField: "MTRMARK",
+    columns: { MTRMARK: "int", CODE: "text", NAME: "text" },
+    optional: ["CODE"],
+    filter: "COMPANY={COMPANY}",
+    intervalMinutes: DAY,
+  },
+  {
+    key: "salesmen",
+    name: "Πωλητές",
+    group: "Μητρώα",
+    requires: "ANY",
+    table: "PRSN",
+    targetTable: "salesmen",
+    keyField: "PRSN",
+    columns: { PRSN: "int", CODE: "text", NAME: "text", NAME2: "text" },
+    optional: ["CODE", "NAME2"],
+    filter: "COMPANY={COMPANY} AND SODTYPE=20",
+    intervalMinutes: DAY,
+  },
+
+  // ── Εισπράξεις & πληρωμές (για υπόλοιπα, ημέρες πληρωμής και ταμειακή πρόβλεψη)
+  {
+    key: "collections",
+    name: "Εισπράξεις πελατών",
+    group: "Παραστατικά",
+    requires: "SALES",
+    table: "FINDOC",
+    targetTable: "collections",
+    keyField: "FINDOC",
+    columns: {
+      FINDOC: "int",
+      FINCODE: "text",
+      TRNDATE: "timestamp",
+      FISCPRD: "int",
+      SERIES: "int",
+      TFPRMS: "int",
+      TRDR: "int",
+      SUMAMNT: "numeric",
+      SUMLAMNT: "numeric",
+      ISCANCEL: "int",
+      UPDDATE: "timestamp",
+    },
+    optional: ["FISCPRD", "TFPRMS", "SUMLAMNT", "ISCANCEL"],
+    updField: "UPDDATE",
+    dateField: "TRNDATE",
+    filter: "COMPANY={COMPANY} AND SOSOURCE=1381",
+    intervalMinutes: 30,
+  },
+  {
+    key: "supplier_payments",
+    name: "Πληρωμές προμηθευτών",
+    group: "Παραστατικά",
+    requires: "PURCHASES",
+    table: "FINDOC",
+    targetTable: "supplier_payments",
+    keyField: "FINDOC",
+    columns: {
+      FINDOC: "int",
+      FINCODE: "text",
+      TRNDATE: "timestamp",
+      FISCPRD: "int",
+      SERIES: "int",
+      TFPRMS: "int",
+      TRDR: "int",
+      SUMAMNT: "numeric",
+      SUMLAMNT: "numeric",
+      ISCANCEL: "int",
+      UPDDATE: "timestamp",
+    },
+    optional: ["FISCPRD", "TFPRMS", "SUMLAMNT", "ISCANCEL"],
+    updField: "UPDDATE",
+    dateField: "TRNDATE",
+    filter: "COMPANY={COMPANY} AND SOSOURCE=1281",
+    intervalMinutes: 60,
+  },
+
+  {
+    key: "partner_ledger",
+    name: "Καρτέλες πελατών & προμηθευτών (ανά μήνα)",
+    group: "Παραστατικά",
+    requires: "ANY",
+    table: "TRDBALSHEET",
+    targetTable: "partner_ledger",
+    keyField: "TRDR,FISCPRD,PERIOD",
+    columns: { TRDR: "int", FISCPRD: "int", PERIOD: "int", LDEBIT: "numeric", LCREDIT: "numeric" },
+    filter: "COMPANY={COMPANY} AND (LDEBIT<>0 OR LCREDIT<>0)",
+    intervalMinutes: 60,
+    options: { yearField: "FISCPRD", allYears: true, chunkField: "PERIOD", chunkValues: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
   },
 ];

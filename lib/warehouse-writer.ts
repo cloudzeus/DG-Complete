@@ -160,6 +160,36 @@ export async function replaceRows(t: WriteTarget, rows: Record<string, unknown>[
   });
 }
 
+/**
+ * Replaces the rows matching `where` (e.g. the lines of some documents, or one fiscal year) by
+ * `rows`, atomically. `where` is built from validated identifiers + bind parameters only.
+ */
+export async function replaceWhere(
+  t: WriteTarget,
+  rows: Record<string, unknown>[],
+  where: { column: string; values: (string | number)[] },
+) {
+  return withWarehouse(async (db) => {
+    await ensureTable(db, t);
+    const schema = q(schemaName(t.tenantId));
+    const table = q(t.table);
+    await db.query("BEGIN");
+    try {
+      if (where.values.length) {
+        await db.query(`DELETE FROM ${schema}.${table} WHERE ${q(col(where.column))}::text = ANY($1::text[])`, [
+          where.values.map(String),
+        ]);
+      }
+      const n = await insertBatches(db, t, dedupe(clean(rows, t.columns), t.keyFields), true);
+      await db.query("COMMIT");
+      return n;
+    } catch (err) {
+      await db.query("ROLLBACK");
+      throw err;
+    }
+  });
+}
+
 /** Reads rows of a tenant table for the admin data viewer. */
 export async function readRows(tenantId: string, table: string, limit = 5000) {
   return withWarehouse(async (db) => {

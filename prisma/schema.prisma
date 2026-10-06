@@ -130,6 +130,10 @@ model Tenant {
   connections        DataConnection[]
   softoneConnections SoftOneConnection[]
   payments           Payment[]
+  /// BI settings, e.g. { mainWarehouses: [1000], receivablePrefixes: ["30"], payablePrefixes: ["50"] }
+  biSettings         Json?
+  biBuiltAt          DateTime?
+  biBuildError       String?
   pnlConfig          PnlConfig?
   pnlLines           PnlLine[]
   aiUsage            AiUsage[]
@@ -326,6 +330,7 @@ model SyncJob {
   dateField       String? // rolling-window column, e.g. TRNDATE
   windowDays      Int? // INCREMENTAL without updField: re-import the last N days (catches edits + deletes)
   historyFrom     DateTime? // FULL: import rows with dateField >= historyFrom
+  options         Json? // WAREHOUSE: { parent?: {table,key,filter,dateField,updField}, yearField?, chunkField?, chunkValues? }
   enabled         Boolean           @default(true)
   lastRunAt       DateTime?
   lastStatus      SyncStatus?

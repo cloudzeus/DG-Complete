@@ -18,6 +18,28 @@ import {
 // t_<tenant>.pnl_lines (the tenant's P&L structure) from the rules kept in the app DB.
 // Source-agnostic: Cube and the dashboards only read fin_fact + pnl_lines.
 
+/** Tables whose refresh changes the analytic marts (lib/bi-marts). */
+const MART_SOURCE_TABLES = new Set([
+  "sales_docs",
+  "sales_lines",
+  "purchase_docs",
+  "purchase_lines",
+  "stock_balances",
+  "item_costs",
+  "items",
+  "gl_lines",
+  "partner_ledger",
+]);
+const MART_MIN_INTERVAL_MS = 10 * 60_000;
+
+/** Marts are rebuilt at most every 10 minutes, after any import that feeds them. Never throws. */
+async function rebuildMartsIfStale(tenantId: string) {
+  const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { biBuiltAt: true } });
+  if (t?.biBuiltAt && Date.now() - t.biBuiltAt.getTime() < MART_MIN_INTERVAL_MS) return;
+  const { buildBiMarts } = await import("@/lib/bi-marts");
+  await buildBiMarts(tenantId).catch(() => undefined);
+}
+
 /** Tables whose refresh changes the P&L. */
 export const PNL_SOURCE_TABLES = new Set(["gl_lines", "gl_accounts", "sales_docs", "purchase_docs", "series"]);
 
@@ -206,7 +228,9 @@ export async function rebuildFinFact(tenantId: string): Promise<number> {
 
 /** Rebuilds after a source import, if the tenant has a P&L. Never throws (logged on the config). */
 export async function rebuildAfterImport(tenantId: string, table: string | null) {
-  if (!table || !PNL_SOURCE_TABLES.has(table)) return;
+  if (!table) return;
+  if (MART_SOURCE_TABLES.has(table)) await rebuildMartsIfStale(tenantId);
+  if (!PNL_SOURCE_TABLES.has(table)) return;
   if (table === "series") await rebuildDocSeries(tenantId).catch(() => undefined);
   if (!(await prisma.pnlConfig.findUnique({ where: { tenantId }, select: { tenantId: true } }))) return;
   await rebuildFinFact(tenantId).catch(() => undefined);

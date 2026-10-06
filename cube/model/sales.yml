@@ -8,7 +8,7 @@ cubes:
     title: Πωλήσεις
     description: Παραστατικά τιμολόγησης πωλήσεων (καθαρή αξία, πιστωτικά αφαιρούνται).
     sql: >
-      SELECT d.findoc, d.trndate, d.fiscprd, d.branch, d.trdr, s.sign,
+      SELECT d.findoc, d.trndate, d.insdate, d.fiscprd, d.branch, d.trdr, s.sign,
              COALESCE(d.lnetamnt, d.netamnt) * s.sign AS net,
              (COALESCE(d.sumlamnt, d.sumamnt) - COALESCE(d.lnetamnt, d.netamnt)) * s.sign AS vat,
              COALESCE(d.sumlamnt, d.sumamnt) * s.sign AS gross,
@@ -74,6 +74,17 @@ cubes:
         title: Ημερομηνία
         type: time
         sql: trndate
+
+      - name: entry_time
+        title: Ώρα καταχώρησης
+        description: Πότε καταχωρήθηκε το παραστατικό (για την εικόνα της ημέρας ανά ώρα).
+        type: time
+        sql: insdate
+
+      - name: hour
+        title: Ώρα της ημέρας
+        type: number
+        sql: "EXTRACT(HOUR FROM insdate)"
 
       - name: fiscal_year
         title: Χρήση
