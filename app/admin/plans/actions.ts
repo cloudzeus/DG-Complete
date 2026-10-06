@@ -15,6 +15,7 @@ const schema = z.object({
   services: z.array(z.enum(SERVICE_KEYS as [string, ...string[]])).min(1, "Επιλέξτε τουλάχιστον μία υπηρεσία"),
   period: z.enum(["MONTHLY", "YEARLY"]),
   price: z.number("Μη έγκυρη τιμή").min(0).max(1_000_000),
+  aiTokensMonthly: z.number().int().min(0).max(2_000_000_000).default(0),
   active: z.boolean(),
 });
 export type PlanInput = z.input<typeof schema>;
@@ -35,6 +36,7 @@ export async function savePlan(input: PlanInput): Promise<{ ok: boolean; message
     services: withRequirements(v.services),
     period: v.period,
     price: v.price.toFixed(2),
+    aiTokensMonthly: v.aiTokensMonthly,
     active: v.active,
   };
   const plan = v.id ? await prisma.plan.update({ where: { id: v.id }, data }) : await prisma.plan.create({ data });

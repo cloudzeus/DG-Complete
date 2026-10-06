@@ -1,5 +1,6 @@
 import "server-only";
 import { decrypt, encrypt } from "@/lib/crypto";
+import { assertTokens, chargeTokens } from "@/lib/ai-tokens";
 import { prisma } from "@/lib/prisma";
 
 // The platform's OpenRouter account. Every call is metered per tenant in ai_usage with the cost
@@ -71,6 +72,21 @@ export async function checkKey(key?: string): Promise<KeyInfo> {
   };
 }
 
+/** What is left on the central OpenRouter account: account credits, else the key's limit. */
+export async function creditsRemaining(): Promise<{ remaining: number | null; total: number | null; used: number | null; source: "account" | "key" | null }> {
+  const k = await apiKey();
+  try {
+    const r = await orFetch<{ data: { total_credits?: number; total_usage?: number } }>("/credits", k);
+    const total = Number(r.data.total_credits ?? NaN);
+    const used = Number(r.data.total_usage ?? NaN);
+    if (Number.isFinite(total) && Number.isFinite(used)) return { remaining: total - used, total, used, source: "account" };
+  } catch {
+    // /credits may need a management key — fall back to the key's own limit.
+  }
+  const info = await checkKey(k);
+  return { remaining: info.limitRemaining, total: info.limit, used: info.usage, source: info.limitRemaining === null ? null : "key" };
+}
+
 export type ModelInfo = { id: string; name: string; context: number; promptPerM: number; completionPerM: number };
 
 let modelsCache: { at: number; models: ModelInfo[] } | null = null;
@@ -128,6 +144,7 @@ export async function chatCompletion(opts: {
 }) {
   const settings = await getAiSettings();
   if (!settings.enabled && opts.feature !== "test") throw new Error("Το AI είναι απενεργοποιημένο (Ρυθμίσεις → AI).");
+  if (opts.feature !== "test") await assertTokens(opts.tenantId);
   const key = await apiKey();
   const model = opts.model ?? settings.defaultModel;
   const markup = Number(settings.markupPercent);
@@ -146,7 +163,7 @@ export async function chatCompletion(opts: {
       }),
     });
     const cost = Number(r.usage?.cost ?? 0);
-    await prisma.aiUsage.create({
+    const usage = await prisma.aiUsage.create({
       data: {
         tenantId: opts.tenantId,
         userId: opts.userId ?? null,
@@ -161,6 +178,11 @@ export async function chatCompletion(opts: {
         latencyMs: Date.now() - started,
       },
     });
+    if (opts.feature !== "test") {
+      await chargeTokens(opts.tenantId, (r.usage?.prompt_tokens ?? 0) + (r.usage?.completion_tokens ?? 0), opts.feature, usage.id).catch((err) =>
+        console.error("[ai-tokens] charge:", (err as Error).message),
+      );
+    }
     return r;
   } catch (err) {
     await prisma.aiUsage.create({

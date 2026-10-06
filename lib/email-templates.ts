@@ -32,6 +32,11 @@ const V = {
   method: { key: "method", label: "Τρόπος πληρωμής", sample: "Τραπεζική μεταφορά" },
   description: { key: "description", label: "Περιγραφή", sample: "Ετήσια συνδρομή DGsmart BI 2027" },
   invoice: { key: "invoice", label: "Αριθμός παραστατικού", sample: "ΤΠΥ-Α 1024" },
+  remaining: { key: "remaining", label: "Υπόλοιπο OpenRouter", sample: "$14,20" },
+  threshold: { key: "threshold", label: "Όριο ειδοποίησης", sample: "$20,00" },
+  tenantsLow: { key: "tenantsLow", label: "Πελάτες χωρίς tokens", sample: "ΑΦΟΙ ΠΑΡΑΔΕΙΓΜΑ ΑΕ (0 tokens)" },
+  pending: { key: "pending", label: "Αιτήματα tokens σε αναμονή", sample: "2" },
+
 } satisfies Record<string, TemplateVar>;
 
 export const TEMPLATES: TemplateDef[] = [
@@ -120,6 +125,39 @@ export const TEMPLATES: TemplateDef[] = [
 Το παραστατικό θα το λάβετε και από το λογιστήριό μας.`,
   },
 ];
+
+TEMPLATES.push({
+  key: "ai_credits_low",
+  name: "Ειδοποίηση AI πιστώσεων (εσωτερικό)",
+  description: "Προς εμάς, όταν το κεντρικό υπόλοιπο του OpenRouter πέσει κάτω από το όριο (Ρυθμίσεις → AI) — μία φορά την ημέρα.",
+  vars: [V.remaining, V.threshold, V.tenantsLow, V.pending, V.link],
+  subject: "AI: υπόλοιπο OpenRouter {{remaining}} — χρειάζεται αγορά πιστώσεων",
+  body: `Το υπόλοιπο του λογαριασμού OpenRouter είναι **{{remaining}}**, κάτω από το όριο των {{threshold}}.
+
+Αγοράστε πιστώσεις για να μη σταματήσουν ο Κίμων και οι υπόλοιπες λειτουργίες AI των πελατών.
+
+- Πελάτες χωρίς tokens: {{tenantsLow}}
+- Αιτήματα tokens σε αναμονή: {{pending}}
+
+[[Άνοιγμα διαχείρισης|{{link}}]]`,
+});
+
+TEMPLATES.push({
+  key: "ai_token_request",
+  name: "Αίτημα πακέτου AI tokens (εσωτερικό)",
+  description: "Προς εμάς, όταν ένας πελάτης ζητά πακέτο AI tokens — για τιμολόγηση και έγκριση.",
+  vars: [V.tenant, V.amount, V.name, V.description, V.link],
+  subject: "Αίτημα AI tokens — {{tenant}} ({{amount}})",
+  body: `Ο πελάτης **{{tenant}}** ζήτησε πακέτο AI tokens.
+
+- Πακέτο: **{{description}}**
+- Ποσό: **{{amount}}**
+- Από: {{name}}
+
+Τιμολογήστε και, όταν πληρωθεί, εγκρίνετε το αίτημα για να προστεθούν τα tokens.
+
+[[Άνοιγμα αιτημάτων|{{link}}]]`,
+});
 
 export const templateDef = (key: string) => TEMPLATES.find((t) => t.key === key);
 

@@ -29,9 +29,10 @@ export default async function PlanPage({ params }: PageProps<"/admin/plans/[id]"
                 services: withRequirements(plan.services),
                 period: plan.period,
                 price: plan.price.toString(),
+                aiTokens: plan.aiTokensMonthly ? String(plan.aiTokensMonthly) : "",
                 active: plan.active,
               }
-            : { name: "", description: "", services: ["finance", "sales", "purchasing", "kimon"], period: "YEARLY", price: "", active: true }
+            : { name: "", description: "", services: ["finance", "sales", "purchasing", "kimon"], period: "YEARLY", price: "", aiTokens: "", active: true }
         }
       />
     </>

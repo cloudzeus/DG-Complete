@@ -1,6 +1,6 @@
 // The services a package (plan) can include — shared by the server (enforcement) and the wizard.
 
-export type ServiceKey = "finance" | "sales" | "purchasing" | "geo" | "industry" | "kimon" | "purchase_orders" | "api";
+export type ServiceKey = "finance" | "sales" | "purchasing" | "geo" | "industry" | "kimon" | "purchase_orders" | "smart_orders" | "api";
 
 export type ServiceDef = {
   key: ServiceKey;
@@ -68,6 +68,15 @@ export const SERVICES: ServiceDef[] = [
     requires: ["purchasing"],
   },
   {
+    key: "smart_orders",
+    name: "Έξυπνες προτάσεις παραγγελίας (AI)",
+    description:
+      "Προτάσεις ανά μάρκα με τεκμηρίωση: πρόβλεψη ζήτησης (είδος × μάρκα × κατηγορία, εποχικότητα), εξάντληση έναντι του μετρημένου χρόνου παράδοσης, πωλήσεις σε κίνδυνο και εναλλακτικά είδη άλλων μαρκών με ποσοστό συμφωνίας από AI (καταναλώνει AI tokens).",
+    pages: ["orders-smart"],
+    cubes: [],
+    requires: ["purchase_orders"],
+  },
+  {
     key: "api",
     name: "Web services (API)",
     description: "Πρόσβαση στα αποτελέσματα από την εφαρμογή του πελάτη με API keys: δείκτες, έτοιμα σύνολα δεδομένων και ερωτήματα.",
@@ -90,4 +99,5 @@ export function withRequirements(keys: string[]): ServiceKey[] {
 }
 
 export const cubesOf = (services: Iterable<string>) => [...new Set([...services].flatMap((s) => serviceDef(s)?.cubes ?? []))];
-export const pagesOf = (services: Iterable<string>) => new Set(["", ...[...services].flatMap((s) => serviceDef(s)?.pages ?? [])]);
+// Always open: the overview and the tenant's AI tokens.
+export const pagesOf = (services: Iterable<string>) => new Set(["", "ai-tokens", ...[...services].flatMap((s) => serviceDef(s)?.pages ?? [])]);

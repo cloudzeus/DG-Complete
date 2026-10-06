@@ -63,6 +63,11 @@ export default async function PlansPage() {
                       {serviceDef(s)?.name ?? s}
                     </span>
                   ))}
+                  {p.aiTokensMonthly > 0 && (
+                    <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs text-violet-700">
+                      {p.aiTokensMonthly.toLocaleString("el-GR")} AI tokens / μήνα
+                    </span>
+                  )}
                 </div>
                 <div className="mt-auto flex items-center justify-between gap-2 pt-2 text-xs text-muted-foreground">
                   <span>{p._count.tenants === 0 ? "Κανένας πελάτης" : `${p._count.tenants} πελάτ${p._count.tenants === 1 ? "ης" : "ες"}`}</span>

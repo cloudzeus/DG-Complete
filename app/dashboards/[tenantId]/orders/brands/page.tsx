@@ -30,7 +30,7 @@ function Trend({ v }: { v: number | null }) {
 
 export default async function BrandOrdersPage({ params, searchParams }: PageProps<"/dashboards/[tenantId]/orders/brands">) {
   const { tenantId } = await params;
-  await requireDashboardTenant(tenantId, "orders");
+  await requireDashboardTenant(tenantId, "orders-smart");
   const sp = await searchParams;
   let brands: BrandSummary[] = [];
   let plan: BrandPlan | null = null;
@@ -53,7 +53,7 @@ export default async function BrandOrdersPage({ params, searchParams }: PageProp
           (είδος × μάρκα × κατηγορία, με εποχικότητα) και εναλλακτικά είδη άλλων μαρκών της ίδιας κατηγορίας και ομάδας με καλύτερα στοιχεία.
         </p>
       </div>
-      <OrdersTabs tenantId={tenantId} active="brands" />
+      <OrdersTabs tenantId={tenantId} active="brands" smart />
       {error && <DashboardErrors errors={[error]} />}
 
       <div className="grid gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">

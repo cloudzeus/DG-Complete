@@ -22,6 +22,8 @@ export type PlanValues = {
   services: ServiceKey[];
   period: "MONTHLY" | "YEARLY";
   price: string;
+  /** AI tokens included per month. */
+  aiTokens: string;
   active: boolean;
 };
 
@@ -53,7 +55,16 @@ export function PlanWizard({ initial, tenants }: { initial: PlanValues; tenants:
 
   function save() {
     start(async () => {
-      const r = await savePlan({ id: v.id, name: v.name, description: v.description, services, period: v.period, price, active: v.active });
+      const r = await savePlan({
+        id: v.id,
+        name: v.name,
+        description: v.description,
+        services,
+        period: v.period,
+        price,
+        aiTokensMonthly: Math.max(0, Math.round(Number(v.aiTokens.replace(/\D/g, "")) || 0)),
+        active: v.active,
+      });
       if (!r.ok) return void toast.error(r.message);
       toast.success(r.message);
       router.push("/admin/plans");
@@ -165,6 +176,14 @@ export function PlanWizard({ initial, tenants }: { initial: PlanValues; tenants:
                 </p>
               )}
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="p-tokens">AI tokens ανά μήνα</Label>
+              <Input id="p-tokens" inputMode="numeric" value={v.aiTokens} onChange={(e) => setV({ ...v, aiTokens: e.target.value })} placeholder="π.χ. 2000000 — 0 = χωρίς" />
+              <p className="text-xs text-muted-foreground">
+                Για Κίμωνα, κλαδική ανάλυση και εναλλακτικά είδη. Προστίθενται στην αρχή κάθε μήνα· τα αχρησιμοποίητα μεταφέρονται. Επιπλέον tokens
+                αγοράζονται σε πακέτα (Ρυθμίσεις → AI).
+              </p>
+            </div>
             <label className="flex items-center justify-between gap-3 rounded-md border p-3">
               <span>
                 <span className="block text-sm font-medium">Διαθέσιμο για νέους πελάτες</span>
@@ -184,6 +203,11 @@ export function PlanWizard({ initial, tenants }: { initial: PlanValues; tenants:
             <div className="text-2xl font-semibold tabular-nums">
               {Number.isFinite(price) ? eur(price) : "—"} <span className="text-sm font-normal text-muted-foreground">/ {v.period === "MONTHLY" ? "μήνα" : "έτος"}</span>
             </div>
+            {Number(v.aiTokens.replace(/\D/g, "")) > 0 && (
+              <p className="text-sm">
+                <span className="font-medium">{Number(v.aiTokens.replace(/\D/g, "")).toLocaleString("el-GR")} AI tokens</span> τον μήνα
+              </p>
+            )}
             <ul className="space-y-1.5">
               {services.map((k) => (
                 <li key={k} className="flex items-start gap-2">

@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import { runAiHousekeeping } from "@/lib/ai-alerts";
 import { runSubscriptionReminders } from "@/lib/email";
 import { runGeocoding } from "@/lib/geo";
 import { runKadLookups } from "@/lib/kad";
@@ -23,6 +24,7 @@ const HOURLY = [
   ["reminders", runSubscriptionReminders], // each reminder once (dedupe in email_log)
   ["geocoding", runGeocoding], // new / changed customer addresses
   ["kad", runKadLookups], // activity codes by AFM
+  ["ai", runAiHousekeeping], // monthly plan tokens + low OpenRouter credit alert
 ] as const;
 
 export async function POST(request: Request) {

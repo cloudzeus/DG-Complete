@@ -141,6 +141,10 @@ model Tenant {
   emailSuppressions  EmailSuppression[]
   docSeriesOverrides DocSeriesOverride[]
   itemSubstitutes    ItemSubstitute[]
+  // AI tokens left (all AI features draw from it); demo tenants are not charged.
+  aiTokenBalance     Int                 @default(0)
+  aiTokenLedger      AiTokenLedger[]
+  aiTokenRequests    AiTokenRequest[]
   apiKeys            ApiKey[]
   industry           IndustrySegmentation?
   /// BI settings, e.g. { mainWarehouses: [1000], receivablePrefixes: ["30"], payablePrefixes: ["50"] }
@@ -479,6 +483,13 @@ model AiSettings {
   keyHint       String? // last 4 chars, for display only
   defaultModel  String    @default("anthropic/claude-sonnet-5.5")
   markupPercent Decimal   @default(30) @db.Decimal(6, 2) // our margin on top of the OpenRouter cost
+  // Token packs the tenants can request: [{ tokens, priceEur }] (price incl. our markup and VAT).
+  tokenPackages Json      @default("[]")
+  // Off: usage is still deducted (the balance may go negative) but nothing is blocked.
+  enforceTokens Boolean   @default(false)
+  // Email when the central OpenRouter credit falls below this (once a day).
+  alertEmail    String?   @default("gkozyris@dgsmart.gr")
+  alertBelowUsd Decimal   @default(20) @db.Decimal(10, 2)
   enabled       Boolean   @default(false)
   lastTestedAt  DateTime?
   lastTestOk    Boolean?
@@ -527,6 +538,8 @@ model Plan {
   price       Decimal            @db.Decimal(12, 2) // incl. VAT
   active      Boolean            @default(true)
   sortOrder   Int                @default(0)
+  // AI tokens included every month (Κίμων, κλαδική ανάλυση, εναλλακτικά είδη …); 0 = none.
+  aiTokensMonthly Int            @default(0)
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
   tenants     Tenant[]
@@ -875,4 +888,44 @@ model ItemSubstitute {
 
   @@id([tenantId, mtrl, altMtrl])
   @@map("item_substitute")
+}
+
+// Every change of a tenant's AI tokens: monthly plan grant, top-up, usage (one row per AI call), adjustment.
+model AiTokenLedger {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  delta        Int
+  balanceAfter Int
+  kind         String // grant | topup | usage | adjust
+  feature      String?
+  note         String?
+  // grant:<tenant>:<YYYY-MM> — each monthly grant once.
+  key          String?  @unique
+  aiUsageId    String?
+  requestId    String?
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@map("ai_token_ledger")
+}
+
+// A tenant's request for a token pack; approved by us (when paid) → tokens added.
+model AiTokenRequest {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tokens        Int
+  priceEur      Decimal   @db.Decimal(12, 2)
+  status        String    @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELED
+  requestedById String?
+  decidedById   String?
+  decidedAt     DateTime?
+  note          String?
+  createdAt     DateTime  @default(now())
+
+  @@index([status, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("ai_token_request")
 }

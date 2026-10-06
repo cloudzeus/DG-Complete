@@ -3,6 +3,7 @@ import { Activity, Building2, Contact, CreditCard, Database, LayoutDashboard, Pl
 import { PageHeader, SectionTitle } from "@/components/admin/page-header";
 import { StatCard } from "@/components/admin/stat-card";
 import { StatusPill } from "@/components/admin/tone";
+import { AiOverviewCard } from "@/components/admin/ai-overview-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/rbac";
@@ -87,6 +88,8 @@ export default async function AdminHome() {
           tone={failedConnections ? "amber" : "teal"}
         />
       </div>
+
+      {user.platformRole === "SUPER_ADMIN" && <AiOverviewCard />}
 
       <div className="mt-4 grid gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-3">

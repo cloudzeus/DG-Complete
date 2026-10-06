@@ -12,6 +12,7 @@ import {
   Download,
   Factory,
   ListChecks,
+  Sparkles,
   MapPinned,
   Plug,
   Scale,
@@ -49,6 +50,7 @@ import { SubscriptionForm } from "./subscription-form";
 import { GeoPanel } from "./geo-panel";
 import { IndustryPanel } from "./industry-panel";
 import { SeriesPanel } from "./series-panel";
+import { TenantAiTokens } from "@/app/admin/ai-tokens/tenant-panel";
 import { hasService } from "@/lib/tenant-services";
 
 export async function generateMetadata({
@@ -232,6 +234,21 @@ export default async function TenantPage({
               />
             </CardContent>
           </Card>
+          {user.platformRole === "SUPER_ADMIN" && (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <SectionTitle icon={Sparkles} tone="violet">
+                    AI tokens
+                  </SectionTitle>
+                </CardTitle>
+                <CardDescription>Το υπόλοιπο για Κίμωνα, κλαδική ανάλυση και εναλλακτικά είδη, η κατανάλωση και οι κινήσεις.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <TenantAiTokens tenantId={tenant.id} />
+              </CardContent>
+            </Card>
+          )}
           {tenantSoftOne && canSources && (
             <Card>
               <CardHeader>

@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { requirePermission } from "@/lib/rbac";
 import { getAiSettings, listModels, usageByTenant, type ModelInfo } from "@/lib/openrouter";
 import { AiForm } from "./ai-form";
+import { TokenSettings } from "./token-settings";
 import { UsageTable } from "./usage-table";
 
 export const metadata: Metadata = { title: "AI · OpenRouter" };
@@ -110,6 +111,30 @@ export default async function AiSettingsPage({ searchParams }: PageProps<"/admin
           />
         </div>
       </div>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>
+            <SectionTitle icon={Sparkles} tone="violet">
+              AI tokens πελατών
+            </SectionTitle>
+          </CardTitle>
+          <CardDescription>
+            Κάθε πελάτης έχει ένα υπόλοιπο tokens για όλες τις λειτουργίες AI (Κίμων, κλαδική ανάλυση, εναλλακτικά είδη). Το πακέτο συνδρομής δίνει
+            tokens κάθε μήνα· επιπλέον tokens αγοράζονται σε πακέτα. Τα αιτήματα εγκρίνονται από την Επισκόπηση ή τη σελίδα του πελάτη.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <TokenSettings
+            values={{
+              enforceTokens: settings.enforceTokens,
+              alertEmail: settings.alertEmail ?? "",
+              alertBelowUsd: Number(settings.alertBelowUsd),
+              packages: Array.isArray(settings.tokenPackages) ? (settings.tokenPackages as { tokens: number; priceEur: number }[]) : [],
+            }}
+          />
+        </CardContent>
+      </Card>
 
       <Card className="mt-6">
         <CardHeader>

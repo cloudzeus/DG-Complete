@@ -119,3 +119,32 @@ export async function removeAiKey(): Promise<{ ok: boolean; message: string }> {
   revalidatePath("/admin/settings/ai");
   return { ok: true, message: "Το κλειδί αφαιρέθηκε και το AI απενεργοποιήθηκε." };
 }
+
+const tokenSettingsSchema = z.object({
+  enforceTokens: z.boolean(),
+  alertEmail: z.union([z.literal(""), z.email("Μη έγκυρο email")]),
+  alertBelowUsd: z.number().min(0).max(100_000),
+  packages: z
+    .array(z.object({ tokens: z.number().int().min(1000).max(2_000_000_000), priceEur: z.number().min(0).max(1_000_000) }))
+    .max(10, "Έως 10 πακέτα"),
+});
+
+/** AI tokens: charging on/off, the token packs offered to tenants, the low-credit alert. */
+export async function saveTokenSettings(input: z.input<typeof tokenSettingsSchema>): Promise<{ ok: boolean; message: string }> {
+  const user = await requirePermission("platform.settings.manage");
+  const parsed = tokenSettingsSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Μη έγκυρα στοιχεία." };
+  const v = parsed.data;
+  await prisma.aiSettings.update({
+    where: { id: "default" },
+    data: {
+      enforceTokens: v.enforceTokens,
+      alertEmail: v.alertEmail || null,
+      alertBelowUsd: v.alertBelowUsd.toFixed(2),
+      tokenPackages: [...v.packages].sort((a, b) => a.tokens - b.tokens),
+    },
+  });
+  await audit({ actorId: user.id, action: "ai.tokens.settings", entity: "AiSettings", entityId: "default", meta: v });
+  revalidatePath("/admin/settings/ai");
+  return { ok: true, message: "Αποθηκεύτηκε." };
+}

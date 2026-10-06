@@ -12,7 +12,7 @@ export default async function OrdersPage({ params, searchParams }: PageProps<"/d
   const { tenantId } = await params;
   const sp = await searchParams;
   const initialBrand = Number(sp.brand) || null;
-  const { user } = await requireDashboardTenant(tenantId, "orders");
+  const { user, access } = await requireDashboardTenant(tenantId, "orders");
   const canCreate = can(user, "tenant.orders.create", tenantId);
   let suppliers: OrderSupplier[] = [];
   let brands: OrderBrand[] = [];
@@ -33,7 +33,7 @@ export default async function OrdersPage({ params, searchParams }: PageProps<"/d
           αφαιρέστε γραμμές, κατεβάστε σε Excel ή δημιουργήστε την παραγγελία απευθείας στο SoftOne.
         </p>
       </div>
-      <OrdersTabs tenantId={tenantId} active="editor" />
+      <OrdersTabs tenantId={tenantId} active="editor" smart={access.pages.has("orders-smart")} />
       {error && <DashboardErrors errors={[error]} />}
       <OrderEditor tenantId={tenantId} suppliers={suppliers} brands={brands} initialBrand={initialBrand} canCreate={canCreate} problem={target?.problem ?? null} series={target?.series ?? []} />
     </>
