@@ -312,9 +312,15 @@ export function DashboardSidebar({
                 {staff && (
                   <>
                     <DropdownMenuItem asChild>
-                      <Link href={`/admin/tenants/${tenantId}`}>
+                      <Link href="/admin">
                         <ShieldCheck />
                         Διαχείριση πλατφόρμας
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href={`/admin/tenants/${tenantId}`}>
+                        <ShieldCheck />
+                        Ο πελάτης στη διαχείριση
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
