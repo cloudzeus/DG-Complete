@@ -1,4 +1,5 @@
 import "server-only";
+import { groupStock, groupTrends, trendInsights, withStock, type CategoryTrend, type GroupWithStock, type TrendInsight } from "@/lib/demand-trends";
 import { getBiSettings } from "@/lib/bi-marts";
 import { prisma } from "@/lib/prisma";
 import { s1GetData, s1SetData } from "@/lib/softone";
@@ -56,43 +57,58 @@ export type OrderLine = {
   stockoutDays: number | null;
   /** How the forecast was made, in plain words. */
   forecastNote: string | null;
+  /** The item's category: last quarter vs the same quarter a year earlier, %. */
+  categoryTrend: number | null;
 };
 
 const RISING = 20; // % — demand of the last 90 days this much above the 12-month average
+type GroupCtx = { category?: CategoryTrend; brand?: CategoryTrend };
+
+const pctTxt = (f: number) => {
+  const p = Math.round((f - 1) * 100);
+  return `${p > 0 ? "+" : ""}${p}%`;
+};
+
 /**
- * Demand forecast for the next 3 months from 24 months of sales (index = months ago):
- * level = average of the last 12 full months, × momentum (last quarter vs that level, damped by half),
- * × seasonality (the same month a year earlier vs its year's average, shrunk halfway to 1) when the
- * item sells in at least 6 of the 12 months — sparse sellers get no seasonality. Then the stock is
- * run down month by month at the forecast pace to find the stock-out day.
+ * Demand forecast for the next 3 months, hierarchical: the item's own 12-month level, with
+ * - trend: the item's last quarter (if it sells regularly) combined with the trend of its brand and
+ *   category (last quarter vs the same quarter a year earlier) — sparse sellers take the groups' trend;
+ * - seasonality: the category's (steady, many items), blended with the item's own when it sells in at
+ *   least 6 of the 12 months.
+ * Then the stock is run down month by month at that pace to find the stock-out day.
  */
-function forecast(h: number[], stock: number): { forecast: number[]; stockoutDays: number | null; forecastNote: string | null } {
+function forecast(h: number[], stock: number, g: GroupCtx): { forecast: number[]; stockoutDays: number | null; forecastNote: string | null } {
   const full = h.slice(1, 13); // last 12 full months
   const prev = h.slice(13, 24);
   const level = full.reduce((a, v) => a + Math.max(v, 0), 0) / 12;
   if (level <= 0) return { forecast: [0, 0, 0], stockoutDays: null, forecastNote: null };
-  const recent = (Math.max(h[1], 0) + Math.max(h[2], 0) + Math.max(h[3], 0)) / 3;
-  const momentum = Math.min(Math.max(recent / level, 0.5), 2);
-  const trend = 1 + (momentum - 1) / 2;
   const active = full.filter((v) => v > 0).length;
+  const regular = active >= 6;
+  const recent = (Math.max(h[1], 0) + Math.max(h[2], 0) + Math.max(h[3], 0)) / 3;
+  const itemTrend = 1 + (Math.min(Math.max(recent / level, 0.5), 2) - 1) / 2;
+  const groups = [g.category?.trend, g.brand?.trend].filter((v): v is number => typeof v === "number");
+  const groupTrend = groups.length ? Math.exp(groups.reduce((a, v) => a + Math.log(v), 0) / groups.length) : 1;
+  const trend = regular ? Math.sqrt(itemTrend * groupTrend) : groupTrend;
+
   const prevLevel = prev.reduce((a, v) => a + Math.max(v, 0), 0) / prev.length;
-  const seasonal = active >= 6 && level > 0;
+  const month = new Date().getMonth();
   const fc = [1, 2, 3].map((k) => {
-    // Same calendar month one year earlier = (12 - k) months ago (and 24 - k two years ago, if known).
-    const same = [h[12 - k], 24 - k < 24 ? h[24 - k] : undefined].filter((v): v is number => v !== undefined);
-    let si = 1;
-    if (seasonal) {
-      const ratios = [Math.max(same[0], 0) / level, ...(same[1] !== undefined && prevLevel > 0 ? [Math.max(same[1], 0) / prevLevel] : [])];
-      si = 1 + (Math.min(ratios.reduce((a, v) => a + v, 0) / ratios.length, 3) - 1) / 2;
+    const groupSi = g.category?.season[(month + k) % 12] ?? g.brand?.season[(month + k) % 12] ?? 1;
+    let si = groupSi;
+    if (regular) {
+      // Same calendar month a year (and two years) earlier vs that year's average.
+      const ratios = [Math.max(h[12 - k], 0) / level, ...(prevLevel > 0 && h[24 - k] !== undefined ? [Math.max(h[24 - k], 0) / prevLevel] : [])];
+      const own = 1 + (Math.min(ratios.reduce((a, v) => a + v, 0) / ratios.length, 3) - 1) / 2;
+      si = (own + groupSi) / 2;
     }
     return Math.round(level * trend * si * 10) / 10;
   });
-  // Run the stock down: the rest of this month, the 3 forecast months, then the trend pace.
+
+  // Monthly demand: rest of this month at the trend pace, the 3 forecast months, then the trend pace.
   let left = Math.max(stock, 0);
   let days = 0;
   const now = new Date();
   const daysIn = (y: number, m: number) => new Date(y, m + 1, 0).getDate();
-  // Monthly demand: rest of this month at the trend pace, the 3 forecast months, then the trend pace.
   const rates = [level * trend, ...fc, ...Array(9).fill(level * trend)];
   let stockoutDays: number | null = null;
   for (let i = 0; i < rates.length; i++) {
@@ -106,11 +122,12 @@ function forecast(h: number[], stock: number): { forecast: number[]; stockoutDay
     left -= daily * span;
     days += span;
   }
-  const tr = Math.round((trend - 1) * 100);
   const note = [
     `μέσος όρος ${Math.round(level * 10) / 10}/μήνα`,
-    tr ? `τάση ${tr > 0 ? "+" : ""}${tr}%` : null,
-    seasonal ? "με εποχικότητα" : "χωρίς εποχικότητα (λίγοι μήνες με πωλήσεις)",
+    regular ? `είδος ${pctTxt(itemTrend)}` : "αραιές πωλήσεις — βάση κατηγορίας/μάρκας",
+    g.category ? `κατηγορία ${pctTxt(g.category.trend)}` : null,
+    g.brand ? `μάρκα ${pctTxt(g.brand.trend)}` : null,
+    g.category ? "εποχικότητα κατηγορίας" : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -250,7 +267,7 @@ async function orderLinesWhere(
     const r = await db.query(
       `SELECT m.mtrl, i.code, i.name, m.abc, m.stock_qty, m.days_of_cover, m.lead_days, m.qty_12m, m.qty_prev_12m, m.qty_90d,
               m.suggested_order_qty, ${source} AS supplier_source, sp.name AS supplier_name, m.revenue_12m, m.last_sale,
-              ${brands ? "b.name" : "NULL"} AS brand_name, ${categories ? "c.name" : "NULL"} AS category_name
+              ${brands ? "b.name" : "NULL"} AS brand_name, ${categories ? "c.name" : "NULL"} AS category_name, i.mtrcategory, i.mtrmark
        FROM ${s}.m_item_stats m LEFT JOIN ${s}.items i ON i.mtrl = m.mtrl
        LEFT JOIN ${s}.suppliers sp ON sp.trdr = m.main_supplier
        ${brands ? `LEFT JOIN ${s}.brands b ON b.mtrmark = i.mtrmark` : ""}
@@ -281,6 +298,13 @@ async function orderLinesWhere(
       history.set(Number(m.mtrl), arr);
     }
     const monthly = new Map<number, number[]>([...history].map(([k, h]) => [k, h.slice(0, 12).reverse()]));
+    // Trends of the categories and brands of these items (lib/demand-trends).
+    const ids = (col: string) => [...new Set(r.rows.map((x) => x[col]).filter((v) => v !== null && v !== undefined).map(Number))];
+    // One connection: one query at a time.
+    const catTrends = await groupTrends(db, s, "category", ids("mtrcategory"));
+    const brandTrends: CategoryTrend[] = brands ? await groupTrends(db, s, "brand", ids("mtrmark")) : [];
+    const catOf = new Map(catTrends.map((t) => [t.id, t]));
+    const brandOf = new Map(brandTrends.map((t) => [t.id, t]));
     return r.rows
       .map((x) => {
         const base = {
@@ -306,7 +330,11 @@ async function orderLinesWhere(
           supplierSource: (x.supplier_source as "item" | "brand" | null) ?? null,
           ...base,
           ...assess(base),
-          ...forecast(history.get(Number(x.mtrl)) ?? Array(24).fill(0), base.stock),
+          ...forecast(history.get(Number(x.mtrl)) ?? Array(24).fill(0), base.stock, {
+            category: x.mtrcategory === null ? undefined : catOf.get(Number(x.mtrcategory)),
+            brand: x.mtrmark === null ? undefined : brandOf.get(Number(x.mtrmark)),
+          }),
+          categoryTrend: x.mtrcategory === null ? null : (catOf.get(Number(x.mtrcategory))?.quarterPct ?? null),
         };
       })
       .map((l) => {
@@ -356,6 +384,26 @@ export async function itemMovement(tenantId: string, f: { q?: string; brand?: st
   }
   const lines = await orderLinesWhere(tenantId, where.join(" AND "), params, { orderBy: "m.revenue_12m DESC NULLS LAST, m.stock_qty DESC", limit: f.limit ?? 1500 });
   return lines.sort((a, b) => b.revenue12m - a.revenue12m);
+}
+
+export type DemandOverview = { categories: GroupWithStock[]; brands: GroupWithStock[]; insights: TrendInsight[] };
+
+/** Category and brand trends with their stock, and what they mean (Προϊόντα → Κίνηση). */
+export async function demandOverview(tenantId: string): Promise<DemandOverview> {
+  const s = qi(schemaName(tenantId));
+  return withWarehouse(async (db) => {
+    const hasBrands = !!(await db.query("SELECT to_regclass($1) AS t", [`${s}.brands`])).rows[0]?.t;
+    const categories = withStock(await groupTrends(db, s, "category"), await groupStock(db, s, "category"));
+    const brands = hasBrands ? withStock(await groupTrends(db, s, "brand"), await groupStock(db, s, "brand")) : [];
+    return {
+      categories,
+      brands,
+      insights: trendInsights([
+        { by: "category", list: categories },
+        { by: "brand", list: brands },
+      ]),
+    };
+  });
 }
 
 export type ItemHit = { mtrl: number; code: string | null; name: string; brand: string | null; supplier: string | null; stock: number; qty12m: number };

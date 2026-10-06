@@ -7,7 +7,8 @@ import { ExportButton } from "@/components/dashboards/export-button";
 import { MonthBars } from "@/components/dashboards/month-bars";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { OrderLine } from "@/lib/purchase-orders";
+import { DemandTrends } from "@/components/products/demand-trends";
+import type { DemandOverview, OrderLine } from "@/lib/purchase-orders";
 import { cn } from "@/lib/utils";
 
 // Προϊόντα → Κίνηση & απόθεμα: per item the monthly sales of the last 12 months, the trend, the
@@ -67,7 +68,19 @@ function Pct({ value }: { value: number | null }) {
   );
 }
 
-export function ItemMovement({ tenantId, lines, capped, search }: { tenantId: string; lines: OrderLine[]; capped: boolean; search: string }) {
+export function ItemMovement({
+  tenantId,
+  lines,
+  capped,
+  search,
+  overview,
+}: {
+  tenantId: string;
+  lines: OrderLine[];
+  capped: boolean;
+  search: string;
+  overview: DemandOverview | null;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -105,9 +118,22 @@ export function ItemMovement({ tenantId, lines, capped, search }: { tenantId: st
   const counts = useMemo(() => Object.fromEntries(Object.entries(FILTERS).map(([k, v]) => [k, lines.filter(v.test).length])) as Record<Filter, number>, [lines]);
 
   const select = "h-10 rounded-md border bg-background px-2 text-sm";
+  function pickGroup(group: "category" | "brand", name: string) {
+    if (group === "category") {
+      setCategory(name);
+      setBrand("");
+    } else {
+      setBrand(name);
+      setCategory("");
+    }
+    setFilter("all");
+    setShown(PAGE);
+    document.getElementById("item-movement-table")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
+      {overview && <DemandTrends insights={overview.insights} categories={overview.categories} brands={overview.brands} onPick={pickGroup} />}
+      <div id="item-movement-table" className="flex scroll-mt-4 flex-wrap items-center gap-2">
         <div className="relative min-w-56 flex-1">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input

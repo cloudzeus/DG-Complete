@@ -5,7 +5,7 @@ import { ListTabs } from "@/components/dashboards/list-tabs";
 import { PeriodPicker } from "@/components/dashboards/period-picker";
 import { ItemMovement } from "@/components/products/item-movement";
 import { cubeLoad, type CubeQuery } from "@/lib/cube-client";
-import { itemMovement, type OrderLine } from "@/lib/purchase-orders";
+import { demandOverview, itemMovement, type DemandOverview, type OrderLine } from "@/lib/purchase-orders";
 import { requireDashboardTenant } from "@/lib/dashboards";
 import { fmtDate, resolvePeriod } from "@/lib/period";
 
@@ -127,15 +127,17 @@ export default async function ProductsPage({
 
   let rows: Record<string, unknown>[] = [];
   let movement: OrderLine[] = [];
+  let overview: DemandOverview | null = null;
   let error: string | null = null;
   const search = typeof sp.q === "string" ? sp.q.slice(0, 80) : "";
   const MOVEMENT_LIMIT = 2000;
   try {
-    if (tab === "movement")
-      movement = await itemMovement(tenantId, {
-        q: search,
-        limit: MOVEMENT_LIMIT,
-      });
+    if (tab === "movement") {
+      [movement, overview] = await Promise.all([
+        itemMovement(tenantId, { q: search, limit: MOVEMENT_LIMIT }),
+        demandOverview(tenantId).catch(() => null),
+      ]);
+    }
     else rows = await cubeLoad(tenantId, query);
   } catch (e) {
     error = (e as Error).message;
@@ -200,6 +202,7 @@ export default async function ProductsPage({
             lines={movement}
             capped={!search && movement.length >= MOVEMENT_LIMIT}
             search={search}
+            overview={overview}
           />
         </>
       ) : (
