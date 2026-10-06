@@ -2,7 +2,7 @@ import "server-only";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { swapTable } from "@/lib/bi-marts";
 import { cubeLoadAll, num } from "@/lib/cube-client";
-import { ensureRegistryTable } from "@/lib/kad";
+import { ensureRegistryTable, SHARED_AFM } from "@/lib/kad";
 import { chatCompletion } from "@/lib/openrouter";
 import { prisma } from "@/lib/prisma";
 import { schemaName } from "@/lib/warehouse";
@@ -13,7 +13,9 @@ import { withWarehouse } from "@/lib/warehouse-writer";
 // tools distributor), then <schema>.customer_segment for Cube (industry_sales) and AI profiles.
 
 export type Segment = { key: string; name: string; description: string };
-export const UNKNOWN: Segment = { key: "unknown", name: "Χωρίς ΚΑΔ", description: "Πελάτες χωρίς ΑΦΜ ή χωρίς στοιχεία μητρώου." };
+export const UNKNOWN: Segment = { key: "unknown", name: "Χωρίς ΚΑΔ", description: "Πελάτες με ΑΦΜ που δεν βρέθηκε (ακόμα) στο μητρώο." };
+export const RETAIL: Segment = { key: "retail", name: "Λιανική / κοινό ΑΦΜ", description: "Πελάτες χωρίς δικό τους ΑΦΜ: χωρίς ΑΦΜ ή με το κοινό ΑΦΜ λιανικής του ERP." };
+export const FOREIGN: Segment = { key: "foreign", name: "Εξωτερικό", description: "Πελάτες εκτός Ελλάδας (χωρίς στοιχεία ελληνικού μητρώου)." };
 export const OTHER_KEY = "other";
 
 const qi = (s: string) => `"${s.replaceAll('"', '""')}"`;
@@ -116,25 +118,36 @@ ${kads.slice(0, 250).map(line).join("\n")}
   const keys = new Set(segments.map((s) => s.key));
   const mapping: Record<string, string> = {};
   const list = segments.map((s) => `${s.key}: ${s.name} — ${s.description}`).join("\n");
-  for (let i = 0; i < kads.length; i += 180) {
-    const chunk = kads.slice(i, i + 180);
-    const answer = await ask(
-      tenantId,
-      userId,
-      system,
-      `Κλάδοι:\n${list}\n\nΑντιστοίχισε ΚΑΘΕ ΚΑΔ σε ΕΝΑΝ κλάδο (key). Αν δεν ταιριάζει πουθενά: "${OTHER_KEY}".\n${chunk.map((k) => `${k.code} | ${k.descr}`).join("\n")}\n\nΜορφή: {"<ΚΑΔ>":"<key>", …}`,
-    );
-    const m = parseJson<Record<string, string>>(answer);
-    for (const k of chunk) mapping[k.code] = keys.has(m[k.code]) ? m[k.code] : OTHER_KEY;
+  let failed = 0;
+  for (let i = 0; i < kads.length; i += 100) {
+    const chunk = kads.slice(i, i + 100);
+    const prompt = `Κλάδοι:\n${list}\n\nΑντιστοίχισε ΚΑΘΕ ΚΑΔ σε ΕΝΑΝ κλάδο (key). Αν δεν ταιριάζει πουθενά: "${OTHER_KEY}".\n${chunk.map((k) => `${k.code} | ${k.descr}`).join("\n")}\n\nΑπάντησε ΜΟΝΟ με JSON: {"<ΚΑΔ>":"<key>", …}`;
+    let m: Record<string, string> | null = null;
+    // A malformed answer is retried once; if it fails again the chunk goes to «Λοιποί».
+    for (let attempt = 0; attempt < 2 && !m; attempt++) {
+      try {
+        m = parseJson<Record<string, string>>(await ask(tenantId, userId, system, prompt));
+      } catch (err) {
+        console.warn(`[industry] mapping chunk ${i / 100 + 1} attempt ${attempt + 1}: ${(err as Error).message}`);
+      }
+    }
+    if (!m) failed += chunk.length;
+    for (const k of chunk) mapping[k.code] = m && keys.has(m[k.code]) ? m[k.code] : OTHER_KEY;
   }
 
   await prisma.industrySegmentation.upsert({
     where: { tenantId },
-    update: { segments: segments as unknown as Prisma.InputJsonValue, mapping, profiles: {}, builtAt: new Date(), error: null },
+    update: {
+      segments: segments as unknown as Prisma.InputJsonValue,
+      mapping,
+      profiles: {},
+      builtAt: new Date(),
+      error: failed ? `${failed} ΚΑΔ δεν κατηγοριοποιήθηκαν (λάθος απάντηση του μοντέλου) — μπήκαν στους «Λοιπούς».` : null,
+    },
     create: { tenantId, segments: segments as unknown as Prisma.InputJsonValue, mapping, profiles: {}, builtAt: new Date() },
   });
   await rebuildCustomerSegments(tenantId);
-  return { segments: segments.length, kads: kads.length };
+  return { segments: segments.length, kads: kads.length, failed };
 }
 
 /** <schema>.customer_segment: every customer with its main ΚΑΔ and segment (mapping inlined). */
@@ -151,16 +164,32 @@ export async function rebuildCustomerSegments(tenantId: string) {
   await withWarehouse(async (db) => {
     await ensureRegistryTable(db, s);
     const map = values.length ? `(VALUES ${values.join(",")}) AS m(code, key, name)` : `(SELECT NULL::text code, NULL::text key, NULL::text name WHERE false) m`;
+    // Order matters: foreign → retail (no / shared AFM) → mapped segment → «Λοιποί» → no ΚΑΔ.
+    const groups = (key: string, label: string) => `WHEN ${key} THEN ${lit(label)}`;
     await swapTable(
       db,
       schema,
       "customer_segment",
-      `SELECT c.trdr, c.afm, r.main_kad, r.main_kad_descr, LEFT(r.main_kad, 2) AS kad_division,
-              COALESCE(m.key, CASE WHEN r.main_kad IS NULL THEN '${UNKNOWN.key}' ELSE '${OTHER_KEY}' END) AS segment_key,
-              COALESCE(m.name, CASE WHEN r.main_kad IS NULL THEN ${lit(UNKNOWN.name)} ELSE ${lit(name.get(OTHER_KEY) ?? "Λοιποί")} END) AS segment_name
-       FROM ${s}.customers c
-       LEFT JOIN ${s}.afm_registry r ON r.afm = c.afm AND r.status = 'ok'
-       LEFT JOIN ${map} ON m.code = r.main_kad`,
+      `WITH shared AS (SELECT afm FROM ${s}.customers WHERE afm ~ '^[0-9]{9}$' GROUP BY afm HAVING COUNT(*) >= ${SHARED_AFM}),
+            base AS (
+              SELECT c.trdr, c.afm, r.main_kad, r.main_kad_descr, LEFT(r.main_kad, 2) AS kad_division, m.key AS mapped,
+                     CASE
+                       WHEN COALESCE(c.country, 1000) <> 1000 THEN '${FOREIGN.key}'
+                       WHEN c.afm IS NULL OR c.afm !~ '^[0-9]{9}$' OR c.afm IN (SELECT afm FROM shared) THEN '${RETAIL.key}'
+                       WHEN m.key IS NOT NULL THEN m.key
+                       WHEN r.main_kad IS NOT NULL THEN '${OTHER_KEY}'
+                       ELSE '${UNKNOWN.key}'
+                     END AS segment_key
+              FROM ${s}.customers c
+              LEFT JOIN ${s}.afm_registry r ON r.afm = c.afm AND r.status = 'ok'
+              LEFT JOIN ${map} ON m.code = r.main_kad)
+       SELECT trdr, afm, main_kad, main_kad_descr, kad_division, segment_key,
+              CASE segment_key
+                ${groups(`'${FOREIGN.key}'`, FOREIGN.name)} ${groups(`'${RETAIL.key}'`, RETAIL.name)} ${groups(`'${UNKNOWN.key}'`, UNKNOWN.name)}
+                ${[...name.entries()].map(([k, n]) => groups(lit(k), n)).join(" ")}
+                ELSE ${lit(name.get(OTHER_KEY) ?? "Λοιποί")}
+              END AS segment_name
+       FROM base`,
       [],
       ["trdr", "segment_key"],
     );

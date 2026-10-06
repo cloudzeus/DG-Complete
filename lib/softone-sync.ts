@@ -294,10 +294,35 @@ async function runWarehouseJob(
     }
     return { read, written, maxUpdated };
   }
+  // Master data with an update date (e.g. MTRL): read in yearly UPDDATE slices that split in half
+  // when the server is too slow (on-premise SoftOne), then replace the table once at the end so
+  // a failure never leaves the dashboards with half a table.
+  if (updField) {
+    const all: Row[] = [];
+    const slice = async (from: Date, to: Date): Promise<void> => {
+      try {
+        all.push(...(await s1GetTable(job.connectionId, job.table, fields, and(baseFilter, range(updField, from, to)))));
+      } catch (err) {
+        const timeout = (err as Error).name === "TimeoutError" || /timeout/i.test((err as Error).message);
+        if (!timeout || to.getTime() - from.getTime() <= DAY_MS) throw err;
+        const mid = new Date(from.getTime() + Math.floor((to.getTime() - from.getTime()) / 2));
+        await slice(from, mid);
+        await slice(mid, to);
+      }
+    };
+    const first = new Date(2000, 0, 1);
+    all.push(...(await s1GetTable(job.connectionId, job.table, fields, and(baseFilter, `(${updField} IS NULL OR ${updField}<'${formatS1Date(first)}')`))));
+    const end = new Date(Date.now() + DAY_MS);
+    for (let y = first; y < end; y = new Date(y.getFullYear() + 1, 0, 1)) await slice(y, new Date(Math.min(new Date(y.getFullYear() + 1, 0, 1).getTime(), end.getTime())));
+    track(all);
+    return { read: all.length, written: await replaceRows(target, all, null), maxUpdated };
+  }
   const rows = await s1GetTable(job.connectionId, job.table, fields, baseFilter);
   track(rows);
   return { read: rows.length, written: await replaceRows(target, rows, null), maxUpdated };
 }
+
+const DAY_MS = 24 * 3600_000;
 
 async function finishJob(job: SyncJob, status: "SUCCESS" | "FAILED") {
   const now = new Date();

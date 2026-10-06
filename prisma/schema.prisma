@@ -579,6 +579,24 @@ model AfmLookupSettings {
   @@map("afm_lookup_settings")
 }
 
+// Shared cache of the AFM registry for all tenants (public business data): an AFM looked up once
+// serves every tenant that has it as a customer.
+model AfmRegistry {
+  afm          String   @id
+  name         String?
+  title        String?
+  legal        String?
+  active       Boolean?
+  registered   String?
+  mainKad      String?
+  mainKadDescr String?
+  kads         Json?
+  found        Boolean
+  fetchedAt    DateTime @default(now())
+
+  @@map("afm_registry")
+}
+
 // Industry segmentation of a tenant's customers: AI-built segments and main-ΚΑΔ → segment mapping.
 model IndustrySegmentation {
   tenantId  String    @id

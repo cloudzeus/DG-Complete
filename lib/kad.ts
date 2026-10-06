@@ -65,6 +65,48 @@ export async function lookupAfm(url: string, afm: string): Promise<AfmInfo | nul
 
 const qi = (s: string) => `"${s.replaceAll('"', '""')}"`;
 
+/** An AFM used by this many customers is the ERP's shared «retail» AFM, not a business. */
+export const SHARED_AFM = 5;
+const FRESH_FOUND = 180 * 24 * 3600_000;
+const FRESH_MISSING = 30 * 24 * 3600_000;
+
+/**
+ * Shared cache (app DB, all tenants): public registry data per AFM only — never which tenant has
+ * that AFM as a customer. undefined = not cached / stale, null = cached «not found».
+ */
+async function cachedAfm(afm: string): Promise<AfmInfo | null | undefined> {
+  const row = await prisma.afmRegistry.findUnique({ where: { afm } });
+  if (!row || Date.now() - row.fetchedAt.getTime() > (row.found ? FRESH_FOUND : FRESH_MISSING)) return undefined;
+  if (!row.found) return null;
+  return {
+    afm,
+    name: row.name,
+    title: row.title,
+    legal: row.legal,
+    active: row.active ?? true,
+    registered: row.registered,
+    mainKad: row.mainKad,
+    mainKadDescr: row.mainKadDescr,
+    kads: (row.kads ?? []) as KadItem[],
+  };
+}
+
+async function saveCachedAfm(afm: string, info: AfmInfo | null) {
+  const data = {
+    name: info?.name ?? null,
+    title: info?.title ?? null,
+    legal: info?.legal ?? null,
+    active: info?.active ?? null,
+    registered: info?.registered ?? null,
+    mainKad: info?.mainKad ?? null,
+    mainKadDescr: info?.mainKadDescr ?? null,
+    kads: info ? (info.kads as unknown as object) : undefined,
+    found: !!info,
+    fetchedAt: new Date(),
+  };
+  await prisma.afmRegistry.upsert({ where: { afm }, update: data, create: { afm, ...data } });
+}
+
 export async function ensureRegistryTable(db: Client, s: string) {
   await db.query(`CREATE TABLE IF NOT EXISTS ${s}.afm_registry (
     afm text PRIMARY KEY,
@@ -88,11 +130,13 @@ export async function fetchTenantKads(tenantId: string, limit: number): Promise<
   const s = qi(schemaName(tenantId));
   return withWarehouse(async (db) => {
     await ensureRegistryTable(db, s);
+    // Greek customers only, and not the AFM that many retail customers share in the ERP.
     const { rows } = await db.query(
-      `WITH act AS (SELECT DISTINCT trdr FROM ${s}.f_sales_lines WHERE trndate >= now() - interval '24 months')
+      `WITH act AS (SELECT DISTINCT trdr FROM ${s}.f_sales_lines WHERE trndate >= now() - interval '24 months'),
+            shared AS (SELECT afm FROM ${s}.customers WHERE afm ~ '^[0-9]{9}$' GROUP BY afm HAVING COUNT(*) >= ${SHARED_AFM})
        SELECT DISTINCT c.afm FROM act JOIN ${s}.customers c USING (trdr)
        LEFT JOIN ${s}.afm_registry r ON r.afm = c.afm
-       WHERE c.afm ~ '^[0-9]{9}$' AND COALESCE(c.country, 1000) = 1000
+       WHERE c.afm ~ '^[0-9]{9}$' AND COALESCE(c.country, 1000) = 1000 AND c.afm NOT IN (SELECT afm FROM shared)
          AND (r.afm IS NULL OR r.status = 'error' OR r.fetched_at < now() - interval '180 days')`,
     );
     const todo = rows.map((r) => String(r.afm));
@@ -102,8 +146,12 @@ export async function fetchTenantKads(tenantId: string, limit: number): Promise<
       // Lookups in parallel, writes one at a time (one pg client = one query at a time).
       const results = await Promise.all(
         batch.slice(i, i + 3).map(async (afm) => {
+          const hit = await cachedAfm(afm);
+          if (hit !== undefined) return { afm, info: hit, error: null as string | null };
           try {
-            return { afm, info: await lookupAfm(settings.url, afm), error: null as string | null };
+            const info = await lookupAfm(settings.url, afm);
+            await saveCachedAfm(afm, info);
+            return { afm, info, error: null as string | null };
           } catch (err) {
             return { afm, info: null, error: (err as Error).message.slice(0, 300) };
           }

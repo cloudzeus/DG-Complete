@@ -8,7 +8,7 @@ import { KimonText } from "@/components/kimon/kimon-text";
 import { cubeLoadAll, num, type CubeQuery } from "@/lib/cube-client";
 import { requireDashboardTenant } from "@/lib/dashboards";
 import { eurCompact, eurFull, MONTHS_SHORT, pct } from "@/lib/format";
-import type { Segment } from "@/lib/industry";
+import { FOREIGN, RETAIL, UNKNOWN, type Segment } from "@/lib/industry";
 import { prisma } from "@/lib/prisma";
 import { cn } from "@/lib/utils";
 import { ProfileButton } from "./profile-button";
@@ -28,6 +28,7 @@ export default async function IndustryPage({ params, searchParams }: PageProps<"
   const seg = await prisma.industrySegmentation.findUnique({ where: { tenantId } });
   const segments = (seg?.segments ?? []) as Segment[];
   const key = typeof sp.segment === "string" && segments.some((s) => s.key === sp.segment) ? sp.segment : null;
+  // (retail / foreign / no ΚΑΔ have no page of their own)
 
   if (!segments.length) {
     return (
@@ -47,7 +48,8 @@ export default async function IndustryPage({ params, searchParams }: PageProps<"
   const y2 = iso(new Date(now.getFullYear() - 2, now.getMonth(), now.getDate() + 1));
   const y1end = iso(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()));
   const td = (a: string, b: string) => [{ dimension: I("date"), dateRange: [a, b] as [string, string] }];
-  const name = new Map(segments.map((s) => [s.key, s]));
+  const name = new Map([...segments, RETAIL, FOREIGN, UNKNOWN].map((s) => [s.key, s]));
+  const outside = new Set([RETAIL.key, FOREIGN.key, UNKNOWN.key]);
 
   if (!key) {
     // ── Overview: every segment side by side.
@@ -65,7 +67,7 @@ export default async function IndustryPage({ params, searchParams }: PageProps<"
         const before = prev.get(k) ?? 0;
         return {
           key: k,
-          name: name.get(k)?.name ?? (k === "unknown" ? "Χωρίς ΚΑΔ" : k),
+          name: name.get(k)?.name ?? k,
           description: name.get(k)?.description ?? "",
           revenue,
           customers: num(r[I("customers")]),
@@ -77,7 +79,9 @@ export default async function IndustryPage({ params, searchParams }: PageProps<"
       })
       .sort((a, b) => b.revenue - a.revenue);
     const avg = num(data.total[0]?.[I("revenue_per_customer")]);
-    const known = rows.filter((r) => r.key !== "unknown");
+    // Business segments first; retail / foreign / no ΚΑΔ at the end, not compared.
+    rows.sort((a, b) => Number(outside.has(a.key)) - Number(outside.has(b.key)) || b.revenue - a.revenue);
+    const known = rows.filter((r) => !outside.has(r.key));
     const best = [...known].sort((a, b) => b.perCustomer - a.perCustomer)[0];
     const fastest = [...known].filter((r) => r.growth !== null && r.revenue > 0.02 * total).sort((a, b) => (b.growth ?? 0) - (a.growth ?? 0))[0];
 
@@ -124,7 +128,7 @@ export default async function IndustryPage({ params, searchParams }: PageProps<"
               {rows.map((r) => (
                 <tr key={r.key} className="border-t align-top">
                   <td className="max-w-md px-3 py-2">
-                    {r.key === "unknown" ? (
+                    {outside.has(r.key) ? (
                       <span className="font-medium text-muted-foreground">{r.name}</span>
                     ) : (
                       <Link href={`/dashboards/${tenantId}/industry?segment=${r.key}`} className="font-medium text-primary underline-offset-4 hover:underline">

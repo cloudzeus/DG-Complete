@@ -43,7 +43,8 @@ export class SoftOneError extends Error {
 }
 
 const SESSION_EXPIRED = new Set([-100, -101]);
-const TIMEOUT_MS = 30_000;
+// On-premise installations can be slow on big tables (data services split large reads anyway).
+const TIMEOUT_MS = 60_000;
 
 /** Today in Greece — the clientID is valid for one calendar day. */
 function today() {
