@@ -38,13 +38,66 @@ function rolePassword(id) {
   return crypto.createHmac('sha256', process.env.WH_ROLE_SECRET).update(id).digest('hex');
 }
 
-// The data model (cube/model/*.yml) is embedded here, gzip + base64. Cube never fetches it from the
-// app, so app deploys and restarts cannot affect the compiled model. Changing the model = re-paste
-// the compose from Ρυθμίσεις → Cube server.
-const MODEL = JSON.parse(zlib.gunzipSync(Buffer.from([
+// The data model. This file is written once into Coolify and should never need editing again:
+// - the model of the moment it was generated is embedded (gzip + base64) → Cube starts without the app;
+// - newer versions come from the app (/api/internal/cube/model, polled every 60s) once complete and
+//   valid — so model changes ship with an app deploy; anything else keeps the current model;
+// - self-heal: Cube 1.7.50 intermittently compiles an EMPTY model (no error; only a restart helped).
+//   A query failing with "Cube 'x' not found" for a cube that IS in the model bumps the generation →
+//   new app id + schema version → a fresh compiler on the next request.
+const cubeNamesOf = (files) => {
+  const names = new Set();
+  for (const f of files) for (const m of f.content.matchAll(/^  - name: ([a-z0-9_]+)/gm)) names.add(m[1]);
+  return names;
+};
+let model = JSON.parse(zlib.gunzipSync(Buffer.from([
 __MODEL__
 ].join(''), 'base64')).toString('utf8'));
-console.log('[dgsmart] embedded model ' + MODEL.version + ': ' + MODEL.files.length + ' files');
+let modelCubes = cubeNamesOf(model.files);
+let modelCheckedAt = 0;
+let generation = 0;
+let lastHeal = 0;
+console.log('[dgsmart] embedded model ' + model.version + ': ' + model.files.length + ' files, ' + modelCubes.size + ' cubes');
+
+function validModel(d) {
+  if (!d || typeof d.version !== 'string' || !d.version || !Array.isArray(d.files) || d.files.length === 0) return 'no version/files';
+  for (const f of d.files) {
+    if (!f || typeof f.fileName !== 'string' || typeof f.content !== 'string' || !f.content.trim()) return 'empty file ' + (f && f.fileName);
+  }
+  if (cubeNamesOf(d.files).size === 0) return 'no cubes';
+  return null;
+}
+
+async function refreshModel() {
+  if (Date.now() - modelCheckedAt < 60000) return;
+  modelCheckedAt = Date.now();
+  try {
+    const res = await fetch(process.env.CONTROL_PLANE_URL + '/api/internal/cube/model', {
+      headers: { Authorization: 'Bearer ' + process.env.CONTROL_PLANE_TOKEN },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const problem = validModel(data);
+    if (problem) throw new Error('model rejected: ' + problem);
+    if (data.version !== model.version) {
+      model = data;
+      modelCubes = cubeNamesOf(data.files);
+      console.log('[dgsmart] model version ' + data.version + ': ' + data.files.length + ' files, ' + modelCubes.size + ' cubes');
+    }
+  } catch (err) {
+    console.error('[dgsmart] model check failed, keeping ' + model.version + ': ' + err.message);
+  }
+}
+
+function healIfEmpty(params) {
+  const err = params && typeof params.error === 'string' ? params.error : '';
+  const m = err.match(/Cube '([a-z0-9_]+)' not found/);
+  if (!m || !modelCubes.has(m[1]) || Date.now() - lastHeal < 30000) return;
+  lastHeal = Date.now();
+  generation += 1;
+  console.error('[dgsmart] compiled model lost cube ' + m[1] + ', recompiling (generation ' + generation + ')');
+}
 
 function memberCubes(q) {
   const cubes = new Set();
@@ -63,15 +116,22 @@ function memberCubes(q) {
 module.exports = {
   // Compile / meta / error events of Cube itself, regardless of CUBEJS_LOG_LEVEL (diagnostics).
   logger: (msg, params) => {
-    if (/ompil|rror|eta|chema|Load/.test(msg)) {
+    healIfEmpty(params);
+    if (/ompil|rror|chema/.test(msg)) {
       let p = '';
       try { p = JSON.stringify(params); } catch (e) { p = String(params); }
       console.log('[cube] ' + msg + ' ' + p.slice(0, 1500));
     }
   },
-  contextToAppId: ({ securityContext }) => 'CUBE_APP_' + tenantOf(securityContext),
-  schemaVersion: () => MODEL.version,
-  repositoryFactory: () => ({ dataSchemaFiles: async () => MODEL.files }),
+  contextToAppId: ({ securityContext }) => 'CUBE_APP_' + tenantOf(securityContext) + '_' + model.version + '_' + generation,
+  schemaVersion: async () => {
+    await refreshModel();
+    return model.version + '_' + generation;
+  },
+  // Fresh file objects per compile: nothing a compile might do to them can leak into the next one.
+  repositoryFactory: () => ({
+    dataSchemaFiles: async () => model.files.map((f) => ({ fileName: f.fileName, content: f.content })),
+  }),
   contextToOrchestratorId: ({ securityContext }) => 'CUBE_ORCH_' + tenantOf(securityContext),
 
   driverFactory: ({ securityContext }) => {
