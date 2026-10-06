@@ -139,6 +139,7 @@ model Tenant {
   plan               Plan?               @relation(fields: [planId], references: [id], onDelete: SetNull)
   emailLogs          EmailLog[]
   apiKeys            ApiKey[]
+  industry           IndustrySegmentation?
   /// BI settings, e.g. { mainWarehouses: [1000], receivablePrefixes: ["30"], payablePrefixes: ["50"] }
   biSettings         Json?
   biBuiltAt          DateTime?
@@ -561,6 +562,39 @@ model GeoSettings {
   updatedAt     DateTime  @updatedAt
 
   @@map("geo_settings")
+}
+
+// Registry lookups by AFM (activity codes / ΚΑΔ), e.g. vat.wwa.gr/afm2info. One row, id "default".
+model AfmLookupSettings {
+  id            String    @id @default("default")
+  url           String    @default("https://vat.wwa.gr/afm2info")
+  enabled       Boolean   @default(false)
+  // AFMs looked up per scheduler run and tenant.
+  batchSize     Int       @default(1000)
+  lastTestAt    DateTime?
+  lastTestOk    Boolean?
+  lastTestError String?
+  updatedAt     DateTime  @updatedAt
+
+  @@map("afm_lookup_settings")
+}
+
+// Industry segmentation of a tenant's customers: AI-built segments and main-ΚΑΔ → segment mapping.
+model IndustrySegmentation {
+  tenantId  String    @id
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // [{ key, name, description }]
+  segments  Json
+  // { "<kad code>": "<segment key>" }
+  mapping   Json
+  // { "<segment key>": { text, at } } — AI profiles of each segment, made on demand
+  profiles  Json?
+  model     String?
+  builtAt   DateTime?
+  error     String?
+  updatedAt DateTime  @updatedAt
+
+  @@map("industry_segmentation")
 }
 
 // Outgoing email through Mailgun (EU region by default). One row, id "default".

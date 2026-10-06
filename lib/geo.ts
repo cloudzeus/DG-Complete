@@ -62,32 +62,33 @@ export async function geocodeTenant(tenantId: string, limit: number): Promise<Ge
 
     // A few at a time — well under Mapbox's rate limit.
     for (let i = 0; i < batch.length; i += 5) {
-      await Promise.all(
+      // Lookups in parallel, writes one at a time (one pg client = one query at a time).
+      const results = await Promise.all(
         batch.slice(i, i + 5).map(async (c) => {
-          let g: Awaited<ReturnType<typeof geocode>> = null;
-          let error: string | null = null;
           try {
-            g = await geocode(`${c.query}, Ελλάδα`, token);
+            return { c, g: await geocode(`${c.query}, Ελλάδα`, token), error: null as string | null };
           } catch (err) {
-            error = (err as Error).message.slice(0, 300);
+            return { c, g: null, error: (err as Error).message.slice(0, 300) };
           }
-          // A country / region level match would put the customer in the middle of nowhere.
-          const vague = g && ["country", "region"].includes(g.precision);
-          const status = error ? "error" : g && !vague ? "ok" : "not_found";
-          if (status === "ok") result.geocoded++;
-          else if (status === "not_found") result.notFound++;
-          else result.errors++;
-          // Errors are retried next run (no address_key stored for them).
-          await db.query(
-            `INSERT INTO ${s}.customer_geo (trdr, address_key, query, lat, lng, precision, confidence, label, status, error, geocoded_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
-             ON CONFLICT (trdr) DO UPDATE SET address_key = EXCLUDED.address_key, query = EXCLUDED.query, lat = EXCLUDED.lat, lng = EXCLUDED.lng,
-               precision = EXCLUDED.precision, confidence = EXCLUDED.confidence, label = EXCLUDED.label, status = EXCLUDED.status,
-               error = EXCLUDED.error, geocoded_at = now()`,
-            [c.trdr, status === "error" ? "" : keyOf(c.query), c.query, g?.lat ?? null, g?.lng ?? null, g?.precision ?? null, g?.confidence ?? null, g?.label ?? null, status, error],
-          );
         }),
       );
+      for (const { c, g, error } of results) {
+        // A country / region level match would put the customer in the middle of nowhere.
+        const vague = g && ["country", "region"].includes(g.precision);
+        const status = error ? "error" : g && !vague ? "ok" : "not_found";
+        if (status === "ok") result.geocoded++;
+        else if (status === "not_found") result.notFound++;
+        else result.errors++;
+        // Errors are retried next run (no address_key stored for them).
+        await db.query(
+          `INSERT INTO ${s}.customer_geo (trdr, address_key, query, lat, lng, precision, confidence, label, status, error, geocoded_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+           ON CONFLICT (trdr) DO UPDATE SET address_key = EXCLUDED.address_key, query = EXCLUDED.query, lat = EXCLUDED.lat, lng = EXCLUDED.lng,
+             precision = EXCLUDED.precision, confidence = EXCLUDED.confidence, label = EXCLUDED.label, status = EXCLUDED.status,
+             error = EXCLUDED.error, geocoded_at = now()`,
+          [c.trdr, status === "error" ? "" : keyOf(c.query), c.query, g?.lat ?? null, g?.lng ?? null, g?.precision ?? null, g?.confidence ?? null, g?.label ?? null, status, error],
+        );
+      }
       if (result.errors >= 10 && result.geocoded === 0) {
         result.error = "Πολλά σφάλματα από το Mapbox — η εκτέλεση σταμάτησε.";
         break;

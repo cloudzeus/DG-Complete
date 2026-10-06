@@ -10,6 +10,7 @@ import {
   CreditCard,
   DatabaseZap,
   Download,
+  Factory,
   MapPinned,
   Plug,
   Scale,
@@ -45,6 +46,7 @@ import { OrderSettings } from "./order-settings";
 import { TenantUsers } from "./tenant-users";
 import { SubscriptionForm } from "./subscription-form";
 import { GeoPanel } from "./geo-panel";
+import { IndustryPanel } from "./industry-panel";
 import { hasService } from "@/lib/tenant-services";
 
 export async function generateMetadata({
@@ -240,6 +242,21 @@ export default async function TenantPage({
               </CardHeader>
               <CardContent>
                 <GeoPanel tenantId={tenant.id} hasService={await hasService(tenant.id, "geo")} />
+              </CardContent>
+            </Card>
+          )}
+          {tenantSoftOne && canSources && (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <SectionTitle icon={Factory} tone="violet">
+                    Κλαδική ανάλυση
+                  </SectionTitle>
+                </CardTitle>
+                <CardDescription>ΚΑΔ των πελατών από το μητρώο ΑΦΜ και κατηγοριοποίηση σε κλάδους-στόχους με AI.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <IndustryPanel tenantId={tenant.id} hasService={await hasService(tenant.id, "industry")} />
               </CardContent>
             </Card>
           )}

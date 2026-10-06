@@ -11,6 +11,7 @@ import {
   ClipboardList,
   Landmark,
   LayoutDashboard,
+  Factory,
   LogOut,
   MapPinned,
   Scale,
@@ -76,6 +77,7 @@ const NAV: { label: string; items: NavItem[] }[] = [
       { slug: "products", label: "Προϊόντα", icon: Package },
       { slug: "customers", label: "Πελάτες", icon: Users },
       { slug: "geo", label: "Γεωγραφία πωλήσεων", icon: MapPinned },
+      { slug: "industry", label: "Κλάδοι πελατών", icon: Factory },
     ],
   },
   {

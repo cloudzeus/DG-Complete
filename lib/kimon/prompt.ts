@@ -19,6 +19,7 @@ const PAGE_NAMES: Record<string, string> = {
   api: "Web services",
   geo: "Γεωγραφία πωλήσεων",
   live: "Σήμερα (live)",
+  industry: "Κλάδοι πελατών",
 };
 
 const GUIDE = `

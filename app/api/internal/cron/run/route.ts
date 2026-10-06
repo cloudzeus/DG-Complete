@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { runSubscriptionReminders } from "@/lib/email";
 import { runGeocoding } from "@/lib/geo";
+import { runKadLookups } from "@/lib/kad";
 import { runDueJobs } from "@/lib/softone-sync";
 
 // Scheduler tick: runs every due SoftOne sync job (Ρυθμίσεις → Συγχρονισμοί).
@@ -18,20 +19,34 @@ function authorized(header: string | null) {
   return given.length === expected.length && timingSafeEqual(given, expected);
 }
 
+const HOURLY = [
+  ["reminders", runSubscriptionReminders], // each reminder once (dedupe in email_log)
+  ["geocoding", runGeocoding], // new / changed customer addresses
+  ["kad", runKadLookups], // activity codes by AFM
+] as const;
+
 export async function POST(request: Request) {
   if (!authorized(request.headers.get("authorization"))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  // Subscription reminders: checked once an hour (each reminder is sent once — dedupe in email_log).
-  // Geocoding of new / changed customer addresses: also hourly, a batch per tenant.
-  const g = globalThis as { __dgRemindersAt?: number };
-  let hourly: Record<string, unknown> | null = null;
-  if (!g.__dgRemindersAt || Date.now() - g.__dgRemindersAt > 3600_000) {
-    g.__dgRemindersAt = Date.now();
-    hourly = {
-      reminders: await runSubscriptionReminders().catch((err: Error) => ({ error: err.message })),
-      geocoding: await runGeocoding().catch((err: Error) => ({ error: err.message })),
-    };
+  // Hourly tasks run in the background: they can take minutes and must not hold up the syncs.
+  const g = globalThis as { __dgHourlyAt?: number; __dgHourlyRunning?: boolean };
+  let hourly = false;
+  if (!g.__dgHourlyRunning && (!g.__dgHourlyAt || Date.now() - g.__dgHourlyAt > 3600_000)) {
+    g.__dgHourlyAt = Date.now();
+    g.__dgHourlyRunning = true;
+    hourly = true;
+    void (async () => {
+      for (const [name, task] of HOURLY) {
+        try {
+          console.log(`[hourly] ${name}`, JSON.stringify(await task()).slice(0, 300));
+        } catch (err) {
+          console.error(`[hourly] ${name} failed:`, (err as Error).message);
+        }
+      }
+    })().finally(() => {
+      g.__dgHourlyRunning = false;
+    });
   }
-  return NextResponse.json({ ...(await runDueJobs(8 * 60_000)), ...(hourly ?? {}) });
+  return NextResponse.json({ ...(await runDueJobs(8 * 60_000)), ...(hourly ? { hourly: "started" } : {}) });
 }

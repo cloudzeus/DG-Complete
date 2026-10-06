@@ -7,6 +7,7 @@ import { ChartCard, DashboardErrors, Kpi } from "@/components/dashboards/blocks"
 import { CubeTable, type ListColumn } from "@/components/dashboards/cube-table";
 import { cubeLoadAll, num, type CubeQuery } from "@/lib/cube-client";
 import { requireDashboardTenant } from "@/lib/dashboards";
+import { customerActivity } from "@/lib/kad";
 import { eurCompact, eurFull, MONTHS_SHORT, pct } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -23,8 +24,9 @@ const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart
 
 export default async function CustomerProfilePage({ params }: PageProps<"/dashboards/[tenantId]/customers/[code]">) {
   const { tenantId, code: raw } = await params;
-  await requireDashboardTenant(tenantId, "customers");
+  const { access } = await requireDashboardTenant(tenantId, "customers");
   const code = decodeURIComponent(raw);
+  const activity = access.services.has("industry") ? await customerActivity(tenantId, code).catch(() => null) : null;
 
   const now = new Date();
   const today = iso(now);
@@ -169,6 +171,36 @@ export default async function CustomerProfilePage({ params }: PageProps<"/dashbo
         </div>
       </div>
       <DashboardErrors errors={errors} />
+
+      {activity && (
+        <div className="rounded-xl border bg-card p-4 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">Δραστηριότητα:</span>
+            <span>
+              {activity.mainKadDescr ?? "—"} <span className="text-xs text-muted-foreground">({activity.mainKad})</span>
+            </span>
+            {activity.segment && <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700">Κλάδος: {activity.segment}</span>}
+            {activity.active === false && <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">Ανενεργό ΑΦΜ</span>}
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            ΑΦΜ {activity.afm}
+            {activity.legal && ` · ${activity.legal}`}
+            {activity.title && ` · διακριτικός τίτλος «${activity.title}»`}
+          </div>
+          {activity.kads.length > 0 && (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs text-primary">{activity.kads.length} δευτερεύουσες δραστηριότητες</summary>
+              <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-muted-foreground">
+                {activity.kads.map((k) => (
+                  <li key={k.code}>
+                    {k.descr} ({k.code})
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi

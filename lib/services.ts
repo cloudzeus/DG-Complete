@@ -1,6 +1,6 @@
 // The services a package (plan) can include — shared by the server (enforcement) and the wizard.
 
-export type ServiceKey = "finance" | "sales" | "purchasing" | "geo" | "kimon" | "purchase_orders" | "api";
+export type ServiceKey = "finance" | "sales" | "purchasing" | "geo" | "industry" | "kimon" | "purchase_orders" | "api";
 
 export type ServiceDef = {
   key: ServiceKey;
@@ -41,6 +41,15 @@ export const SERVICES: ServiceDef[] = [
     description: "Οι πωλήσεις πάνω στον χάρτη: τζίρος και συχνότητα αγορών ανά περιοχή, γεωγραφία μαρκών και κατηγοριών (geocoding των διευθύνσεων πελατών).",
     pages: ["geo"],
     cubes: ["geo_sales"],
+    requires: ["sales"],
+  },
+  {
+    key: "industry",
+    name: "Κλαδική ανάλυση πελατών",
+    description:
+      "Οι πελάτες ανά κλάδο δραστηριότητας (ΚΑΔ από το μητρώο, κατηγοριοποίηση με AI): τι αγοράζει κάθε κλάδος, εποχικότητα, μάρκες, μέσος τζίρος και προφίλ — ποιο target group να στοχεύσετε.",
+    pages: ["industry"],
+    cubes: ["industry_sales"],
     requires: ["sales"],
   },
   {
