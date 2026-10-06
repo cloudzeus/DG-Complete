@@ -67,7 +67,10 @@ function memberCubes(q) {
 }
 
 module.exports = {
-  contextToAppId: ({ securityContext }) => 'CUBE_APP_' + tenantOf(securityContext),
+  // A new model version gets its own app id → a fresh compile (hot recompiles of a running app
+  // were observed to yield an empty model). The previous version's compiler ages out of the cache.
+  contextToAppId: ({ securityContext }) =>
+    'CUBE_APP_' + tenantOf(securityContext) + '_' + (model.data ? model.data.version : 'init'),
   contextToOrchestratorId: ({ securityContext }) => 'CUBE_ORCH_' + tenantOf(securityContext),
   schemaVersion: async () => (await loadModel()).version,
   repositoryFactory: () => ({ dataSchemaFiles: async () => (await loadModel()).files }),

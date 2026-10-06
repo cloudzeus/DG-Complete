@@ -26,6 +26,7 @@ cubes:
         type: number
         sql: week
         primary_key: true
+        public: true
       - name: week_start
         title: Αρχή εβδομάδας
         type: time
