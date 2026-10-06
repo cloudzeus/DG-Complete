@@ -4,12 +4,10 @@ import { Suspense } from "react";
 import {
   AlertTriangle,
   ArrowRight,
-  Banknote,
   CheckCircle2,
   Info,
-  Landmark,
+  Package,
   Receipt,
-  TrendingUp,
   Users,
   Wallet,
   XCircle,
@@ -17,6 +15,7 @@ import {
 } from "lucide-react";
 import { CompareAreaChart, RankingChart } from "@/components/charts/bi-charts";
 import { ChartCard, DashboardErrors, DashboardSkeleton, Kpi } from "@/components/dashboards/blocks";
+import { HealthCard, healthAxes, ModuleLauncher, OverviewHero } from "@/components/dashboards/overview-hero";
 import { ExportButton } from "@/components/dashboards/export-button";
 import { PeriodPicker } from "@/components/dashboards/period-picker";
 import { cubeLoadAll, num } from "@/lib/cube-client";
@@ -30,7 +29,7 @@ export const metadata: Metadata = { title: "Επισκόπηση" };
 
 export default async function OverviewPage({ params, searchParams }: PageProps<"/dashboards/[tenantId]">) {
   const { tenantId } = await params;
-  await requireDashboardTenant(tenantId);
+  const { tenant, access } = await requireDashboardTenant(tenantId);
   const sp = await searchParams;
   const period = resolvePeriod(sp);
   const unavailable = typeof sp.unavailable === "string" ? sp.unavailable : null;
@@ -52,7 +51,7 @@ export default async function OverviewPage({ params, searchParams }: PageProps<"
         <PeriodPicker preset={period.preset} from={period.from} to={period.to} label={period.label} />
       </div>
       <Suspense key={periodQuery(period)} fallback={<DashboardSkeleton />}>
-        <OverviewBody tenantId={tenantId} period={period} />
+        <OverviewBody tenantId={tenantId} tenantName={tenant.name} pages={access.pages} period={period} />
       </Suspense>
     </>
   );
@@ -106,7 +105,7 @@ function granularity(p: Period): "day" | "week" | "month" {
   return p.days <= 62 ? "day" : p.days <= 200 ? "week" : "month";
 }
 
-async function OverviewBody({ tenantId, period }: { tenantId: string; period: Period }) {
+async function OverviewBody({ tenantId, tenantName, pages, period }: { tenantId: string; tenantName: string; pages: Set<string>; period: Period }) {
   const g = granularity(period);
   const [{ insights, errors, kpis: k }, trend] = await Promise.all([
     buildInsights(tenantId, period),
@@ -130,18 +129,39 @@ async function OverviewBody({ tenantId, period }: { tenantId: string; period: Pe
     previous: prevRows[i] ? num(prevRows[i]["sales_lines.revenue"]) : null,
   }));
   const base = `/dashboards/${tenantId}`;
-  const marginPct = k.marginPct.now;
 
   return (
     <div className="space-y-5">
       <DashboardErrors errors={[...errors, ...trend.errors]} />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-        <Kpi label="Τζίρος" value={eurCompact(k.revenue.now)} change={yoy(k.revenue.now, k.revenue.prev)} hint="έναντι πέρσι" icon={Banknote} tone="blue" spark={points.map((p) => p.current)} />
-        <Kpi label="Μικτό κέρδος" value={eurCompact(k.margin.now)} change={yoy(k.margin.now, k.margin.prev)} hint={marginPct ? `περιθώριο ${pct(marginPct)}` : undefined} icon={TrendingUp} tone="green" />
+      <OverviewHero
+        tenantName={tenantName}
+        periodLabel={`${period.label} · ${fmtDate(period.from)} – ${fmtDate(period.to)}`}
+        k={k}
+        points={points}
+        counts={{ bad: insights.filter((i) => i.severity === "bad").length, warn: insights.filter((i) => i.severity === "warn").length, good: insights.filter((i) => i.severity === "good").length }}
+      />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi label="Παραστατικά" value={k.documents.now.toLocaleString("el-GR")} change={yoy(k.documents.now, k.documents.prev)} hint={k.documents.now ? `μέση αξία ${eurFull(k.revenue.now / k.documents.now)}` : undefined} icon={Receipt} tone="violet" />
         <Kpi label="Ενεργοί πελάτες" value={k.customers.now.toLocaleString("el-GR")} change={yoy(k.customers.now, k.customers.prev)} hint="με αγορά στην περίοδο" icon={Users} tone="teal" />
         <Kpi label="Υπόλοιπο πελατών" value={eurCompact(k.receivables)} hint={`DSO ${Math.round(k.dso)} ημ. · >90 ημ. ${eurCompact(k.overdue90)}`} icon={Wallet} tone="amber" />
-        <Kpi label="Ταμείο & τράπεζες" value={k.cash ? eurCompact(k.cash) : "—"} hint={`απόθεμα ${eurCompact(k.stockValue)}`} icon={Landmark} tone="slate" />
+        <Kpi label="Απόθεμα" value={eurCompact(k.stockValue)} hint={k.deadStock ? `χωρίς κίνηση ${eurCompact(k.deadStock)}` : "σε κόστος"} icon={Package} tone="slate" />
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-5">
+        <ChartCard title="Υγεία επιχείρησης" description="Βαθμός 0–100 από ανάπτυξη, κερδοφορία, εισπράξεις, ληξιπρόθεσμα, απόθεμα και πελάτες" className="lg:col-span-2">
+          <HealthCard axes={healthAxes(k)} />
+        </ChartCard>
+        <div className="lg:col-span-3">
+          <ChartCard title="Τζίρος" description={`${g === "day" ? "Ανά ημέρα" : g === "week" ? "Ανά εβδομάδα" : "Ανά μήνα"}, έναντι ίδιας περιόδου πέρσι`}>
+            <CompareAreaChart
+              data={points}
+              xKey="x"
+              className="h-72"
+              current={{ key: "current", label: "Φέτος", color: "var(--chart-1)" }}
+              previous={{ key: "previous", label: "Πέρσι", color: "var(--chart-5)" }}
+            />
+          </ChartCard>
+        </div>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-5">
@@ -213,15 +233,7 @@ async function OverviewBody({ tenantId, period }: { tenantId: string; period: Pe
         </section>
 
         <div className="space-y-5 lg:col-span-2">
-          <ChartCard title="Τζίρος" description={`${g === "day" ? "Ανά ημέρα" : g === "week" ? "Ανά εβδομάδα" : "Ανά μήνα"}, έναντι ίδιας περιόδου πέρσι`}>
-            <CompareAreaChart
-              data={points}
-              xKey="x"
-              className="h-60"
-              current={{ key: "current", label: "Φέτος", color: "var(--chart-1)" }}
-              previous={{ key: "previous", label: "Πέρσι", color: "var(--chart-5)" }}
-            />
-          </ChartCard>
+
           <ChartCard title="Κατηγορίες" description="Τζίρος περιόδου ανά εμπορική κατηγορία">
             <RankingChart data={k.categories.slice(0, 8).map((c) => ({ name: c.name, value: c.revenue }))} label="Τζίρος" />
             <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-2xs text-muted-foreground">
@@ -235,6 +247,8 @@ async function OverviewBody({ tenantId, period }: { tenantId: string; period: Pe
           </ChartCard>
         </div>
       </div>
+
+      <ModuleLauncher base={base} pages={pages} q={periodQuery(period)} />
     </div>
   );
 }
