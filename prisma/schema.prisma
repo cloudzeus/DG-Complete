@@ -547,6 +547,22 @@ model ApiKey {
   @@map("api_key")
 }
 
+// Maps: Mapbox token (geocoding of customer addresses + map tiles). One row, id "default".
+model GeoSettings {
+  id            String    @id @default("default")
+  tokenEnc      String? // AES-256-GCM
+  keyHint       String?
+  enabled       Boolean   @default(false)
+  // Customers geocoded per scheduler run and tenant (cost control).
+  batchSize     Int       @default(300)
+  lastTestAt    DateTime?
+  lastTestOk    Boolean?
+  lastTestError String?
+  updatedAt     DateTime  @updatedAt
+
+  @@map("geo_settings")
+}
+
 // Outgoing email through Mailgun (EU region by default). One row, id "default".
 model EmailSettings {
   id            String    @id @default("default")

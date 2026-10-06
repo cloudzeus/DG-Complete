@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/data-table/data-table";
 import { ExportButton, type ExportSheetSpec } from "@/components/dashboards/export-button";
@@ -14,6 +15,8 @@ export type ListColumn = {
   grow?: boolean;
   /** badge: value → tone class */
   tones?: Record<string, string>;
+  /** Makes the cell a link: a path with {member} placeholders, e.g. "/dashboards/x/customers/{customers.customer_code}". */
+  link?: string;
   /** red when below / above */
   warnBelow?: number;
   warnAbove?: number;
@@ -83,6 +86,14 @@ export function CubeTable({
           }
           const n = Number(v);
           const warn = (c.warnBelow !== undefined && n < c.warnBelow) || (c.warnAbove !== undefined && n > c.warnAbove);
+          if (c.link) {
+            const href = c.link.replace(/\{([^}]+)\}/g, (_, k: string) => encodeURIComponent(String(row.original[k] ?? "")));
+            return (
+              <Link href={href} className="font-medium text-primary underline-offset-4 hover:underline">
+                {text}
+              </Link>
+            );
+          }
           return <span className={cn(NUMERIC.has(c.format ?? "") && "tabular-nums", warn && "font-medium text-red-600", c.grow && "font-medium")}>{text}</span>;
         },
       })),

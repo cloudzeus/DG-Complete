@@ -1,0 +1,106 @@
+# Γεωγραφική ανάλυση: οι γραμμές πωλήσεων με τη θέση του πελάτη (customer_geo, geocoding Mapbox).
+cubes:
+  - name: geo_sales
+    title: Πωλήσεις στον χάρτη
+    description: >
+      Γραμμές πωλήσεων πελατών με γνωστή θέση (γεωγραφικό πλάτος/μήκος από τη διεύθυνσή τους), για χάρτες
+      τζίρου, συχνότητας αγορών, μαρκών και κατηγοριών ανά περιοχή.
+    sql: >
+      SELECT f.findoc, f.mtrlines, f.trndate, f.trdr, f.net, f.cost, f.qty,
+             b.name AS brand_name, c.name AS category_name,
+             cu.code AS customer_code, cu.name AS customer_name, cu.city AS customer_city, cu.zip AS customer_zip,
+             g.lat, g.lng, g.precision AS geo_precision
+      FROM f_sales_lines f
+      JOIN customer_geo g ON g.trdr = f.trdr AND g.status = 'ok'
+      LEFT JOIN items i ON i.mtrl = f.mtrl
+      LEFT JOIN item_categories c ON c.mtrcategory = i.mtrcategory
+      LEFT JOIN brands b ON b.mtrmark = i.mtrmark
+      LEFT JOIN customers cu ON cu.trdr = f.trdr
+
+    measures:
+      - name: revenue
+        title: Τζίρος
+        description: Καθαρή αξία πωλήσεων (χωρίς ΦΠΑ), μείον πιστωτικά.
+        type: sum
+        sql: net
+      - name: revenue_costed
+        title: Τζίρος με γνωστό κόστος
+        type: sum
+        sql: net
+        filters:
+          - sql: "cost IS NOT NULL"
+        public: false
+      - name: cost
+        title: Κόστος
+        type: sum
+        sql: cost
+        public: false
+      - name: margin_pct
+        title: Περιθώριο %
+        type: number
+        sql: "100.0 * ({revenue_costed} - {cost}) / NULLIF({revenue_costed}, 0)"
+      - name: quantity
+        title: Ποσότητα
+        type: sum
+        sql: qty
+      - name: documents
+        title: Παραστατικά (συχνότητα αγορών)
+        description: Πόσα τιμολόγια — μέτρο της συχνότητας αγορών.
+        type: count_distinct
+        sql: findoc
+      - name: customers
+        title: Πελάτες
+        type: count_distinct
+        sql: trdr
+
+    dimensions:
+      - name: line_key
+        sql: "findoc::text || '-' || mtrlines::text"
+        type: string
+        primary_key: true
+        public: false
+      - name: date
+        title: Ημερομηνία
+        type: time
+        sql: trndate
+      - name: trdr
+        title: Κωδ. πελάτη (id)
+        type: number
+        sql: trdr
+      - name: customer_code
+        title: Κωδικός πελάτη
+        type: string
+        sql: customer_code
+      - name: customer_name
+        title: Πελάτης
+        type: string
+        sql: customer_name
+      - name: city
+        title: Πόλη
+        type: string
+        sql: "COALESCE(NULLIF(TRIM(customer_city), ''), '—')"
+      - name: postcode
+        title: Ταχ. κώδικας
+        type: string
+        sql: "NULLIF(TRIM(customer_zip), '')"
+      - name: postcode_area
+        title: Περιοχή ΤΚ (3 ψηφία)
+        description: Τα 3 πρώτα ψηφία του ΤΚ — περίπου δήμος / νομός.
+        type: string
+        sql: "LEFT(REGEXP_REPLACE(COALESCE(customer_zip, ''), '[^0-9]', '', 'g'), 3)"
+      - name: lat
+        title: Γεωγρ. πλάτος
+        type: number
+        sql: lat
+      - name: lng
+        title: Γεωγρ. μήκος
+        type: number
+        sql: lng
+      - name: brand
+        title: Μάρκα
+        type: string
+        sql: "COALESCE(brand_name, 'Χωρίς μάρκα')"
+      - name: category
+        title: Κατηγορία
+        type: string
+        sql: "COALESCE(category_name, 'Χωρίς κατηγορία')"

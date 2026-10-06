@@ -33,7 +33,7 @@ type Tab = keyof typeof TABS;
 
 const BASE: ListColumn[] = [
   { key: C("customer_code"), label: "Κωδικός", size: 110 },
-  { key: C("customer_name"), label: "Πελάτης", grow: true },
+  { key: C("customer_name"), label: "Πελάτης", grow: true, link: "/dashboards/__T__/customers/{customers.customer_code}" },
   { key: C("city"), label: "Πόλη", size: 120 },
 ];
 
@@ -158,7 +158,7 @@ export default async function CustomersPage({ params, searchParams }: PageProps<
         key={tab}
         tenantId={tenantId}
         rows={rows}
-        columns={COLUMNS[tab]}
+        columns={COLUMNS[tab].map((c) => (c.link ? { ...c, link: c.link.replace("__T__", tenantId) } : c))}
         storageKey={`customers-${tab}`}
         title={TABS[tab]}
         query={QUERIES[tab] as Record<string, unknown>}

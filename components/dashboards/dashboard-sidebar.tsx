@@ -11,6 +11,7 @@ import {
   Landmark,
   LayoutDashboard,
   LogOut,
+  MapPinned,
   Scale,
   ShieldCheck,
   Package,
@@ -72,6 +73,7 @@ const NAV: { label: string; items: NavItem[] }[] = [
       { slug: "sales", label: "Πωλήσεις", icon: ChartColumnBig },
       { slug: "products", label: "Προϊόντα", icon: Package },
       { slug: "customers", label: "Πελάτες", icon: Users },
+      { slug: "geo", label: "Γεωγραφία πωλήσεων", icon: MapPinned },
     ],
   },
   {

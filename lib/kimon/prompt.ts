@@ -17,6 +17,7 @@ const PAGE_NAMES: Record<string, string> = {
   kimon: "Κίμων",
   orders: "Παραγγελίες αγορών",
   api: "Web services",
+  geo: "Γεωγραφία πωλήσεων",
 };
 
 const GUIDE = `

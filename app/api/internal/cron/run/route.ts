@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { runSubscriptionReminders } from "@/lib/email";
+import { runGeocoding } from "@/lib/geo";
 import { runDueJobs } from "@/lib/softone-sync";
 
 // Scheduler tick: runs every due SoftOne sync job (Ρυθμίσεις → Συγχρονισμοί).
@@ -22,11 +23,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   // Subscription reminders: checked once an hour (each reminder is sent once — dedupe in email_log).
+  // Geocoding of new / changed customer addresses: also hourly, a batch per tenant.
   const g = globalThis as { __dgRemindersAt?: number };
-  let reminders: unknown = null;
+  let hourly: Record<string, unknown> | null = null;
   if (!g.__dgRemindersAt || Date.now() - g.__dgRemindersAt > 3600_000) {
     g.__dgRemindersAt = Date.now();
-    reminders = await runSubscriptionReminders().catch((err: Error) => ({ error: err.message }));
+    hourly = {
+      reminders: await runSubscriptionReminders().catch((err: Error) => ({ error: err.message })),
+      geocoding: await runGeocoding().catch((err: Error) => ({ error: err.message })),
+    };
   }
-  return NextResponse.json({ ...(await runDueJobs(8 * 60_000)), ...(reminders ? { reminders } : {}) });
+  return NextResponse.json({ ...(await runDueJobs(8 * 60_000)), ...(hourly ?? {}) });
 }

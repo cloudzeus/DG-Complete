@@ -10,6 +10,7 @@ import {
   CreditCard,
   DatabaseZap,
   Download,
+  MapPinned,
   Plug,
   Scale,
   ChartNoAxesCombined,
@@ -43,6 +44,8 @@ import { WarehousePanel } from "./warehouse-panel";
 import { OrderSettings } from "./order-settings";
 import { TenantUsers } from "./tenant-users";
 import { SubscriptionForm } from "./subscription-form";
+import { GeoPanel } from "./geo-panel";
+import { hasService } from "@/lib/tenant-services";
 
 export async function generateMetadata({
   params,
@@ -225,6 +228,21 @@ export default async function TenantPage({
               />
             </CardContent>
           </Card>
+          {tenantSoftOne && canSources && (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <SectionTitle icon={MapPinned} tone="teal">
+                    Γεωγραφική ανάλυση
+                  </SectionTitle>
+                </CardTitle>
+                <CardDescription>Geocoding των διευθύνσεων των ενεργών πελατών (Mapbox) για τους χάρτες πωλήσεων.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <GeoPanel tenantId={tenant.id} hasService={await hasService(tenant.id, "geo")} />
+              </CardContent>
+            </Card>
+          )}
           {tenantSoftOne && canSources && (
             <Card>
               <CardHeader>
