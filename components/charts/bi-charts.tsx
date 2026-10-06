@@ -32,9 +32,9 @@ import { eurCompact, eurFull, pct } from "@/lib/format";
 
 // Reusable dashboard charts on shadcn/ui charts (Recharts). Values are € unless `format` says otherwise.
 
-export type ValueFormat = "eur" | "count" | "pct";
+export type ValueFormat = "eur" | "count" | "pct" | "days";
 const fmtFull = (f: ValueFormat) => (v: number) =>
-  f === "eur" ? eurFull(v) : f === "pct" ? pct(v) : v.toLocaleString("el-GR");
+  f === "eur" ? eurFull(v) : f === "pct" ? pct(v) : f === "days" ? `${Math.round(v).toLocaleString("el-GR")} ημ.` : v.toLocaleString("el-GR");
 const axisCompact = new Intl.NumberFormat("el-GR", {
   notation: "compact",
   maximumFractionDigits: 1,
@@ -656,6 +656,56 @@ export function Sparkline({
           isAnimationActive={false}
         />
       </AreaChart>
+    </ChartContainer>
+  );
+}
+
+
+/** Distinct, colour-blind friendly line colours for comparing several series (brands …). */
+export const LINE_COLORS = ["#2563eb", "#e31e2a", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#4b5563"];
+
+/** Several series over the same x axis, one coloured line each; gaps (no data) are bridged. */
+export function MultiLineChart({
+  data,
+  xKey,
+  series,
+  format = "count",
+  className,
+  reference,
+}: {
+  data: Record<string, string | number | null>[];
+  xKey: string;
+  /** color: optional — the palette (LINE_COLORS) is used in order otherwise. */
+  series: { key: string; label: string; color?: string }[];
+  format?: ValueFormat;
+  className?: string;
+  /** Horizontal guide line, e.g. a target. */
+  reference?: { y: number; label: string };
+}) {
+  const config: ChartConfig = Object.fromEntries(series.map((s, i) => [s.key, { label: s.label, color: s.color ?? LINE_COLORS[i % LINE_COLORS.length] }]));
+  return (
+    <ChartContainer config={config} className={cn("aspect-auto h-80 w-full", className)}>
+      <LineChart data={data} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
+        <CartesianGrid vertical={false} />
+        <XAxis dataKey={xKey} tickLine={false} axisLine={false} tickMargin={8} />
+        <YAxis tickLine={false} axisLine={false} width={48} tickFormatter={(v: number) => (format === "days" ? `${v}` : fmtAxis(format)(v))} />
+        {reference && <ReferenceLine y={reference.y} stroke="var(--muted-foreground)" strokeDasharray="4 4" label={{ value: reference.label, position: "insideTopRight", fontSize: 11, fill: "var(--muted-foreground)" }} />}
+        <ValueTooltip format={format} />
+        <ChartLegend content={<ChartLegendContent />} />
+        {series.map((s) => (
+          <Line
+            key={s.key}
+            dataKey={s.key}
+            name={s.label}
+            type="monotone"
+            stroke={`var(--color-${s.key})`}
+            strokeWidth={2.25}
+            dot={{ r: 2.5, strokeWidth: 0, fill: `var(--color-${s.key})` }}
+            activeDot={{ r: 4.5 }}
+            connectNulls
+          />
+        ))}
+      </LineChart>
     </ChartContainer>
   );
 }
