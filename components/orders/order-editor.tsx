@@ -12,6 +12,7 @@ import {
   submitPurchaseOrder,
 } from "@/app/dashboards/[tenantId]/orders/actions";
 import { ExportButton } from "@/components/dashboards/export-button";
+import { MonthBars } from "@/components/dashboards/month-bars";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,35 +42,6 @@ const URGENCY = {
   urgent: { label: "Σύντομα", plural: "για σύντομα", badge: "bg-amber-50 text-amber-800 ring-amber-200", row: "border-l-amber-400 bg-amber-50/30 dark:bg-amber-950/10" },
   normal: { label: "Κανονικό", plural: "κανονικά", badge: "bg-muted text-muted-foreground ring-border", row: "border-l-transparent" },
 } as const;
-
-const MONTHS = ["Ιαν", "Φεβ", "Μαρ", "Απρ", "Μαΐ", "Ιουν", "Ιουλ", "Αυγ", "Σεπ", "Οκτ", "Νοε", "Δεκ"];
-
-/** Sales per month as 12 tiny bars (oldest → this month); the last 3 months stand out. */
-function MonthBars({ values, rising }: { values: number[]; rising: boolean }) {
-  const max = Math.max(...values, 0);
-  const now = new Date().getMonth();
-  const title = values.map((v, i) => `${MONTHS[(now - 11 + i + 24) % 12]}: ${v.toLocaleString("el-GR")}`).join(" · ");
-  return (
-    <svg viewBox="0 0 120 28" className="h-7 w-32" role="img" aria-label={`Πωλήσεις ανά μήνα: ${title}`}>
-      <title>{title}</title>
-      {values.map((v, i) => {
-        const h = max > 0 ? Math.max((Math.max(v, 0) / max) * 26, v > 0 ? 2 : 0.75) : 0.75;
-        const recent = i >= 9;
-        return (
-          <rect
-            key={i}
-            x={i * 10 + 1}
-            y={28 - h}
-            width={8}
-            height={h}
-            rx={1}
-            className={recent ? (rising ? "fill-orange-500" : "fill-sky-600") : "fill-slate-300 dark:fill-slate-600"}
-          />
-        );
-      })}
-    </svg>
-  );
-}
 
 /** Case- and accent-insensitive text for searching (Θεσσαλονίκη = ΘΕΣΣΑΛΟΝΙΚΗ). */
 const fold = (v: string) => v.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
@@ -504,7 +476,7 @@ export function OrderEditor({
                             </ul>
                           </td>
                           <td className="px-3 py-2">
-                            <MonthBars values={l.monthly} rising={up} />
+                            <MonthBars values={l.monthly} rising={up} forecast={l.forecast} />
                             <div className="mt-1 text-2xs whitespace-nowrap text-muted-foreground tabular-nums">
                               3μ {num(l.qty90d)} · 12μ {num(l.qty12m)} · πέρσι {num(l.qtyPrev12m)}
                             </div>

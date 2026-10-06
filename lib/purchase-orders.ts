@@ -46,9 +46,77 @@ export type OrderLine = {
   /** Who the item is bought from now, and whether that comes from the item or from its brand. */
   supplier: string | null;
   supplierSource: "item" | "brand" | null;
+  brand: string | null;
+  category: string | null;
+  revenue12m: number;
+  lastSale: string | null;
+  /** Expected sales of the next 3 calendar months. */
+  forecast: number[];
+  /** Days until the stock runs out at the forecast pace (null: not within a year / no demand). */
+  stockoutDays: number | null;
+  /** How the forecast was made, in plain words. */
+  forecastNote: string | null;
 };
 
 const RISING = 20; // % — demand of the last 90 days this much above the 12-month average
+/**
+ * Demand forecast for the next 3 months from 24 months of sales (index = months ago):
+ * level = average of the last 12 full months, × momentum (last quarter vs that level, damped by half),
+ * × seasonality (the same month a year earlier vs its year's average, shrunk halfway to 1) when the
+ * item sells in at least 6 of the 12 months — sparse sellers get no seasonality. Then the stock is
+ * run down month by month at the forecast pace to find the stock-out day.
+ */
+function forecast(h: number[], stock: number): { forecast: number[]; stockoutDays: number | null; forecastNote: string | null } {
+  const full = h.slice(1, 13); // last 12 full months
+  const prev = h.slice(13, 24);
+  const level = full.reduce((a, v) => a + Math.max(v, 0), 0) / 12;
+  if (level <= 0) return { forecast: [0, 0, 0], stockoutDays: null, forecastNote: null };
+  const recent = (Math.max(h[1], 0) + Math.max(h[2], 0) + Math.max(h[3], 0)) / 3;
+  const momentum = Math.min(Math.max(recent / level, 0.5), 2);
+  const trend = 1 + (momentum - 1) / 2;
+  const active = full.filter((v) => v > 0).length;
+  const prevLevel = prev.reduce((a, v) => a + Math.max(v, 0), 0) / prev.length;
+  const seasonal = active >= 6 && level > 0;
+  const fc = [1, 2, 3].map((k) => {
+    // Same calendar month one year earlier = (12 - k) months ago (and 24 - k two years ago, if known).
+    const same = [h[12 - k], 24 - k < 24 ? h[24 - k] : undefined].filter((v): v is number => v !== undefined);
+    let si = 1;
+    if (seasonal) {
+      const ratios = [Math.max(same[0], 0) / level, ...(same[1] !== undefined && prevLevel > 0 ? [Math.max(same[1], 0) / prevLevel] : [])];
+      si = 1 + (Math.min(ratios.reduce((a, v) => a + v, 0) / ratios.length, 3) - 1) / 2;
+    }
+    return Math.round(level * trend * si * 10) / 10;
+  });
+  // Run the stock down: the rest of this month, the 3 forecast months, then the trend pace.
+  let left = Math.max(stock, 0);
+  let days = 0;
+  const now = new Date();
+  const daysIn = (y: number, m: number) => new Date(y, m + 1, 0).getDate();
+  // Monthly demand: rest of this month at the trend pace, the 3 forecast months, then the trend pace.
+  const rates = [level * trend, ...fc, ...Array(9).fill(level * trend)];
+  let stockoutDays: number | null = null;
+  for (let i = 0; i < rates.length; i++) {
+    const len = daysIn(now.getFullYear(), now.getMonth() + i);
+    const span = i === 0 ? len - now.getDate() : len;
+    const daily = rates[i] / len;
+    if (daily > 0 && daily * span >= left) {
+      stockoutDays = Math.round(days + left / daily);
+      break;
+    }
+    left -= daily * span;
+    days += span;
+  }
+  const tr = Math.round((trend - 1) * 100);
+  const note = [
+    `μέσος όρος ${Math.round(level * 10) / 10}/μήνα`,
+    tr ? `τάση ${tr > 0 ? "+" : ""}${tr}%` : null,
+    seasonal ? "με εποχικότητα" : "χωρίς εποχικότητα (λίγοι μήνες με πωλήσεις)",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return { forecast: fc, stockoutDays, forecastNote: note };
+}
+
 const MIN_RECENT = 5; // units in 90 days — below this a "trend" is noise
 
 /** Why an item is on the order list and how urgent it is — by stock vs lead time at the recent pace. */
@@ -164,37 +232,55 @@ export async function itemOrderLines(tenantId: string, mtrls: number[]): Promise
   return orderLinesWhere(tenantId, `m.mtrl = ANY($1::bigint[])`, [mtrls]);
 }
 
-async function orderLinesWhere(tenantId: string, where: string, params: unknown[]): Promise<OrderLine[]> {
-  const s = qi(schemaName(tenantId));
+async function orderLinesWhere(
+  tenantId: string,
+  where: string,
+  params: unknown[],
+  opts: { orderBy?: string; limit?: number } = {},
+): Promise<OrderLine[]> {
+  const schema = schemaName(tenantId);
+  const s = qi(schema);
   return withWarehouse(async (db) => {
+    const has = async (t: string) => !!(await db.query("SELECT to_regclass($1) AS t", [`${s}.${t}`])).rows[0]?.t;
+    const [brands, categories] = [await has("brands"), await has("item_categories")];
+    // Marts built before the supplier source existed (rebuilt on the next sync).
+    const source = (await db.query("SELECT 1 FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'm_item_stats' AND column_name = 'supplier_source'", [schema])).rowCount
+      ? "m.supplier_source"
+      : "NULL";
     const r = await db.query(
       `SELECT m.mtrl, i.code, i.name, m.abc, m.stock_qty, m.days_of_cover, m.lead_days, m.qty_12m, m.qty_prev_12m, m.qty_90d,
-              m.suggested_order_qty, m.supplier_source, sp.name AS supplier_name
+              m.suggested_order_qty, ${source} AS supplier_source, sp.name AS supplier_name, m.revenue_12m, m.last_sale,
+              ${brands ? "b.name" : "NULL"} AS brand_name, ${categories ? "c.name" : "NULL"} AS category_name
        FROM ${s}.m_item_stats m LEFT JOIN ${s}.items i ON i.mtrl = m.mtrl
        LEFT JOIN ${s}.suppliers sp ON sp.trdr = m.main_supplier
+       ${brands ? `LEFT JOIN ${s}.brands b ON b.mtrmark = i.mtrmark` : ""}
+       ${categories ? `LEFT JOIN ${s}.item_categories c ON c.mtrcategory = i.mtrcategory` : ""}
        WHERE ${where}
-       ORDER BY m.suggested_order_qty DESC NULLS LAST, m.qty_12m DESC NULLS LAST
-       LIMIT 500`,
+       ORDER BY ${opts.orderBy ?? "m.suggested_order_qty DESC NULLS LAST, m.qty_12m DESC NULLS LAST"}
+       LIMIT ${Math.min(Math.max(opts.limit ?? 500, 1), 3000)}`,
       params,
     );
     const mtrls = r.rows.map((x) => Number(x.mtrl));
-    // Monthly sales of these items, last 12 calendar months (current month included).
+    // Monthly sales of these items, last 24 calendar months (current month included): 12 shown,
+    // all 24 feed the forecast (seasonality = the same months a year earlier).
     const months = await db.query(
       `SELECT mtrl, (EXTRACT(YEAR FROM age(date_trunc('month', now()), date_trunc('month', trndate))) * 12
                      + EXTRACT(MONTH FROM age(date_trunc('month', now()), date_trunc('month', trndate))))::int AS ago,
               SUM(qty)::float AS qty
        FROM ${s}.f_sales_lines
-       WHERE mtrl = ANY($1::bigint[]) AND trndate >= date_trunc('month', now()) - interval '11 months'
+       WHERE mtrl = ANY($1::bigint[]) AND trndate >= date_trunc('month', now()) - interval '23 months'
        GROUP BY 1, 2`,
       [mtrls],
     );
-    const monthly = new Map<number, number[]>();
+    /** index = months ago (0 = this month … 23). */
+    const history = new Map<number, number[]>();
     for (const m of months.rows) {
-      const arr = monthly.get(Number(m.mtrl)) ?? Array(12).fill(0);
-      const i = 11 - Number(m.ago);
-      if (i >= 0 && i < 12) arr[i] = Math.round(Number(m.qty) * 100) / 100;
-      monthly.set(Number(m.mtrl), arr);
+      const arr = history.get(Number(m.mtrl)) ?? Array(24).fill(0);
+      const ago = Number(m.ago);
+      if (ago >= 0 && ago < 24) arr[ago] = Math.round(Number(m.qty) * 100) / 100;
+      history.set(Number(m.mtrl), arr);
     }
+    const monthly = new Map<number, number[]>([...history].map(([k, h]) => [k, h.slice(0, 12).reverse()]));
     return r.rows
       .map((x) => {
         const base = {
@@ -213,16 +299,26 @@ async function orderLinesWhere(tenantId: string, where: string, params: unknown[
           monthly: monthly.get(Number(x.mtrl)) ?? Array(12).fill(0),
           suggested: Number(x.suggested_order_qty ?? 0),
           supplier: (x.supplier_name as string | null) ?? null,
+          brand: (x.brand_name as string | null) ?? null,
+          category: (x.category_name as string | null) ?? null,
+          revenue12m: Number(x.revenue_12m ?? 0),
+          lastSale: x.last_sale ? new Date(x.last_sale).toISOString().slice(0, 10) : null,
           supplierSource: (x.supplier_source as "item" | "brand" | null) ?? null,
           ...base,
           ...assess(base),
+          ...forecast(history.get(Number(x.mtrl)) ?? Array(24).fill(0), base.stock),
         };
       })
       .map((l) => {
         // Shown with «all items» but not suggested: say why nothing is needed.
-        if (l.suggested <= 0 && l.stock > 0) {
+        if (l.suggested <= 0) {
           l.urgency = "normal";
-          l.reasons = [l.coverNow === null ? "Χωρίς πωλήσεις τους τελευταίους 12 μήνες" : `Επαρκές απόθεμα — κάλυψη ~${Math.round(l.coverNow)} ημ.`];
+          l.reasons =
+            l.qty12m <= 0
+              ? [l.stock > 0 ? "Χωρίς πωλήσεις τους τελευταίους 12 μήνες" : "Χωρίς απόθεμα και χωρίς πρόσφατη ζήτηση"]
+              : l.stock <= 0
+                ? ["Εξαντλημένο — σποραδικές πωλήσεις (1 παραστατικό στο έτος)"]
+                : [`Επαρκές απόθεμα — κάλυψη ~${Math.round(l.coverNow ?? 0)} ημ.`];
         }
         if (l.supplierSource === "brand" && l.supplier) l.reasons = [...l.reasons, `Προμηθευτής από τη μάρκα: ${l.supplier}`];
         return l;
@@ -237,6 +333,30 @@ const KEYS: Record<string, string> = {
   η: "h", ξ: "j", κ: "k", λ: "l", ζ: "z", χ: "x", ψ: "c", ω: "v", β: "b", ν: "n", μ: "m",
 };
 const latinKeys = (q: string) => [...q.toLowerCase()].map((c) => KEYS[c] ?? c).join("");
+
+/**
+ * Sales movement and stock per item (Προϊόντα → Κίνηση): items that sold in the last 12 months or
+ * hold stock, biggest turnover first, optionally narrowed by text / brand / category.
+ */
+export async function itemMovement(tenantId: string, f: { q?: string; brand?: string; category?: string; limit?: number } = {}): Promise<OrderLine[]> {
+  const where = ["(m.qty_12m <> 0 OR m.qty_prev_12m <> 0 OR m.stock_qty <> 0)"];
+  const params: unknown[] = [];
+  const term = f.q?.trim();
+  if (term) {
+    params.push(`%${term}%`, `%${latinKeys(term)}%`);
+    where.push(`(i.code ILIKE $${params.length - 1} OR i.name ILIKE $${params.length - 1} OR i.code ILIKE $${params.length})`);
+  }
+  if (f.brand) {
+    params.push(f.brand);
+    where.push(`i.mtrmark IN (SELECT mtrmark FROM ${qi(schemaName(tenantId))}.brands WHERE name = $${params.length})`);
+  }
+  if (f.category) {
+    params.push(f.category);
+    where.push(`i.mtrcategory IN (SELECT mtrcategory FROM ${qi(schemaName(tenantId))}.item_categories WHERE name = $${params.length})`);
+  }
+  const lines = await orderLinesWhere(tenantId, where.join(" AND "), params, { orderBy: "m.revenue_12m DESC NULLS LAST, m.stock_qty DESC", limit: f.limit ?? 1500 });
+  return lines.sort((a, b) => b.revenue12m - a.revenue12m);
+}
 
 export type ItemHit = { mtrl: number; code: string | null; name: string; brand: string | null; supplier: string | null; stock: number; qty12m: number };
 
