@@ -1,6 +1,5 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { audit } from "@/lib/audit";
@@ -11,11 +10,12 @@ import {
   s1GetTable,
   s1Authenticate,
   s1Login,
-  sealSoftOneCredentials,
 } from "@/lib/softone";
 import {
   parseSoftOneForm,
   PASSWORD_REQUIRED,
+  resolveSoftOneIds,
+  saveSoftOneDraft,
   resolveSoftOnePassword,
   softOneErrors,
   type SoftOneFormState,
@@ -38,9 +38,10 @@ export async function testSoftOneDraft(formData: FormData): Promise<SoftOneFormS
   if (password === null) return { errors: { password: PASSWORD_REQUIRED } };
   try {
     const { clientID, objs } = await s1Login({ ...input, password });
-    const full = !!input.company;
-    if (full) await s1Authenticate({ ...input, password }, clientID);
-    return { test: { ok: true, objs, authenticated: full } };
+    const r = resolveSoftOneIds(input, objs);
+    if (!r.ok) return { test: { ok: true, objs, authenticated: false }, errors: { company: r.error } };
+    await s1Authenticate({ ...input, ...r.ids, password }, clientID);
+    return { test: { ok: true, objs, authenticated: true }, resolved: r.auto ? r.ids : undefined };
   } catch (err) {
     return { test: { ok: false, error: (err as Error).message.slice(0, 500) } };
   }
@@ -48,52 +49,23 @@ export async function testSoftOneDraft(formData: FormData): Promise<SoftOneFormS
 
 export async function saveSoftOne(_prev: SoftOneFormState, formData: FormData): Promise<SoftOneFormState> {
   const user = await requirePermission("platform.settings.manage");
-  const parsed = parse(formData);
-  if (!parsed.success) return { errors: errorsOf(parsed.error) };
-  const input = parsed.data;
-  if (!input.company) return { errors: { company: "Υποχρεωτικό" } };
-
-  const password = await resolvePassword(input);
-  if (password === null) return { errors: { password: PASSWORD_REQUIRED } };
-
-  // Verify before storing: a saved connection is always a working one.
-  try {
-    const { clientID } = await s1Login({ ...input, password });
-    await s1Authenticate({ ...input, password }, clientID);
-  } catch (err) {
-    return { test: { ok: false, error: (err as Error).message.slice(0, 500) }, message: "Η σύνδεση δεν αποθηκεύτηκε." };
-  }
-
-  const existing = await prisma.softOneConnection.findFirst({ where: { scope: "DGSOFT" }, select: { id: true } });
-  const id = existing?.id ?? randomUUID().replaceAll("-", "");
-  const data = {
-    name: "SoftOne DGsoft",
-    baseUrl: input.baseUrl,
-    appId: input.appId,
-    company: input.company,
-    branch: input.branch,
-    module: input.module,
-    refId: input.refId,
-    credentialsEnc: sealSoftOneCredentials(id, { username: input.username, password }),
-    // Settings changed → drop the cached clientID.
-    sessionEnc: null,
-    sessionDate: null,
-    lastTestedAt: new Date(),
-    lastTestStatus: "OK" as const,
-    lastTestError: null,
-  };
-  if (existing) await prisma.softOneConnection.update({ where: { id }, data });
-  else await prisma.softOneConnection.create({ data: { id, scope: "DGSOFT", ...data } });
-
+  const r = await saveSoftOneDraft(formData, { scope: "DGSOFT" }, "SoftOne DGsoft");
   await audit({
     actorId: user.id,
-    action: existing ? "softone.update" : "softone.create",
+    action: r.created ? "softone.create" : "softone.update",
     entity: "SoftOneConnection",
-    entityId: id,
-    meta: { baseUrl: input.baseUrl, appId: input.appId, company: input.company, passwordChanged: !!input.password },
+    entityId: r.id,
+    meta: { baseUrl: r.baseUrl, company: r.ids.company, verified: r.verified, passwordChanged: r.passwordChanged },
   });
   revalidatePath("/admin/settings", "layout");
-  return { ok: true, message: "Η σύνδεση με το SoftOne αποθηκεύτηκε." };
+  if (!r.verified) return r.state;
+  return {
+    ...r.state,
+    ok: true,
+    message: r.state.resolved
+      ? `Η σύνδεση αποθηκεύτηκε με την εταιρεία ${r.ids.company} του λογαριασμού.`
+      : "Η σύνδεση με το SoftOne αποθηκεύτηκε.",
+  };
 }
 
 // ───────────── Subscription invoicing settings ─────────────

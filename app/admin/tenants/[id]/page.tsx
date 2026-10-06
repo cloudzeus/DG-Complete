@@ -193,7 +193,7 @@ export default async function TenantPage({
                         branch: tenantSoftOne.branch,
                         module: tenantSoftOne.module,
                         refId: tenantSoftOne.refId,
-                        host: new URL(tenantSoftOne.baseUrl).host,
+                        host: URL.canParse(tenantSoftOne.baseUrl) ? new URL(tenantSoftOne.baseUrl).host : tenantSoftOne.baseUrl,
                         lastTestStatus: tenantSoftOne.lastTestStatus,
                         capabilities:
                           (tenantSoftOne.capabilities as Capabilities | null) ??

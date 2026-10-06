@@ -46,12 +46,21 @@ export function SoftOneForm({
     refId: values?.refId ?? "",
   });
 
+  // Company left blank → the server fills it in from the login (one company) — show what it used.
+  const resolved = state.resolved ?? testState.resolved;
+  const [shownResolved, setShownResolved] = useState(resolved);
+  if (resolved !== shownResolved) {
+    setShownResolved(resolved);
+    if (resolved) setIds(resolved);
+  }
+
   const handleSaved = useEffectEvent(() => onSaved?.());
   useEffect(() => {
     if (state.ok) {
       toast.success(state.message);
       handleSaved();
-    } else if (state.message) toast.error(state.message);
+    } else if (state.saved) toast.warning(state.message);
+    else if (state.message) toast.error(state.message);
   }, [state]);
 
   const errors = { ...testState.errors, ...state.errors };
@@ -65,7 +74,7 @@ export function SoftOneForm({
 
   return (
     <form ref={formRef} action={formAction} className="space-y-5">
-      {values?.id && <input type="hidden" name="id" value={values.id} />}
+      {(values?.id || state.id) && <input type="hidden" name="id" value={values?.id || state.id} />}
       {hidden && Object.entries(hidden).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -95,7 +104,7 @@ export function SoftOneForm({
         {(["company", "branch", "module", "refId"] as const).map((k) => (
           <Field
             key={k}
-            label={{ company: "Company *", branch: "Branch", module: "Module", refId: "RefID" }[k]}
+            label={{ company: "Company", branch: "Branch", module: "Module", refId: "RefID" }[k]}
             error={errors[k]}
           >
             <Input
@@ -107,8 +116,9 @@ export function SoftOneForm({
           </Field>
         ))}
         <p className="text-xs text-muted-foreground sm:col-span-4">
-          Υποχρεωτικό μόνο το Company· τα υπόλοιπα στέλνονται μόνο αν συμπληρωθούν. Πατήστε «Δοκιμή σύνδεσης» για
-          να δείτε τους διαθέσιμους συνδυασμούς του λογαριασμού.
+          Όλα προαιρετικά. Αν το Company μείνει κενό και ο λογαριασμός έχει μία εταιρεία, χρησιμοποιείται αυτή· αν
+          έχει περισσότερες, επιλέξτε μία από τη λίστα που εμφανίζεται με τη «Δοκιμή σύνδεσης». Branch / Module /
+          RefID στέλνονται μόνο αν συμπληρωθούν.
         </p>
       </fieldset>
 

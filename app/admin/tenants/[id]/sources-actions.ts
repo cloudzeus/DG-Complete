@@ -1,16 +1,17 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/rbac";
-import { s1Authenticate, s1Login, sealSoftOneCredentials } from "@/lib/softone";
+import { s1Authenticate, s1Login } from "@/lib/softone";
 import { detectCapabilities, type Capabilities } from "@/lib/softone-detect";
 import { seedTenantJobs } from "@/lib/softone-sync";
 import {
   parseSoftOneForm,
   PASSWORD_REQUIRED,
+  resolveSoftOneIds,
+  saveSoftOneDraft,
   resolveSoftOnePassword,
   softOneErrors,
   type SoftOneFormState,
@@ -36,8 +37,10 @@ export async function testTenantSoftOne(fd: FormData): Promise<SoftOneFormState>
   if (password === null) return { errors: { password: PASSWORD_REQUIRED } };
   try {
     const { clientID, objs } = await s1Login({ ...input, password });
-    if (input.company) await s1Authenticate({ ...input, password }, clientID);
-    return { test: { ok: true, objs, authenticated: !!input.company } };
+    const r = resolveSoftOneIds(input, objs);
+    if (!r.ok) return { test: { ok: true, objs, authenticated: false }, errors: { company: r.error } };
+    await s1Authenticate({ ...input, ...r.ids, password }, clientID);
+    return { test: { ok: true, objs, authenticated: true }, resolved: r.auto ? r.ids : undefined };
   } catch (err) {
     return { test: { ok: false, error: (err as Error).message.slice(0, 500) } };
   }
@@ -46,51 +49,20 @@ export async function testTenantSoftOne(fd: FormData): Promise<SoftOneFormState>
 export async function saveTenantSoftOne(_prev: SoftOneFormState, fd: FormData): Promise<SoftOneFormState> {
   const tenantId = tenantIdOf(fd);
   const user = await requirePermission("connections.tenant.manage", tenantId);
-  const parsed = parseSoftOneForm(fd);
-  if (!parsed.success) return { errors: softOneErrors(parsed.error) };
-  const input = parsed.data;
-  if (!input.company) return { errors: { company: "Υποχρεωτικό" } };
-  const password = await resolveSoftOnePassword(input, { scope: "TENANT", tenantId });
-  if (password === null) return { errors: { password: PASSWORD_REQUIRED } };
-
-  // A saved connection is always a working one.
-  try {
-    const { clientID } = await s1Login({ ...input, password });
-    await s1Authenticate({ ...input, password }, clientID);
-  } catch (err) {
-    return { test: { ok: false, error: (err as Error).message.slice(0, 500) }, message: "Η σύνδεση δεν αποθηκεύτηκε." };
-  }
-
-  const existing = input.id
-    ? await prisma.softOneConnection.findFirst({ where: { id: input.id, scope: "TENANT", tenantId }, select: { id: true } })
-    : null;
-  const id = existing?.id ?? randomUUID().replaceAll("-", "");
-  const data = {
-    name: "SoftOne πελάτη",
-    baseUrl: input.baseUrl,
-    appId: input.appId,
-    company: input.company,
-    branch: input.branch,
-    module: input.module,
-    refId: input.refId,
-    credentialsEnc: sealSoftOneCredentials(id, { username: input.username, password }),
-    sessionEnc: null,
-    sessionDate: null,
-    lastTestedAt: new Date(),
-    lastTestStatus: "OK" as const,
-    lastTestError: null,
-  };
-  if (existing) await prisma.softOneConnection.update({ where: { id }, data });
-  else await prisma.softOneConnection.create({ data: { id, scope: "TENANT", tenantId, ...data } });
-
+  const r = await saveSoftOneDraft(fd, { scope: "TENANT", tenantId }, "SoftOne πελάτη");
+  const id = r.id;
   await audit({
     actorId: user.id,
-    action: existing ? "tenant.source.update" : "tenant.source.create",
+    action: r.created ? "tenant.source.create" : "tenant.source.update",
     entity: "SoftOneConnection",
     entityId: id,
     tenantId,
-    meta: { kind: "softone", baseUrl: input.baseUrl, company: input.company, passwordChanged: !!input.password },
+    meta: { kind: "softone", baseUrl: r.baseUrl, company: r.ids.company, verified: r.verified, passwordChanged: r.passwordChanged },
   });
+  if (!r.verified) {
+    refresh(tenantId);
+    return r.state;
+  }
 
   // Find out right away what this installation contains.
   let note = "";
@@ -106,7 +78,8 @@ export async function saveTenantSoftOne(_prev: SoftOneFormState, fd: FormData): 
     note = " Η ανίχνευση δεδομένων θα γίνει αργότερα.";
   }
   refresh(tenantId);
-  return { ok: true, message: `Η σύνδεση με το SoftOne του πελάτη αποθηκεύτηκε.${note}` };
+  const company = r.state.resolved ? ` Εταιρεία σύνδεσης: ${r.ids.company} (η μόνη του λογαριασμού).` : "";
+  return { ...r.state, ok: true, message: `Η σύνδεση με το SoftOne του πελάτη αποθηκεύτηκε.${company}${note}` };
 }
 
 export async function redetectTenantSoftOne(

@@ -116,6 +116,9 @@ export function openSoftOneCredentials(id: string, envelope: string) {
 async function loadTarget(connectionId: string) {
   const conn = await prisma.softOneConnection.findUnique({ where: { id: connectionId } });
   if (!conn) throw new SoftOneError("Η σύνδεση SoftOne δεν βρέθηκε.");
+  if (conn.lastTestStatus === "UNTESTED") {
+    throw new SoftOneError("Η σύνδεση SoftOne είναι ημιτελής — συμπληρώστε και αποθηκεύστε τα στοιχεία της.");
+  }
   return { conn, target: { ...conn, ...openSoftOneCredentials(conn.id, conn.credentialsEnc) } as SoftOneTarget };
 }
 

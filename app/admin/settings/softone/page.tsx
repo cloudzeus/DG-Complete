@@ -33,6 +33,8 @@ export default async function SoftOneSettingsPage() {
                 conn &&
                 (conn.lastTestStatus === "OK" ? (
                   <StatusPill tone="green">Συνδεδεμένο</StatusPill>
+                ) : conn.lastTestStatus === "UNTESTED" ? (
+                  <StatusPill tone="slate">Ημιτελής</StatusPill>
                 ) : (
                   <StatusPill tone="red">Σφάλμα</StatusPill>
                 ))

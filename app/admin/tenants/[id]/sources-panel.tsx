@@ -79,10 +79,16 @@ export function SourcesPanel({
               <div className="flex flex-wrap items-center gap-2">
                 <PlugZap className="size-4 text-violet-600" />
                 <span className="font-medium">SoftOne πελάτη</span>
-                {softone.lastTestStatus === "OK" ? <StatusPill tone="green">Συνδεδεμένο</StatusPill> : <StatusPill tone="red">Σφάλμα</StatusPill>}
+                {softone.lastTestStatus === "OK" ? (
+                  <StatusPill tone="green">Συνδεδεμένο</StatusPill>
+                ) : softone.lastTestStatus === "UNTESTED" ? (
+                  <StatusPill tone="slate">Ημιτελής</StatusPill>
+                ) : (
+                  <StatusPill tone="red">Σφάλμα</StatusPill>
+                )}
               </div>
               <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                {softone.host} · εταιρεία {softone.company}
+                {softone.host || "χωρίς διεύθυνση"} · εταιρεία {softone.company || "—"}
               </div>
             </div>
             {canManage && (
