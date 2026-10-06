@@ -1,6 +1,25 @@
 "use client";
 
-import { CartesianGrid, Label, ReferenceArea, ReferenceLine, ResponsiveContainer, Scatter, ScatterChart, Tooltip, Treemap, XAxis, YAxis, ZAxis } from "recharts";
+import {
+  CartesianGrid,
+  Label,
+  Legend,
+  PolarAngleAxis,
+  PolarGrid,
+  PolarRadiusAxis,
+  Radar,
+  RadarChart,
+  ReferenceArea,
+  ReferenceLine,
+  ResponsiveContainer,
+  Scatter,
+  ScatterChart,
+  Tooltip,
+  Treemap,
+  XAxis,
+  YAxis,
+  ZAxis,
+} from "recharts";
 import { cn } from "@/lib/utils";
 
 // Decision charts beyond bars and lines: a quadrant bubble chart, a treemap coloured by change,
@@ -288,6 +307,47 @@ export function RatioGauge({ value, label, hint }: { value: number | null; label
         <span className="text-emerald-700">≈1 ισορροπία</span>
         <span>&gt;1,1 γεμίζει</span>
       </div>
+    </div>
+  );
+}
+
+// ───────────── Radar ─────────────
+
+const RADAR_COLORS = ["#2563eb", "#e31e2a", "#16a34a", "#d97706", "#7c3aed"];
+
+/** Several entities (e.g. suppliers) scored 0–100 on the same axes, one coloured shape each. */
+export function ScoreRadar({ axes, series }: { axes: { key: string; label: string }[]; series: { name: string; values: Record<string, number> }[] }) {
+  const data = axes.map((a) => ({ axis: a.label, ...Object.fromEntries(series.map((s, i) => [`s${i}`, s.values[a.key] ?? 0])) }));
+  return (
+    <div className="h-96 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <RadarChart data={data} outerRadius="72%">
+          <PolarGrid className="stroke-border" />
+          <PolarAngleAxis dataKey="axis" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+          <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
+          {series.map((s, i) => (
+            <Radar key={s.name} name={s.name} dataKey={`s${i}`} stroke={RADAR_COLORS[i % RADAR_COLORS.length]} fill={RADAR_COLORS[i % RADAR_COLORS.length]} fillOpacity={0.12} strokeWidth={2} />
+          ))}
+          <Tooltip
+            cursor={false}
+            content={({ payload, label }) =>
+              payload?.length ? (
+                <div className="rounded-lg border bg-background px-3 py-2 text-xs shadow-fluent-8">
+                  <div className="mb-1 font-semibold">{label}</div>
+                  {payload.map((p) => (
+                    <div key={String(p.name)} className="flex items-center gap-2">
+                      <span className="size-2 rounded-full" style={{ background: String(p.color) }} />
+                      <span className="max-w-48 truncate">{p.name}</span>
+                      <b className="ml-auto tabular-nums">{Math.round(Number(p.value))}</b>
+                    </div>
+                  ))}
+                </div>
+              ) : null
+            }
+          />
+          <Legend wrapperStyle={{ fontSize: 11 }} />
+        </RadarChart>
+      </ResponsiveContainer>
     </div>
   );
 }

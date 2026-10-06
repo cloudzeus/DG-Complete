@@ -32,7 +32,7 @@ export const SERVICES: ServiceDef[] = [
     key: "purchasing",
     name: "Αγορές & Αποθήκη",
     description: "Απόθεμα, νεκρό απόθεμα, προτάσεις παραγγελίας, αγορές, αξιολόγηση προμηθευτών και χρόνοι παράδοσης.",
-    pages: ["stock", "purchases", "suppliers"],
+    pages: ["stock", "stock-health", "purchases", "suppliers"],
     cubes: ["purchases", "purchase_lines", "items", "suppliers"],
   },
   {

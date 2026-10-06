@@ -128,6 +128,7 @@ function Body({ w }: { w: WorkingCapital }) {
               { name: "61–90 ημ.", value: Math.round(w.overdue.d61_90) },
               { name: "90+ ημ.", value: Math.round(w.overdue.d90plus) },
             ].filter((x) => x.value > 0)}
+            className="sm:grid-cols-1"
             centerLabel="ληξιπρόθεσμα"
           />
         </ChartCard>

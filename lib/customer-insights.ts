@@ -1,4 +1,5 @@
 import "server-only";
+import { memo, MEMO_TTL } from "@/lib/memo";
 import type { Client } from "pg";
 import { schemaName } from "@/lib/warehouse";
 import { withWarehouse } from "@/lib/warehouse-writer";
@@ -35,7 +36,7 @@ export type CustomerInsights = {
 const quarterOf = (d: Date) => `${d.getFullYear()}-Q${Math.floor(d.getMonth() / 3) + 1}`;
 const qIndex = (q: string) => Number(q.slice(0, 4)) * 4 + Number(q.slice(6)) - 1;
 
-export async function customerInsights(tenantId: string): Promise<CustomerInsights> {
+async function computeCustomerInsights(tenantId: string): Promise<CustomerInsights> {
   const s = qi(schemaName(tenantId));
   return withWarehouse(async (db) => {
     // ── Activity per customer and quarter (positive sales).
@@ -322,4 +323,9 @@ export async function customerInsights(tenantId: string): Promise<CustomerInsigh
       findings,
     };
   });
+}
+
+/** Cached for 15 minutes per tenant. */
+export function customerInsights(tenantId: string): Promise<CustomerInsights> {
+  return memo(`customer-insights:${tenantId}`, MEMO_TTL, () => computeCustomerInsights(tenantId));
 }

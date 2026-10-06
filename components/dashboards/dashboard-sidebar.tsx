@@ -23,7 +23,7 @@ import {
   Users,
   Warehouse,
   Webhook,
-  type LucideIcon, Bell, Coins, RefreshCw, Target, TrendingUp, UserSearch } from "lucide-react";
+  type LucideIcon, Bell, Coins, Radar, RefreshCw, Target, TrendingUp, UserSearch } from "lucide-react";
 import { DgLogo } from "@/components/brand/dg-logo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -87,6 +87,7 @@ const NAV: { label: string; items: NavItem[] }[] = [
     label: "Αγορές & Αποθήκη",
     items: [
       { slug: "stock", label: "Αποθήκη & παραγγελίες", icon: Warehouse },
+      { slug: "stock-health", label: "Απόθεμα & προμηθευτές 360°", icon: Radar },
       { slug: "orders", label: "Παραγγελίες αγορών", icon: ClipboardList },
       { slug: "purchases", label: "Αγορές", icon: ShoppingCart },
       { slug: "suppliers", label: "Προμηθευτές", icon: Truck },

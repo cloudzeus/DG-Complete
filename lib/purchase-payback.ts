@@ -1,4 +1,5 @@
 import "server-only";
+import { memo, MEMO_TTL } from "@/lib/memo";
 import { schemaName } from "@/lib/warehouse";
 import { withWarehouse } from "@/lib/warehouse-writer";
 
@@ -61,7 +62,7 @@ export type PaybackItem = {
   tiedCost: number;
 };
 
-export async function purchasePayback(tenantId: string, opts: { months?: number; minCost?: number } = {}) {
+async function computePurchasePayback(tenantId: string, opts: { months?: number; minCost?: number } = {}) {
   const s = qi(schemaName(tenantId));
   const since = new Date(Date.now() - (opts.months ?? 18) * 30 * DAY);
   const minCost = opts.minCost ?? 200;
@@ -289,4 +290,9 @@ export async function purchasePayback(tenantId: string, opts: { months?: number;
     };
     return { docs: out, suppliers, cashDrags, fastest, slowest, brandMonths };
   });
+}
+
+/** Cached for 15 minutes per tenant and options. */
+export function purchasePayback(tenantId: string, opts: { months?: number; minCost?: number } = {}) {
+  return memo(`payback:${tenantId}:${opts.months ?? 18}:${opts.minCost ?? 200}`, MEMO_TTL, () => computePurchasePayback(tenantId, opts));
 }
