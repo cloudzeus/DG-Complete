@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { toast } from "sonner";
-import { StatusPill } from "@/components/admin/tone";
 import type { SeriesReview, SeriesUsage } from "@/lib/doc-series";
 import { loadSeriesReview, saveSeriesSign } from "./series-actions";
 
@@ -11,7 +10,13 @@ import { loadSeriesReview, saveSeriesSign } from "./series-actions";
 // name in SoftOne or negative net sales are flagged, and the admin can set the sign per series.
 
 const eur = (v: number) => `${Math.round(v).toLocaleString("el-GR")} €`;
-const SIGN_LABEL: Record<number, string> = { 1: "Μετρά (+)", [-1]: "Αφαιρείται (−)", 0: "Δεν μετρά" };
+const compact = (v: number) => `${new Intl.NumberFormat("el-GR", { notation: "compact", maximumFractionDigits: 1 }).format(v)} €`;
+const SIGN_LABEL: Record<number, string> = { 1: "Πώληση / αγορά (+)", [-1]: "Επιστροφή (−)", 0: "Εκτός" };
+const CHOICES = [
+  { sign: 1, label: "+", title: "Προστίθεται (τιμολόγιο, απόδειξη)", active: "bg-emerald-600 text-white" },
+  { sign: -1, label: "−", title: "Αφαιρείται (πιστωτικό, επιστροφή)", active: "bg-amber-500 text-white" },
+  { sign: 0, label: "Εκτός", title: "Δεν μετρά (παραγγελία, προσφορά, δελτίο)", active: "bg-slate-500 text-white" },
+];
 const ORIGIN: Record<SeriesUsage["origin"], string> = { series: "SoftOne σειρά", doc_type: "Τύπος παραστατικού", unknown: "Χωρίς όνομα", override: "Χειροκίνητα" };
 
 export function SeriesPanel({ tenantId }: { tenantId: string }) {
@@ -78,47 +83,81 @@ export function SeriesPanel({ tenantId }: { tenantId: string }) {
         {net !== null && <span className="text-xs text-muted-foreground">Καθαρό 12 μηνών: <strong className={net < 0 ? "text-destructive" : ""}>{eur(net)}</strong></span>}
       </div>
 
-      <div className="max-h-96 overflow-auto">
-        <table className="w-full">
-          <thead className="sticky top-0 bg-card text-xs text-muted-foreground">
-            <tr className="border-b text-left">
-              <th className="py-2 pr-3 font-medium">Σειρά</th>
-              <th className="py-2 pr-3 font-medium">Όνομα</th>
-              <th className="py-2 pr-3 text-right font-medium">Παραστ. 12μ</th>
-              <th className="py-2 pr-3 text-right font-medium">Αξία 12μ</th>
-              <th className="py-2 font-medium">Πώς μετρά</th>
+      <p className="text-xs text-muted-foreground">
+        <span className="font-medium text-emerald-700 dark:text-emerald-400">+</span> προστίθεται (τιμολόγια, αποδείξεις) ·{" "}
+        <span className="font-medium text-amber-700 dark:text-amber-400">−</span> αφαιρείται (πιστωτικά, επιστροφές) ·{" "}
+        <span className="font-medium">Εκτός</span> δεν μετρά (παραγγελίες, προσφορές, δελτία). Η πρόταση γίνεται αυτόματα από το όνομα της σειράς.
+      </p>
+
+      <div className="max-h-96 overflow-y-auto rounded-md border">
+        <table className="w-full table-fixed text-xs">
+          <colgroup>
+            <col className="w-14" />
+            <col />
+            <col className="w-20" />
+            <col className="w-24" />
+            <col className="w-40" />
+          </colgroup>
+          <thead className="sticky top-0 z-10 bg-muted/80 text-muted-foreground backdrop-blur">
+            <tr className="text-left">
+              <th className="px-2 py-1.5 font-medium">Σειρά</th>
+              <th className="px-2 py-1.5 font-medium">Όνομα</th>
+              <th className="px-2 py-1.5 text-right font-medium">Παραστατικά</th>
+              <th className="px-2 py-1.5 text-right font-medium">Αξία 12μ</th>
+              <th className="px-2 py-1.5 font-medium" title="Αυτόματη πρόταση από το όνομα, εκτός αν αλλαχτεί">
+                Πώς μετρά
+              </th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.series} className={`border-b last:border-0 ${r.origin === "unknown" && r.sign === 0 ? "bg-amber-50 dark:bg-amber-950/30" : ""}`}>
-                <td className="py-2 pr-3 tabular-nums">{r.series}</td>
-                <td className="max-w-64 py-2 pr-3">
-                  <span className="block truncate">{r.name ?? "—"}</span>
-                  <span className="text-xs text-muted-foreground">{ORIGIN[r.origin]}</span>
-                </td>
-                <td className="py-2 pr-3 text-right tabular-nums">{r.docs.toLocaleString("el-GR")}</td>
-                <td className="py-2 pr-3 text-right tabular-nums">{eur(r.amount)}</td>
-                <td className="py-2">
-                  <div className="flex items-center gap-2">
-                    <select
-                      aria-label={`Πρόσημο σειράς ${r.series}`}
-                      value={r.origin === "override" ? String(r.sign) : "auto"}
-                      disabled={busy !== null}
-                      onChange={(e) => save(r, e.target.value)}
-                      className="h-9 rounded-md border bg-background px-2 text-sm"
-                    >
-                      <option value="auto">Αυτόματα: {SIGN_LABEL[r.auto]}</option>
-                      <option value="1">{SIGN_LABEL[1]}</option>
-                      <option value="-1">{SIGN_LABEL[-1]}</option>
-                      <option value="0">{SIGN_LABEL[0]}</option>
-                    </select>
-                    {busy === r.series && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
-                    {r.origin !== "override" && r.sign !== 0 && <StatusPill tone={r.sign > 0 ? "green" : "amber"}>{r.sign > 0 ? "+" : "−"}</StatusPill>}
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {rows.map((r) => {
+              const manual = r.origin === "override";
+              return (
+                <tr key={r.series} className={`border-t ${r.origin === "unknown" && r.sign === 0 ? "bg-amber-50 dark:bg-amber-950/30" : ""}`}>
+                  <td className="px-2 py-1.5 tabular-nums text-muted-foreground">{r.series}</td>
+                  <td className="px-2 py-1.5">
+                    <span className="block truncate font-medium" title={r.name ?? undefined}>
+                      {r.name ?? "Χωρίς όνομα στο SoftOne"}
+                    </span>
+                    <span className="block truncate text-2xs text-muted-foreground">{ORIGIN[r.origin]}</span>
+                  </td>
+                  <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">{r.docs.toLocaleString("el-GR")}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap" title={eur(r.amount)}>
+                    {compact(r.amount)}
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <div role="radiogroup" aria-label={`Πώς μετρά η σειρά ${r.series}`} className="inline-flex overflow-hidden rounded-md border">
+                        {CHOICES.map((c) => {
+                          const active = r.sign === c.sign;
+                          return (
+                            <button
+                              key={c.sign}
+                              type="button"
+                              role="radio"
+                              aria-checked={active}
+                              title={c.title}
+                              disabled={busy !== null}
+                              onClick={() => !active && save(r, String(c.sign))}
+                              className={`min-h-8 min-w-8 px-2 font-semibold whitespace-nowrap transition-colors disabled:opacity-60 ${active ? c.active : "bg-background text-muted-foreground hover:bg-muted"}`}
+                            >
+                              {c.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {busy === r.series ? (
+                        <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+                      ) : manual ? (
+                        <button type="button" disabled={busy !== null} onClick={() => save(r, "auto")} className="text-sisyphus-600 underline-offset-2 hover:underline" title={`Αυτόματα: ${SIGN_LABEL[r.auto]}`}>
+                          επαναφορά
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
