@@ -43,7 +43,12 @@ async function loadModel() {
       headers: { Authorization: 'Bearer ' + process.env.CONTROL_PLANE_TOKEN },
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    model = { at: Date.now(), data: await res.json() };
+    const data = await res.json();
+    if (!model.data || model.data.version !== data.version) {
+      console.log('[dgsmart] model version ' + data.version + ': ' + data.files.length + ' files, ' +
+        data.files.reduce((n, f) => n + f.content.length, 0) + ' chars');
+    }
+    model = { at: Date.now(), data: data };
   } catch (err) {
     console.error('model fetch failed:', err.message);
     if (!model.data) throw err;
@@ -67,13 +72,36 @@ function memberCubes(q) {
 }
 
 module.exports = {
+  // Compile / meta / error events of Cube itself, regardless of CUBEJS_LOG_LEVEL (diagnostics).
+  logger: (msg, params) => {
+    if (/ompil|rror|eta|chema|Load/.test(msg)) {
+      let p = '';
+      try { p = JSON.stringify(params); } catch (e) { p = String(params); }
+      console.log('[cube] ' + msg + ' ' + p.slice(0, 1500));
+    }
+  },
   // A new model version gets its own app id → a fresh compile (hot recompiles of a running app
   // were observed to yield an empty model). The previous version's compiler ages out of the cache.
   contextToAppId: ({ securityContext }) =>
     'CUBE_APP_' + tenantOf(securityContext) + '_' + (model.data ? model.data.version : 'init'),
   contextToOrchestratorId: ({ securityContext }) => 'CUBE_ORCH_' + tenantOf(securityContext),
   schemaVersion: async () => (await loadModel()).version,
-  repositoryFactory: () => ({ dataSchemaFiles: async () => (await loadModel()).files }),
+  // Each repository (one per compiled app) sees the files with a unique trailing comment, so a
+  // compile never reuses anything cached from another compile; every call is logged.
+  repositoryFactory: ({ securityContext }) => {
+    const nonce = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    return {
+      dataSchemaFiles: async () => {
+        const m = await loadModel();
+        console.log('[dgsmart] dataSchemaFiles tenant=' + (securityContext && securityContext.tenantId) +
+          ' version=' + m.version + ' files=' + m.files.length + ' nonce=' + nonce);
+        return m.files.map((f) => ({
+          fileName: f.fileName,
+          content: f.content + (f.fileName.endsWith('.js') ? '\\n// ' : '\\n# ') + nonce + '\\n',
+        }));
+      },
+    };
+  },
 
   driverFactory: ({ securityContext }) => {
     const id = tenantOf(securityContext);
@@ -180,6 +208,8 @@ export function buildCubeCompose(input: ComposeInput): string {
     "CUBEJS_CACHE_AND_QUEUE_DRIVER=cubestore",
     "CUBEJS_EXTERNAL_DEFAULT=true",
     "CUBEJS_SCHEDULED_REFRESH_DEFAULT=true",
+    // The native (Rust) YAML transpiler silently dropped every cube of our model; use the JS one.
+    "CUBEJS_TRANSPILATION_NATIVE=false",
   ];
 
   const header = `# DGsmart BI — Cube.dev stack για Coolify (παράχθηκε από την εφαρμογή DGsmart BI)
