@@ -145,6 +145,8 @@ model Tenant {
   aiTokenBalance     Int                 @default(0)
   aiTokenLedger      AiTokenLedger[]
   aiTokenRequests    AiTokenRequest[]
+  budgetMonths       BudgetMonth[]
+  planningSettings   PlanningSettings?
   apiKeys            ApiKey[]
   industry           IndustrySegmentation?
   /// BI settings, e.g. { mainWarehouses: [1000], receivablePrefixes: ["30"], payablePrefixes: ["50"] }
@@ -930,4 +932,30 @@ model AiTokenRequest {
   @@index([status, createdAt])
   @@index([tenantId, createdAt])
   @@map("ai_token_request")
+}
+
+// Budget (targets) of a tenant per month: sales and gross profit — module «Budget & στόχοι».
+model BudgetMonth {
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  year      Int
+  month     Int // 1–12
+  revenue   Decimal? @db.Decimal(14, 2)
+  margin    Decimal? @db.Decimal(14, 2)
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@id([tenantId, year, month])
+  @@map("budget_month")
+}
+
+// Planning inputs not in the data: monthly fixed costs (when there is no General Ledger).
+model PlanningSettings {
+  tenantId          String   @id
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fixedCostsMonthly Decimal? @db.Decimal(14, 2)
+  minCash           Decimal? @db.Decimal(14, 2) // alert below this cash balance (scenarios)
+  updatedAt         DateTime @updatedAt
+
+  @@map("planning_settings")
 }

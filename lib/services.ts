@@ -1,6 +1,6 @@
 // The services a package (plan) can include — shared by the server (enforcement) and the wizard.
 
-export type ServiceKey = "finance" | "sales" | "purchasing" | "geo" | "industry" | "kimon" | "purchase_orders" | "smart_orders" | "api";
+export type ServiceKey = "finance" | "sales" | "purchasing" | "geo" | "industry" | "kimon" | "purchase_orders" | "smart_orders" | "budget" | "api";
 
 export type ServiceDef = {
   key: ServiceKey;
@@ -18,7 +18,7 @@ export const SERVICES: ServiceDef[] = [
     key: "finance",
     name: "Οικονομικά",
     description: "Αποτελέσματα χρήσης (P&L), ταμείο & τράπεζες, πρόβλεψη ταμειακών ροών, ανοιχτά υπόλοιπα.",
-    pages: ["pnl", "cash", "working-capital"],
+    pages: ["pnl", "cash", "working-capital", "planning"],
     cubes: ["pnl", "cash", "cash_forecast", "open_items"],
   },
   {
@@ -75,6 +75,14 @@ export const SERVICES: ServiceDef[] = [
     pages: ["orders-smart"],
     cubes: [],
     requires: ["purchase_orders"],
+  },
+  {
+    key: "budget",
+    name: "Budget & στόχοι",
+    description: "Στόχοι πωλήσεων και μικτού κέρδους ανά μήνα (με αυτόματη πρόταση από την τάση), σύγκριση με τα πραγματικά, πρόβλεψη κλεισίματος και τι χρειάζεται τους επόμενους μήνες για να πιαστεί ο στόχος.",
+    pages: [],
+    cubes: [],
+    requires: ["finance"],
   },
   {
     key: "api",
