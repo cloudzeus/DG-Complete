@@ -61,7 +61,7 @@ export function QuadrantBubbles({
           <ReferenceArea x1={0} x2={xSplit} y1={ySplit} y2={yMax} fill="#16a34a" fillOpacity={0.05} />
           <ReferenceArea x1={xSplit} x2={xMax} y1={yMin} y2={ySplit} fill="#dc2626" fillOpacity={0.05} />
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-          <XAxis type="number" dataKey="x" domain={[0, xMax]} tickLine={false} axisLine={false} tickFormatter={(v: number) => `${Math.round(v)}`} fontSize={11}>
+          <XAxis type="number" dataKey="x" domain={[0, xMax]} tickLine={false} axisLine={false} tickFormatter={(v: number) => (Math.abs(v) >= 10_000 ? new Intl.NumberFormat("el-GR", { notation: "compact", maximumFractionDigits: 1 }).format(v) : `${Math.round(v)}`)} fontSize={11}>
             <Label value={xLabel} position="insideBottom" offset={-16} fontSize={11} className="fill-muted-foreground" />
           </XAxis>
           <YAxis type="number" dataKey="y" domain={[yMin, yMax]} tickLine={false} axisLine={false} width={44} tickFormatter={(v: number) => v.toLocaleString("el-GR", { maximumFractionDigits: 1 })} fontSize={11}>
@@ -199,6 +199,7 @@ export function Heatmap({
   rows: string[];
   columns: string[];
   values: (number | null)[][];
+  /** Values at `good` are green, at `bad` red (either direction: good may be the higher one). */
   good: number;
   bad: number;
   unit?: string;
