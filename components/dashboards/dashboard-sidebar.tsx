@@ -11,7 +11,10 @@ import {
   LogOut,
   Scale,
   ShieldCheck,
+  Package,
   ShoppingCart,
+  Users,
+  Warehouse,
   type LucideIcon,
 } from "lucide-react";
 import { DgLogo } from "@/components/brand/dg-logo";
@@ -46,8 +49,21 @@ type NavItem = { slug: string; label: string; icon: LucideIcon };
 const NAV: { label: string; items: NavItem[] }[] = [
   { label: "Γενικά", items: [{ slug: "", label: "Επισκόπηση", icon: LayoutDashboard }] },
   { label: "Οικονομικά", items: [{ slug: "pnl", label: "Αποτελέσματα χρήσης", icon: Scale }] },
-  { label: "Πωλήσεις", items: [{ slug: "sales", label: "Πωλήσεις", icon: ChartColumnBig }] },
-  { label: "Αγορές & Αποθήκη", items: [{ slug: "purchases", label: "Αγορές", icon: ShoppingCart }] },
+  {
+    label: "Πωλήσεις",
+    items: [
+      { slug: "sales", label: "Πωλήσεις", icon: ChartColumnBig },
+      { slug: "products", label: "Προϊόντα", icon: Package },
+      { slug: "customers", label: "Πελάτες", icon: Users },
+    ],
+  },
+  {
+    label: "Αγορές & Αποθήκη",
+    items: [
+      { slug: "stock", label: "Αποθήκη & παραγγελίες", icon: Warehouse },
+      { slug: "purchases", label: "Αγορές", icon: ShoppingCart },
+    ],
+  },
 ];
 
 const ITEM = cn(

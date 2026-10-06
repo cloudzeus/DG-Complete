@@ -4,6 +4,7 @@ import { Banknote, Landmark, PiggyBank, TrendingUp } from "lucide-react";
 import { ComboChart, CumulativeChart, DonutChart, RankingChart, WaterfallChart } from "@/components/charts/bi-charts";
 import { ChartCard, DashboardErrors, DashboardSkeleton, EmptyDashboard, Kpi } from "@/components/dashboards/blocks";
 import { YearPicker } from "@/components/dashboards/dashboard-nav";
+import { ExportButton } from "@/components/dashboards/export-button";
 import { cubeLoad, cubeLoadAll, num, type CubeRow } from "@/lib/cube-client";
 import { pickYear, requireDashboardTenant } from "@/lib/dashboards";
 import { eurCompact, MONTHS_SHORT, pct, yoy } from "@/lib/format";
@@ -144,6 +145,46 @@ async function PnlBody({ tenantId, year, hasPrevious }: { tenantId: string; year
   return (
     <div className="space-y-5">
       <DashboardErrors errors={errors} />
+      <div className="flex justify-end">
+        <ExportButton
+          tenantId={tenantId}
+          title={`Αποτελέσματα χρήσης ${year}`}
+          sheets={[
+            {
+              name: "Ανά γραμμή και μήνα",
+              columns: [
+                { key: "pnl.section_sort", label: "Σειρά ενότητας", format: "int" },
+                { key: "pnl.section", label: "Ενότητα" },
+                { key: "pnl.sort_order", label: "Σειρά γραμμής", format: "int" },
+                { key: "pnl.line_name", label: "Γραμμή" },
+                { key: "pnl.period", label: "Μήνας", format: "int" },
+                { key: "pnl.amount", label: "Ποσό", format: "eur" },
+              ],
+              query: {
+                measures: ["pnl.amount"],
+                dimensions: ["pnl.section_sort", "pnl.section", "pnl.sort_order", "pnl.line_name", "pnl.period"],
+                filters: [{ member: "pnl.fiscal_year", operator: "equals", values: [String(year)] }],
+                order: [["pnl.section_sort", "asc"], ["pnl.sort_order", "asc"], ["pnl.period", "asc"]],
+              },
+            },
+            {
+              name: "Ανά λογαριασμό",
+              columns: [
+                { key: "pnl.line_name", label: "Γραμμή" },
+                { key: "pnl.account_code", label: "Λογαριασμός" },
+                { key: "pnl.account_name", label: "Περιγραφή" },
+                { key: "pnl.amount", label: "Ποσό", format: "eur" },
+              ],
+              query: {
+                measures: ["pnl.amount"],
+                dimensions: ["pnl.line_name", "pnl.account_code", "pnl.account_name"],
+                filters: [{ member: "pnl.fiscal_year", operator: "equals", values: [String(year)] }],
+                order: { "pnl.account_code": "asc" },
+              },
+            },
+          ]}
+        />
+      </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi label="Κύκλος εργασιών" value={eurCompact(revenue.now)} change={yoy(revenue.now, revenue.before)} hint={ytdHint} icon={Banknote} tone="blue" spark={cur.slice(0, lastPeriod).map((m) => m.revenue ?? 0)} />
         <Kpi label="Μικτό κέρδος" value={eurCompact(gross.now)} change={yoy(gross.now, gross.before)} hint={`περιθώριο ${margin(gross.now)}`} icon={TrendingUp} tone="green" spark={cur.slice(0, lastPeriod).map((m) => m.gross_profit ?? 0)} />

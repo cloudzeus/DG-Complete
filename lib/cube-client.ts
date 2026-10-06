@@ -8,10 +8,15 @@ export type CubeQuery = {
   measures?: string[];
   dimensions?: string[];
   timeDimensions?: { dimension: string; granularity?: "day" | "week" | "month" | "quarter" | "year"; dateRange?: string | [string, string] }[];
-  filters?: { member: string; operator: string; values?: string[] }[];
+  filters?: CubeFilter[];
   order?: Record<string, "asc" | "desc"> | [string, "asc" | "desc"][];
   limit?: number;
 };
+
+export type CubeFilter =
+  | { member: string; operator: string; values?: string[] }
+  | { or: CubeFilter[] }
+  | { and: CubeFilter[] };
 
 export type CubeRow = Record<string, string | number | null>;
 

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { CompareAreaChart, RankingChart } from "@/components/charts/bi-charts";
 import { ChartCard, DashboardErrors, DashboardSkeleton, Kpi } from "@/components/dashboards/blocks";
+import { ExportButton } from "@/components/dashboards/export-button";
 import { PeriodPicker } from "@/components/dashboards/period-picker";
 import { cubeLoadAll, num } from "@/lib/cube-client";
 import { requireDashboardTenant } from "@/lib/dashboards";
@@ -57,7 +58,7 @@ const SEVERITY: Record<Severity, { icon: LucideIcon; tone: string; bar: string; 
   info: { icon: Info, tone: "text-sky-600 bg-sky-50", bar: "before:bg-sky-500", label: "Πληροφορία" },
 };
 
-function InsightCard({ i, base }: { i: Insight; base: string }) {
+function InsightCard({ i, base, q }: { i: Insight; base: string; q: string }) {
   const s = SEVERITY[i.severity];
   return (
     <li
@@ -84,8 +85,8 @@ function InsightCard({ i, base }: { i: Insight; base: string }) {
             </p>
           )}
           {i.href && (
-            <Link href={`${base}/${i.href}`} className="inline-flex min-h-8 items-center gap-1 text-xs font-medium text-primary hover:underline">
-              Ανάλυση <ArrowRight className="size-3.5" />
+            <Link href={`${base}/${i.href}${i.href.includes("?") ? "&" : "?"}${q}`} className="inline-flex min-h-8 items-center gap-1 text-xs font-medium text-primary hover:underline">
+              Δείτε τη λίστα <ArrowRight className="size-3.5" />
             </Link>
           )}
         </div>
@@ -138,17 +139,65 @@ async function OverviewBody({ tenantId, period }: { tenantId: string; period: Pe
 
       <div className="grid gap-5 lg:grid-cols-5">
         <section className="space-y-3 lg:col-span-3" aria-label="Συμπεράσματα">
-          <div className="flex items-end justify-between">
+          <div className="flex items-end justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold">Τι πρέπει να ξέρετε</h2>
               <p className="text-xs text-muted-foreground">Αυτόματα συμπεράσματα από τα δεδομένα της επιχείρησης, ενημερωμένα κάθε ώρα.</p>
             </div>
-            <span className="text-2xs text-muted-foreground">{insights.length} ευρήματα</span>
+            <ExportButton
+              tenantId={tenantId}
+              title={`Επισκόπηση ${period.from} – ${period.to}`}
+              subtitle={`${period.label}: ${period.from} έως ${period.to}, σύγκριση με ${period.prevFrom} έως ${period.prevTo}`}
+              sheets={[
+                {
+                  name: "Συμπεράσματα",
+                  columns: [
+                    { key: "area", label: "Περιοχή" },
+                    { key: "severity", label: "Σοβαρότητα" },
+                    { key: "title", label: "Εύρημα" },
+                    { key: "detail", label: "Λεπτομέρειες" },
+                    { key: "action", label: "Πρόταση" },
+                  ],
+                  rows: insights.map((i) => ({ ...i, severity: SEVERITY[i.severity].label })),
+                },
+                {
+                  name: "Κατηγορίες",
+                  columns: [
+                    { key: "sales_lines.category", label: "Κατηγορία" },
+                    { key: "sales_lines.revenue", label: "Τζίρος", format: "eur" },
+                    { key: "sales_lines.margin", label: "Μικτό κέρδος", format: "eur" },
+                    { key: "sales_lines.margin_pct", label: "Περιθώριο %", format: "pct" },
+                    { key: "sales_lines.quantity", label: "Ποσότητα", format: "num" },
+                    { key: "sales_lines.customers", label: "Πελάτες", format: "int" },
+                  ],
+                  query: {
+                    measures: ["sales_lines.revenue", "sales_lines.margin", "sales_lines.margin_pct", "sales_lines.quantity", "sales_lines.customers"],
+                    dimensions: ["sales_lines.category"],
+                    timeDimensions: [{ dimension: "sales_lines.date", dateRange: [period.from, period.to] }],
+                    order: { "sales_lines.revenue": "desc" },
+                  },
+                },
+                {
+                  name: "Τζίρος ανά ημέρα",
+                  columns: [
+                    { key: "sales_lines.date.day", label: "Ημερομηνία", format: "date" },
+                    { key: "sales_lines.revenue", label: "Τζίρος", format: "eur" },
+                    { key: "sales_lines.margin", label: "Μικτό κέρδος", format: "eur" },
+                    { key: "sales_lines.documents", label: "Παραστατικά", format: "int" },
+                  ],
+                  query: {
+                    measures: ["sales_lines.revenue", "sales_lines.margin", "sales_lines.documents"],
+                    timeDimensions: [{ dimension: "sales_lines.date", granularity: "day", dateRange: [period.from, period.to] }],
+                    order: { "sales_lines.date": "asc" },
+                  },
+                },
+              ]}
+            />
           </div>
           {insights.length ? (
             <ul className="space-y-3">
               {insights.map((i) => (
-                <InsightCard key={i.id} i={i} base={base} />
+                <InsightCard key={i.id} i={i} base={base} q={periodQuery(period)} />
               ))}
             </ul>
           ) : (

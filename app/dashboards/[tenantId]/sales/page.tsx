@@ -4,6 +4,7 @@ import { Banknote, Receipt, RotateCcw, Users } from "lucide-react";
 import { ComboChart, CompareAreaChart, DonutChart, RankingChart } from "@/components/charts/bi-charts";
 import { ChartCard, DashboardErrors, DashboardSkeleton, EmptyDashboard, Kpi } from "@/components/dashboards/blocks";
 import { YearPicker } from "@/components/dashboards/dashboard-nav";
+import { ExportButton } from "@/components/dashboards/export-button";
 import { cubeLoad, cubeLoadAll, num, type CubeRow } from "@/lib/cube-client";
 import { pickYear, requireDashboardTenant } from "@/lib/dashboards";
 import { eurCompact, eurFull, MONTHS_SHORT, pct, yoy } from "@/lib/format";
@@ -123,6 +124,59 @@ async function SalesBody({ tenantId, year, hasPrevious }: { tenantId: string; ye
   return (
     <div className="space-y-5">
       <DashboardErrors errors={errors} />
+      <div className="flex justify-end">
+        <ExportButton
+          tenantId={tenantId}
+          title={`Πωλήσεις ${year}`}
+          sheets={[
+            {
+              name: "Πελάτες",
+              columns: [
+                { key: "sales.customer_code", label: "Κωδικός" },
+                { key: "sales.customer_name", label: "Πελάτης" },
+                { key: "sales.customer_city", label: "Πόλη" },
+                { key: "sales.net", label: "Καθαρές πωλήσεις", format: "eur" },
+                { key: "sales.invoices", label: "Παραστατικά", format: "int" },
+                { key: "sales.returns", label: "Πιστωτικά", format: "eur" },
+              ],
+              query: {
+                measures: ["sales.net", "sales.invoices", "sales.returns"],
+                dimensions: ["sales.customer_code", "sales.customer_name", "sales.customer_city"],
+                timeDimensions: [{ dimension: "sales.date", dateRange: range(year) }],
+                order: { "sales.net": "desc" },
+              },
+            },
+            {
+              name: "Ανά μήνα",
+              columns: [
+                { key: "sales.date.month", label: "Μήνας", format: "date" },
+                { key: "sales.net", label: "Καθαρές πωλήσεις", format: "eur" },
+                { key: "sales.invoices", label: "Παραστατικά", format: "int" },
+                { key: "sales.customers", label: "Πελάτες", format: "int" },
+              ],
+              query: {
+                measures: ["sales.net", "sales.invoices", "sales.customers"],
+                timeDimensions: [{ dimension: "sales.date", granularity: "month", dateRange: range(year) }],
+                order: { "sales.date": "asc" },
+              },
+            },
+            {
+              name: "Ανά σειρά",
+              columns: [
+                { key: "sales.series_name", label: "Σειρά" },
+                { key: "sales.net", label: "Καθαρή αξία", format: "eur" },
+                { key: "sales.invoices", label: "Παραστατικά", format: "int" },
+              ],
+              query: {
+                measures: ["sales.net", "sales.invoices"],
+                dimensions: ["sales.series_name"],
+                timeDimensions: [{ dimension: "sales.date", dateRange: range(year) }],
+                order: { "sales.net": "desc" },
+              },
+            },
+          ]}
+        />
+      </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi label="Καθαρές πωλήσεις" value={eurCompact(n("net"))} change={yoy(n("net"), b("net"))} hint={ytdHint} icon={Banknote} tone="blue" spark={cur.slice(0, lastMonth).map((m) => m.net)} />
         <Kpi label="Παραστατικά" value={n("invoices").toLocaleString("el-GR")} change={yoy(n("invoices"), b("invoices"))} hint={`μέση αξία ${eurFull(n("avg_invoice"))}`} icon={Receipt} tone="violet" spark={cur.slice(0, lastMonth).map((m) => m.invoices)} />

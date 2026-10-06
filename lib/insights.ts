@@ -134,7 +134,7 @@ export async function buildInsights(tenantId: string, p: Period): Promise<{ insi
         ? `Η μεγαλύτερη μεταβολή προέρχεται από «${driver.name}» (${driver.diff >= 0 ? "+" : ""}${eurCompact(driver.diff)}).`
         : `Ίδια περίοδος πέρσι: ${eurCompact(revPrev)}.`,
       action: ch < -3 ? "Δείτε ποιοι πελάτες και ποιες κατηγορίες μείωσαν τις αγορές τους." : undefined,
-      href: "sales",
+      href: "products?tab=categories",
       weight: Math.abs(ch),
     });
   }
@@ -155,7 +155,7 @@ export async function buildInsights(tenantId: string, p: Period): Promise<{ insi
           ? `Στον τζίρο της περιόδου αυτό αντιστοιχεί σε ${pp >= 0 ? "επιπλέον" : "χαμένο"} μικτό κέρδος περίπου ${eurCompact(Math.abs(lostOrGained))}.`
           : `Σταθερό σε σχέση με πέρσι (${pct(mPrev)}).`,
       action: pp <= -0.5 ? "Ελέγξτε εκπτώσεις και αυξήσεις κόστους στα είδη κατηγορίας A." : undefined,
-      href: "sales",
+      href: "products?tab=low-margin",
       weight: Math.abs(pp) * 10,
     });
   }
@@ -175,7 +175,7 @@ export async function buildInsights(tenantId: string, p: Period): Promise<{ insi
         (r) => `${eurCompact(num(r["customers.revenue_prev"]))}, ${num(r["customers.recency_days"])} ημ.`,
       )}.`,
       action: "Τηλεφωνήστε στους μεγαλύτερους αυτή την εβδομάδα — μια προσφορά επανενεργοποίησης κοστίζει λιγότερο από νέο πελάτη.",
-      href: "sales",
+      href: "customers?tab=churn",
       weight: churnRev / 1000,
     });
   }
@@ -196,7 +196,7 @@ export async function buildInsights(tenantId: string, p: Period): Promise<{ insi
         (r) => `${eurCompact(num(r["customers.overdue_90_amount"]))}, βαθμός ${r["customers.payment_grade"] ?? "—"}`,
       )}.`,
       action: "Ξεκινήστε υπενθυμίσεις και διακανονισμούς· εξετάστε πιστωτικό όριο για τους πελάτες με βαθμό Δ.",
-      href: "sales",
+      href: "customers?tab=risk",
       weight: o90 / 1000,
     });
   }
@@ -212,6 +212,7 @@ export async function buildInsights(tenantId: string, p: Period): Promise<{ insi
       title: `Νεκρό απόθεμα ${eurCompact(dead)} — ${pct((100 * dead) / stockVal, 0)} της αποθήκης`,
       detail: `${v(d.stock, "items.dead_stock_items").toLocaleString("el-GR")} είδη με απόθεμα δεν έχουν πουληθεί για μεγάλο διάστημα. Συνολική αξία αποθέματος ${eurCompact(stockVal)}.`,
       action: "Προωθήσεις/εκπτώσεις στα ακριβότερα, επιστροφή στους προμηθευτές όπου γίνεται, και πάγωμα νέων αγορών τους.",
+      href: "stock?tab=dead",
       weight: dead / 1000,
     });
   }
@@ -230,6 +231,7 @@ export async function buildInsights(tenantId: string, p: Period): Promise<{ insi
         (r) => `κάλυψη ${Math.max(0, Math.round(num(r["items.days_of_cover"])))} ημ., πρόταση ${Math.round(num(r["items.order_qty"]))} τεμ.`,
       )}. Συνολικά προτείνεται παραγγελία αξίας ${eurCompact(v(d.urgentCount, "items.suggested_order_value"))} για αυτά.`,
       action: "Επιβεβαιώστε τις προτάσεις παραγγελίας ανά προμηθευτή.",
+      href: "stock?tab=reorder",
       weight: urgentN,
     });
   }
@@ -248,6 +250,7 @@ export async function buildInsights(tenantId: string, p: Period): Promise<{ insi
         (r) => pct(num(r["items.margin_percent"])),
       )}.`,
       action: "Αναθεωρήστε τιμοκατάλογο ή εκπτώσεις· ελέγξτε αν άλλαξε το κόστος αγοράς.",
+      href: "products?tab=low-margin",
       weight: lowN,
     });
   }
@@ -311,6 +314,7 @@ export async function buildInsights(tenantId: string, p: Period): Promise<{ insi
       title: `Οι 10 μεγαλύτεροι πελάτες κάνουν ${pct((100 * top10) / total, 0)} του τζίρου`,
       detail: `Μεγαλύτεροι: ${listNames(d.topCustomers, "customers.customer_name", (r) => eurCompact(num(r["customers.revenue"])))}.`,
       action: "Φροντίστε τη σχέση με τους μεγάλους και διευρύνετε τη βάση πελατών για να μειώσετε την εξάρτηση.",
+      href: "customers?tab=top",
       weight: 1,
     });
   }

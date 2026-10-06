@@ -4,6 +4,7 @@ import { Factory, Receipt, ShoppingCart, Truck } from "lucide-react";
 import { CompareAreaChart, DonutChart, RankingChart } from "@/components/charts/bi-charts";
 import { ChartCard, DashboardErrors, DashboardSkeleton, EmptyDashboard, Kpi } from "@/components/dashboards/blocks";
 import { YearPicker } from "@/components/dashboards/dashboard-nav";
+import { ExportButton } from "@/components/dashboards/export-button";
 import { cubeLoad, cubeLoadAll, num, type CubeRow } from "@/lib/cube-client";
 import { pickYear, requireDashboardTenant } from "@/lib/dashboards";
 import { eurCompact, eurFull, MONTHS_SHORT, pct, yoy } from "@/lib/format";
@@ -97,6 +98,42 @@ async function PurchasesBody({ tenantId, year, hasPrevious }: { tenantId: string
   return (
     <div className="space-y-5">
       <DashboardErrors errors={errors} />
+      <div className="flex justify-end">
+        <ExportButton
+          tenantId={tenantId}
+          title={`Αγορές ${year}`}
+          sheets={[
+            {
+              name: "Προμηθευτές",
+              columns: [
+                { key: "purchases.supplier_code", label: "Κωδικός" },
+                { key: "purchases.supplier_name", label: "Προμηθευτής" },
+                { key: "purchases.net", label: "Καθαρές αγορές", format: "eur" },
+                { key: "purchases.invoices", label: "Τιμολόγια", format: "int" },
+              ],
+              query: {
+                measures: ["purchases.net", "purchases.invoices"],
+                dimensions: ["purchases.supplier_code", "purchases.supplier_name"],
+                timeDimensions: [{ dimension: "purchases.date", dateRange: range(year) }],
+                order: { "purchases.net": "desc" },
+              },
+            },
+            {
+              name: "Ανά μήνα",
+              columns: [
+                { key: "purchases.date.month", label: "Μήνας", format: "date" },
+                { key: "purchases.net", label: "Καθαρές αγορές", format: "eur" },
+                { key: "purchases.invoices", label: "Τιμολόγια", format: "int" },
+              ],
+              query: {
+                measures: ["purchases.net", "purchases.invoices"],
+                timeDimensions: [{ dimension: "purchases.date", granularity: "month", dateRange: range(year) }],
+                order: { "purchases.date": "asc" },
+              },
+            },
+          ]}
+        />
+      </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi label="Καθαρές αγορές" value={eurCompact(n("net"))} change={yoy(n("net"), b("net"))} inverse hint={ytdHint} icon={ShoppingCart} tone="amber" spark={cur.slice(0, lastMonth).map((m) => m.net)} />
         <Kpi label="Τιμολόγια αγοράς" value={n("invoices").toLocaleString("el-GR")} change={yoy(n("invoices"), b("invoices"))} hint={n("invoices") ? `μέση αξία ${eurFull(n("net") / n("invoices"))}` : undefined} icon={Receipt} tone="violet" spark={cur.slice(0, lastMonth).map((m) => m.invoices)} />

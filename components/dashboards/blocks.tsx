@@ -94,7 +94,8 @@ export function ChartCard({
   );
 }
 
-export function DashboardErrors({ errors }: { errors: string[] }) {
+export function DashboardErrors({ errors: all }: { errors: string[] }) {
+  const errors = [...new Set(all)];
   if (!errors.length) return null;
   return (
     <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
