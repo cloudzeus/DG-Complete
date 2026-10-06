@@ -16,6 +16,7 @@ const PAGE_NAMES: Record<string, string> = {
   suppliers: "Προμηθευτές",
   kimon: "Κίμων",
   orders: "Παραγγελίες αγορών",
+  api: "Web services",
 };
 
 const GUIDE = `

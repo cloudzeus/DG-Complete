@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Κίμων" };
 
 export default async function KimonPage({ params, searchParams }: PageProps<"/dashboards/[tenantId]/kimon">) {
   const { tenantId } = await params;
-  await requireDashboardTenant(tenantId);
+  await requireDashboardTenant(tenantId, "kimon");
   const sp = await searchParams;
   const chatId = typeof sp.chat === "string" ? sp.chat : null;
   const [chats, messages] = await Promise.all([listKimonChats(tenantId), chatId ? loadKimonChat(tenantId, chatId) : null]);

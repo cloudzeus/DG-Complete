@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Παραγγελίες αγορών"
 
 export default async function OrdersPage({ params }: PageProps<"/dashboards/[tenantId]/orders">) {
   const { tenantId } = await params;
-  const { user } = await requireDashboardTenant(tenantId);
+  const { user } = await requireDashboardTenant(tenantId, "orders");
   const canCreate = can(user, "tenant.orders.create", tenantId);
   let suppliers: OrderSupplier[] = [];
   let error: string | null = null;

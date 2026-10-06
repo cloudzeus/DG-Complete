@@ -15,7 +15,7 @@ const M = (m: string) => `pnl.${m}`;
 
 export default async function PnlDashboard({ params, searchParams }: PageProps<"/dashboards/[tenantId]/pnl">) {
   const { tenantId } = await params;
-  await requireDashboardTenant(tenantId);
+  await requireDashboardTenant(tenantId, "pnl");
 
   let years: number[] = [];
   try {

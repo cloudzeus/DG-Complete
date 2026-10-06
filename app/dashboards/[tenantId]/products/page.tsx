@@ -44,7 +44,7 @@ const GROUP_COLUMNS = (dim: string, label: string): ListColumn[] => [
 
 export default async function ProductsPage({ params, searchParams }: PageProps<"/dashboards/[tenantId]/products">) {
   const { tenantId } = await params;
-  await requireDashboardTenant(tenantId);
+  await requireDashboardTenant(tenantId, "products");
   const sp = await searchParams;
   const period = resolvePeriod(sp);
   const tab: Tab = typeof sp.tab === "string" && sp.tab in TABS ? (sp.tab as Tab) : "sales";

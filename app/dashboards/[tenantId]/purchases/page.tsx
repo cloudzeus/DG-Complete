@@ -17,7 +17,7 @@ const range = (y: number, toMonth = 12): [string, string] => [`${y}-01-01`, `${y
 
 export default async function PurchasesDashboard({ params, searchParams }: PageProps<"/dashboards/[tenantId]/purchases">) {
   const { tenantId } = await params;
-  await requireDashboardTenant(tenantId);
+  await requireDashboardTenant(tenantId, "purchases");
 
   let years: number[] = [];
   try {

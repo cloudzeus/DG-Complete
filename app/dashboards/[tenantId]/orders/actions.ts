@@ -5,6 +5,7 @@ import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { createPurchaseOrder, orderTarget, supplierOrderLines, supplierOrderSeries, type OrderLine } from "@/lib/purchase-orders";
 import { can, requireUser } from "@/lib/rbac";
+import { hasService } from "@/lib/tenant-services";
 
 async function viewer(tenantId: string) {
   const user = await requireUser();
@@ -54,6 +55,7 @@ export async function submitPurchaseOrder(input: z.infer<typeof orderInput>): Pr
   const { tenantId, trdr, series, lines, supplierName, force } = parsed.data;
   const user = await requireUser();
   if (!can(user, "tenant.orders.create", tenantId)) return { ok: false, error: "Δεν έχετε δικαίωμα δημιουργίας παραγγελιών." };
+  if (!(await hasService(tenantId, "purchase_orders"))) return { ok: false, error: "Οι παραγγελίες αγορών δεν περιλαμβάνονται στο πακέτο σας." };
 
   // A second order to the same supplier within minutes is almost always a double click.
   if (!force) {

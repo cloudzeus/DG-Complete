@@ -19,6 +19,7 @@ import {
   Truck,
   Users,
   Warehouse,
+  Webhook,
   type LucideIcon,
 } from "lucide-react";
 import { DgLogo } from "@/components/brand/dg-logo";
@@ -82,6 +83,7 @@ const NAV: { label: string; items: NavItem[] }[] = [
       { slug: "suppliers", label: "Προμηθευτές", icon: Truck },
     ],
   },
+  { label: "Ενσωμάτωση", items: [{ slug: "api", label: "Web services", icon: Webhook }] },
 ];
 
 const ITEM = cn(
@@ -90,7 +92,8 @@ const ITEM = cn(
   "data-active:bg-dg-red-50 data-active:font-semibold data-active:text-dg-red-700 dark:data-active:bg-dg-red-900/40 dark:data-active:text-dg-red-200",
   "data-active:before:absolute data-active:before:inset-y-1.5 data-active:before:-left-2 data-active:before:w-1 data-active:before:rounded-r-full data-active:before:bg-dg-red-500",
 );
-const GROUP_LABEL = "text-2xs font-semibold tracking-wider text-muted-foreground/80 uppercase";
+const GROUP_LABEL =
+  "text-2xs font-semibold tracking-wider text-muted-foreground/80 uppercase";
 
 const initials = (name: string) =>
   name
@@ -105,11 +108,14 @@ export function DashboardSidebar({
   tenants,
   user,
   staff,
+  pages,
 }: {
   tenantId: string;
   tenants: { id: string; name: string; isDemo: boolean }[];
   user: { name: string; email: string };
   staff: boolean;
+  /** Dashboard slugs the tenant's plan includes. */
+  pages: string[];
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -148,14 +154,23 @@ export function DashboardSidebar({
       <SidebarHeader className="gap-2 border-b border-sidebar-border pb-3">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild className="hover:bg-transparent active:bg-transparent">
+            <SidebarMenuButton
+              size="lg"
+              asChild
+              className="hover:bg-transparent active:bg-transparent"
+            >
               <Link href={base}>
-                <DgLogo className="size-8 shrink-0 text-dg-red-500" title="DGsoft" />
+                <DgLogo
+                  className="size-8 shrink-0 text-dg-red-500"
+                  title="DGsoft"
+                />
                 <span className="flex flex-col leading-tight">
                   <span className="text-sm font-bold tracking-tight">
                     DGsmart <span className="text-dg-red-500">BI</span>
                   </span>
-                  <span className="text-2xs tracking-wide text-muted-foreground uppercase">Επιχειρηματική ευφυΐα</span>
+                  <span className="text-2xs tracking-wide text-muted-foreground uppercase">
+                    Επιχειρηματική ευφυΐα
+                  </span>
                 </span>
               </Link>
             </SidebarMenuButton>
@@ -172,25 +187,51 @@ export function DashboardSidebar({
                     <Building2 className="size-4" />
                   </span>
                   <span className="flex min-w-0 flex-col leading-tight">
-                    <span className="truncate text-xs font-semibold">{tenant?.name ?? "Επιχείρηση"}</span>
+                    <span className="truncate text-xs font-semibold">
+                      {tenant?.name ?? "Επιχείρηση"}
+                    </span>
                     <span className="truncate text-2xs text-muted-foreground">
-                      {tenant?.isDemo ? "Demo" : tenants.length > 1 ? `${tenants.length} επιχειρήσεις` : "Η επιχείρησή σας"}
+                      {tenant?.isDemo
+                        ? "Demo"
+                        : tenants.length > 1
+                          ? `${tenants.length} επιχειρήσεις`
+                          : "Η επιχείρησή σας"}
                     </span>
                   </span>
-                  {tenants.length > 1 && <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />}
+                  {tenants.length > 1 && (
+                    <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
+                  )}
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="max-h-96 w-72 overflow-y-auto">
-                <DropdownMenuLabel className="text-xs text-muted-foreground">Επιλογή επιχείρησης</DropdownMenuLabel>
+              <DropdownMenuContent
+                align="start"
+                className="max-h-96 w-72 overflow-y-auto"
+              >
+                <DropdownMenuLabel className="text-xs text-muted-foreground">
+                  Επιλογή επιχείρησης
+                </DropdownMenuLabel>
                 {tenants.map((t) => (
                   <DropdownMenuItem
                     key={t.id}
-                    onSelect={() => router.push(withKeep(`/dashboards/${t.id}${current ? `/${current}` : ""}`))}
-                    className={cn("text-xs", t.id === tenantId && "font-semibold text-dg-red-700")}
+                    onSelect={() =>
+                      router.push(
+                        withKeep(
+                          `/dashboards/${t.id}${current ? `/${current}` : ""}`,
+                        ),
+                      )
+                    }
+                    className={cn(
+                      "text-xs",
+                      t.id === tenantId && "font-semibold text-dg-red-700",
+                    )}
                   >
                     <ArrowLeftRight className="text-muted-foreground" />
                     <span className="truncate">{t.name}</span>
-                    {t.isDemo && <span className="ml-auto text-2xs text-amber-600">demo</span>}
+                    {t.isDemo && (
+                      <span className="ml-auto text-2xs text-amber-600">
+                        demo
+                      </span>
+                    )}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
@@ -200,25 +241,40 @@ export function DashboardSidebar({
       </SidebarHeader>
 
       <SidebarContent className="gap-0">
-        {NAV.map((group) => (
-          <SidebarGroup key={group.label} className="py-1">
-            <SidebarGroupLabel className={GROUP_LABEL}>{group.label}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu className="gap-0.5">
-                {group.items.map((item) => (
-                  <SidebarMenuItem key={item.slug}>
-                    <SidebarMenuButton asChild isActive={current === item.slug || undefined} tooltip={item.label} className={ITEM}>
-                      <Link href={href(item.slug)} onClick={go(href(item.slug))}>
-                        <item.icon />
-                        <span>{item.label}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
+        {NAV.map((group) => ({
+          ...group,
+          items: group.items.filter((i) => pages.includes(i.slug)),
+        }))
+          .filter((group) => group.items.length > 0)
+          .map((group) => (
+            <SidebarGroup key={group.label} className="py-1">
+              <SidebarGroupLabel className={GROUP_LABEL}>
+                {group.label}
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu className="gap-0.5">
+                  {group.items.map((item) => (
+                    <SidebarMenuItem key={item.slug}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={current === item.slug || undefined}
+                        tooltip={item.label}
+                        className={ITEM}
+                      >
+                        <Link
+                          href={href(item.slug)}
+                          onClick={go(href(item.slug))}
+                        >
+                          <item.icon />
+                          <span>{item.label}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          ))}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border">
@@ -226,15 +282,22 @@ export function DashboardSidebar({
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <SidebarMenuButton size="lg" className="hover:bg-dg-red-50/70 data-[state=open]:bg-dg-red-50 dark:hover:bg-white/5">
+                <SidebarMenuButton
+                  size="lg"
+                  className="hover:bg-dg-red-50/70 data-[state=open]:bg-dg-red-50 dark:hover:bg-white/5"
+                >
                   <Avatar className="size-8 rounded-lg">
                     <AvatarFallback className="rounded-lg bg-linear-to-br from-dg-red-500 to-dg-red-700 text-xs font-semibold text-white">
                       {initials(user.name)}
                     </AvatarFallback>
                   </Avatar>
                   <span className="flex min-w-0 flex-col leading-tight">
-                    <span className="truncate text-sm font-medium">{user.name}</span>
-                    <span className="truncate text-2xs text-muted-foreground">{user.email}</span>
+                    <span className="truncate text-sm font-medium">
+                      {user.name}
+                    </span>
+                    <span className="truncate text-2xs text-muted-foreground">
+                      {user.email}
+                    </span>
                   </span>
                   <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
                 </SidebarMenuButton>

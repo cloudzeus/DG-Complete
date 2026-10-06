@@ -39,7 +39,7 @@ const query = (kind: "R" | "P"): CubeQuery => ({
 
 export default async function CashPage({ params, searchParams }: PageProps<"/dashboards/[tenantId]/cash">) {
   const { tenantId } = await params;
-  await requireDashboardTenant(tenantId);
+  await requireDashboardTenant(tenantId, "cash");
   const sp = await searchParams;
   const tab: Tab = typeof sp.tab === "string" && sp.tab in TABS ? (sp.tab as Tab) : "receivables";
   const listQuery = query(tab === "receivables" ? "R" : "P");

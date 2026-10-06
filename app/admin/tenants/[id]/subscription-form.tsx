@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { serviceDef } from "@/lib/services";
 import { saveSubscription } from "./subscription-actions";
 
 // Subscription of a tenant: period, amount, valid until — a payment extends it by one period, and
@@ -15,11 +16,13 @@ export function SubscriptionForm({
   values,
   canManage,
   today,
+  plans,
 }: {
   tenantId: string;
+  plans: { id: string; name: string; period: "MONTHLY" | "YEARLY"; price: string; services: string[]; active: boolean }[];
   /** Today in Athens (YYYY-MM-DD), from the server — keeps render pure. */
   today: string;
-  values: { period: string; amount: string; endsAt: string; email: string };
+  values: { planId: string; period: string; amount: string; endsAt: string; email: string };
   canManage: boolean;
 }) {
   const [v, setV] = useState(values);
@@ -40,6 +43,35 @@ export function SubscriptionForm({
       }}
     >
       <div className="grid gap-4 sm:grid-cols-3">
+        <div className="space-y-1.5 sm:col-span-3">
+          <Label htmlFor="sub-plan">Πακέτο</Label>
+          <select
+            id="sub-plan"
+            className={select}
+            value={v.planId}
+            disabled={!canManage}
+            onChange={(e) => {
+              const p = plans.find((x) => x.id === e.target.value);
+              // Choosing a plan fills period + amount (still editable, e.g. for a discount).
+              setV({ ...v, planId: e.target.value, ...(p ? { period: p.period, amount: p.price } : {}) });
+            }}
+          >
+            <option value="">— Χωρίς πακέτο (dashboards + Κίμων) —</option>
+            {plans
+              .filter((p) => p.active || p.id === v.planId)
+              .map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} · {Number(p.price).toLocaleString("el-GR", { minimumFractionDigits: 2 })} € / {p.period === "MONTHLY" ? "μήνα" : "έτος"}
+                  {p.active ? "" : " (ανενεργό)"}
+                </option>
+              ))}
+          </select>
+          {v.planId && (
+            <p className="text-xs text-muted-foreground">
+              Υπηρεσίες: {plans.find((p) => p.id === v.planId)?.services.map((s) => serviceDef(s)?.name ?? s).join(" · ")}
+            </p>
+          )}
+        </div>
         <div className="space-y-1.5">
           <Label htmlFor="sub-period">Περίοδος</Label>
           <select id="sub-period" className={select} value={v.period} disabled={!canManage} onChange={(e) => setV({ ...v, period: e.target.value })}>

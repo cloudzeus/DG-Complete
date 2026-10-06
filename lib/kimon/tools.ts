@@ -166,6 +166,8 @@ type Result = { query: CubeQuery; rows: CubeRow[] };
 
 export type ToolRun = {
   tenantId: string;
+  /** Dashboard pages of the tenant's plan (links only to those). */
+  pages: Set<string>;
   catalog: KimonCatalog;
   context?: KimonContext;
   results: Map<string, Result>;
@@ -263,6 +265,8 @@ export async function runTool(name: string, rawArgs: string, run: ToolRun): Prom
   if (name === "link_to_list") {
     const list = String(args.list) as ListKey;
     if (!(list in LISTS)) return JSON.stringify({ error: "Άγνωστη λίστα." });
+    const [pageOf] = list === "overview" ? [""] : list.split(":");
+    if (!run.pages.has(pageOf)) return JSON.stringify({ error: "Η σελίδα δεν περιλαμβάνεται στο πακέτο του πελάτη." });
     const [page, tab] = list === "overview" ? [""] : (list.split(":") as [string, string?]);
     const q = new URLSearchParams();
     if (tab) q.set("tab", tab);

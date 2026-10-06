@@ -1,5 +1,6 @@
 import "server-only";
 import { getCubeDeployment, openCubeSecrets, signCubeToken } from "@/lib/cube";
+import { tenantAccess } from "@/lib/tenant-services";
 
 // What Κίμων can query: the tenant's Cube model, read from /meta (so it always matches the deployed
 // model) and condensed into a compact text catalog for the system prompt. Cached per tenant.
@@ -26,14 +27,16 @@ export async function kimonCatalog(tenantId: string): Promise<KimonCatalog> {
 
   const deployment = await getCubeDeployment();
   if (!deployment) throw new Error("Ο Cube server δεν έχει ρυθμιστεί.");
-  const token = signCubeToken(openCubeSecrets(deployment.secretsEnc), deployment.apiUrl, { tenantId });
+  const access = await tenantAccess(tenantId);
+  const token = signCubeToken(openCubeSecrets(deployment.secretsEnc), deployment.apiUrl, { tenantId, modules: access.cubes });
   const res = await fetch(`${deployment.apiUrl.replace(/\/+$/, "")}/cubejs-api/v1/meta`, {
     headers: { Authorization: token },
     cache: "no-store",
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`Cube meta HTTP ${res.status}`);
-  const cubes = ((await res.json()) as { cubes?: MetaCube[] }).cubes ?? [];
+  // Only the cubes of the tenant's plan: Κίμων never even sees the rest.
+  const cubes = (((await res.json()) as { cubes?: MetaCube[] }).cubes ?? []).filter((c) => !access.cubes || access.cubes.includes(c.name));
   if (cubes.length === 0) throw new Error("Το μοντέλο δεδομένων δεν είναι διαθέσιμο αυτή τη στιγμή.");
 
   const members = new Set<string>();

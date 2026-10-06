@@ -93,7 +93,7 @@ const NOTES: Record<Tab, string> = {
 
 export default async function SuppliersPage({ params, searchParams }: PageProps<"/dashboards/[tenantId]/suppliers">) {
   const { tenantId } = await params;
-  await requireDashboardTenant(tenantId);
+  await requireDashboardTenant(tenantId, "suppliers");
   const sp = await searchParams;
   const tab: Tab = typeof sp.tab === "string" && sp.tab in TABS ? (sp.tab as Tab) : "scorecard";
 

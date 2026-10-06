@@ -14,6 +14,7 @@ import {
   LayoutDashboard,
   LogOut,
   Mail,
+  Package,
   PlugZap,
   ReceiptText,
   RefreshCcw,
@@ -69,7 +70,8 @@ const MAIN: { label: string; items: Item[] }[] = [
     items: [
       { href: "/admin/tenants", label: "Tenants", icon: Building2 },
       { href: "/admin/customers", label: "Πελάτες SoftOne", icon: Contact },
-      { href: "/admin/payments", label: "Πληρωμές", icon: CreditCard },
+      { href: "/admin/plans", label: "Πακέτα", icon: Package },
+  { href: "/admin/payments", label: "Πληρωμές", icon: CreditCard },
     ],
   },
 ];

@@ -31,10 +31,17 @@ export const metadata: Metadata = { title: "Επισκόπηση" };
 export default async function OverviewPage({ params, searchParams }: PageProps<"/dashboards/[tenantId]">) {
   const { tenantId } = await params;
   await requireDashboardTenant(tenantId);
-  const period = resolvePeriod(await searchParams);
+  const sp = await searchParams;
+  const period = resolvePeriod(sp);
+  const unavailable = typeof sp.unavailable === "string" ? sp.unavailable : null;
 
   return (
     <>
+      {unavailable !== null && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Η σελίδα που ζητήσατε δεν περιλαμβάνεται στο πακέτο της εταιρείας σας. Για ενεργοποίηση επικοινωνήστε με την DGsoft.
+        </div>
+      )}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Επισκόπηση</h1>

@@ -119,6 +119,7 @@ export default async function TenantPage({
     : null;
   const canBill = can(user, "tenant.billing.manage", tenant.id);
   const canSources = can(user, "connections.tenant.manage", tenant.id);
+  const plans = await prisma.plan.findMany({ orderBy: [{ active: "desc" }, { price: "asc" }] });
   const tenantSoftOne = await prisma.softOneConnection.findFirst({
     where: { scope: "TENANT", tenantId: tenant.id },
   });
@@ -428,7 +429,9 @@ export default async function TenantPage({
             tenantId={tenant.id}
             canManage={canBill}
             today={new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens" }).format(new Date())}
+            plans={plans.map((p) => ({ id: p.id, name: p.name, period: p.period, price: p.price.toString(), services: p.services, active: p.active }))}
             values={{
+              planId: tenant.planId ?? "",
               period: tenant.subscriptionPeriod ?? "",
               amount: tenant.subscriptionAmount ? tenant.subscriptionAmount.toString() : "",
               endsAt: tenant.subscriptionEndsAt

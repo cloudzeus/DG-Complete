@@ -7,7 +7,7 @@ import { isPlatformStaff } from "@/lib/rbac";
 
 export default async function DashboardsLayout({ children, params }: LayoutProps<"/dashboards/[tenantId]">) {
   const { tenantId } = await params;
-  const { user, tenant } = await requireDashboardTenant(tenantId);
+  const { user, tenant, access } = await requireDashboardTenant(tenantId);
   const tenants = await dashboardTenants(user);
 
   return (
@@ -17,6 +17,7 @@ export default async function DashboardsLayout({ children, params }: LayoutProps
         tenants={tenants}
         user={{ name: user.name, email: user.email }}
         staff={isPlatformStaff(user)}
+        pages={[...access.pages]}
       />
       <SidebarInset className="dg-canvas min-h-svh min-w-0">
         <header className="dg-acrylic sticky top-0 z-20 flex h-11 items-center gap-2 border-b border-border/60 px-4">
@@ -28,7 +29,7 @@ export default async function DashboardsLayout({ children, params }: LayoutProps
           )}
         </header>
         <main className="mx-auto w-full max-w-7xl min-w-0 space-y-5 px-4 pt-5 pb-24 has-[[data-kimon-page]]:pb-5 sm:px-6">{children}</main>
-        <KimonLauncher tenantId={tenant.id} />
+        {access.services.has("kimon") && <KimonLauncher tenantId={tenant.id} />}
       </SidebarInset>
     </SidebarProvider>
   );

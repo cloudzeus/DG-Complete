@@ -121,7 +121,7 @@ const NOTES: Record<Tab, string> = {
 
 export default async function CustomersPage({ params, searchParams }: PageProps<"/dashboards/[tenantId]/customers">) {
   const { tenantId } = await params;
-  await requireDashboardTenant(tenantId);
+  await requireDashboardTenant(tenantId, "customers");
   const sp = await searchParams;
   const tab: Tab = typeof sp.tab === "string" && sp.tab in TABS ? (sp.tab as Tab) : "churn";
 

@@ -112,7 +112,7 @@ const NOTES: Record<Tab, string> = {
 
 export default async function StockPage({ params, searchParams }: PageProps<"/dashboards/[tenantId]/stock">) {
   const { tenantId } = await params;
-  await requireDashboardTenant(tenantId);
+  await requireDashboardTenant(tenantId, "stock");
   const sp = await searchParams;
   const tab: Tab = typeof sp.tab === "string" && sp.tab in TABS ? (sp.tab as Tab) : "reorder";
 

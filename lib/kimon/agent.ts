@@ -6,6 +6,7 @@ import { KIMON_TOOLS, runTool, type ToolRun } from "@/lib/kimon/tools";
 import type { KimonArtifact, KimonContext, KimonEvent, KimonMessageView } from "@/lib/kimon/types";
 import { chatCompletion, type ChatMessage } from "@/lib/openrouter";
 import { prisma } from "@/lib/prisma";
+import { tenantAccess } from "@/lib/tenant-services";
 
 // One turn of a conversation with Κίμων: store the question, let the model query the data through
 // the tools (several rounds), store the answer with its tables / charts / links. Progress is
@@ -86,6 +87,7 @@ export async function runKimon(opts: {
     const catalog = await kimonCatalog(tenant.id);
     const run: ToolRun = {
       tenantId: tenant.id,
+      pages: (await tenantAccess(tenant.id)).pages,
       catalog,
       context: opts.context,
       results: new Map(),

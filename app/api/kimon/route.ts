@@ -4,6 +4,7 @@ import type { KimonEvent } from "@/lib/kimon/types";
 import { getAiSettings } from "@/lib/openrouter";
 import { prisma } from "@/lib/prisma";
 import { can, getCurrentUser } from "@/lib/rbac";
+import { hasService } from "@/lib/tenant-services";
 
 // Ask Κίμων. Streams NDJSON events (status → artifacts → answer) while the agent works, so the UI
 // can show progress; the turn is stored even if the browser goes away mid-answer.
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
     getAiSettings(),
   ]);
   if (!tenant) return Response.json({ error: "Ο πελάτης δεν βρέθηκε." }, { status: 404 });
+  if (!(await hasService(tenant.id, "kimon"))) return Response.json({ error: "Ο Κίμων δεν περιλαμβάνεται στο πακέτο σας." }, { status: 403 });
   if (!ai.enabled || !ai.apiKeyEnc) {
     return Response.json({ error: "Ο Κίμων δεν είναι ενεργός αυτή τη στιγμή (Ρυθμίσεις → AI)." }, { status: 503 });
   }
