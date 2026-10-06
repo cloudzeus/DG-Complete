@@ -4,8 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Bot,
-  ChartNoAxesCombined,
   Building2,
+  ChartNoAxesCombined,
   ChevronRight,
   ChevronsUpDown,
   Contact,
@@ -13,13 +13,14 @@ import {
   Database,
   LayoutDashboard,
   LogOut,
+  Mail,
   PlugZap,
   ReceiptText,
   RefreshCcw,
   ScrollText,
   Server,
-  ShieldCheck,
   Settings,
+  ShieldCheck,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -80,6 +81,7 @@ const SETTINGS: Item[] = [
   { href: "/admin/settings/sync", label: "Συγχρονισμοί", icon: RefreshCcw, superAdminOnly: true },
   { href: "/admin/settings/billing", label: "Τιμολόγηση", icon: ReceiptText, superAdminOnly: true },
   { href: "/admin/settings/ai", label: "AI · OpenRouter", icon: Bot, superAdminOnly: true },
+  { href: "/admin/settings/email", label: "Email · Mailgun", icon: Mail, superAdminOnly: true },
   { href: "/admin/settings/cube", label: "Cube server", icon: Server, superAdminOnly: true },
   { href: "/admin/settings/connections", label: "Συνδέσεις δεδομένων", icon: Database },
   { href: "/admin/settings/logs", label: "Αρχεία καταγραφής", icon: ScrollText, superAdminOnly: true },

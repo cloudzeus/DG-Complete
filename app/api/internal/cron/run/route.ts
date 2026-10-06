@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import { runSubscriptionReminders } from "@/lib/email";
 import { runDueJobs } from "@/lib/softone-sync";
 
 // Scheduler tick: runs every due SoftOne sync job (Ρυθμίσεις → Συγχρονισμοί).
@@ -20,5 +21,12 @@ export async function POST(request: Request) {
   if (!authorized(request.headers.get("authorization"))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  return NextResponse.json(await runDueJobs(8 * 60_000));
+  // Subscription reminders: checked once an hour (each reminder is sent once — dedupe in email_log).
+  const g = globalThis as { __dgRemindersAt?: number };
+  let reminders: unknown = null;
+  if (!g.__dgRemindersAt || Date.now() - g.__dgRemindersAt > 3600_000) {
+    g.__dgRemindersAt = Date.now();
+    reminders = await runSubscriptionReminders().catch((err: Error) => ({ error: err.message }));
+  }
+  return NextResponse.json({ ...(await runDueJobs(8 * 60_000)), ...(reminders ? { reminders } : {}) });
 }

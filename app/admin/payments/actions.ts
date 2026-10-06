@@ -5,6 +5,7 @@ import { z } from "zod";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/rbac";
+import { extendSubscription, sendPaymentReceipt } from "@/lib/email";
 import { postPaymentToSoftOne, type PostResult } from "@/lib/softone-billing";
 
 const schema = z.object({
@@ -14,6 +15,7 @@ const schema = z.object({
   method: z.enum(["CARD", "BANK_TRANSFER", "CASH", "VIVA"]),
   paidAt: z.coerce.date(),
   postToSoftOne: z.boolean(),
+  sendReceipt: z.boolean(),
 });
 
 export type PaymentFormState = {
@@ -37,6 +39,7 @@ export async function recordPayment(_prev: PaymentFormState, formData: FormData)
     method: formData.get("method"),
     paidAt: formData.get("paidAt"),
     postToSoftOne: formData.get("postToSoftOne") === "on",
+    sendReceipt: formData.get("sendReceipt") === "on",
   });
   if (!parsed.success) {
     const errors: PaymentFormState["errors"] = {};
@@ -64,10 +67,26 @@ export async function recordPayment(_prev: PaymentFormState, formData: FormData)
     meta: { amount: input.amount, method: input.method },
   });
 
+  // A payment extends the tenant's subscription by one period (when a subscription is set).
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: input.tenantId },
+    select: { subscriptionPeriod: true, subscriptionEndsAt: true },
+  });
+  let extended: Date | null = null;
+  if (tenant?.subscriptionPeriod) {
+    extended = extendSubscription(tenant.subscriptionEndsAt, tenant.subscriptionPeriod, input.paidAt);
+    await prisma.tenant.update({ where: { id: input.tenantId }, data: { subscriptionEndsAt: extended } });
+  }
+
   let message = "Η πληρωμή καταχωρήθηκε.";
   if (input.postToSoftOne) {
     const r = await postPaymentToSoftOne(payment.id);
     message = r.ok ? `Η πληρωμή καταχωρήθηκε και στάλθηκε στο SoftOne ${r.fincode ? `(${r.fincode})` : ""}.` : `Η πληρωμή καταχωρήθηκε, αλλά η αποστολή στο SoftOne απέτυχε: ${r.error}`;
+  }
+  if (extended) message += ` Η συνδρομή ισχύει έως ${extended.toLocaleDateString("el-GR")}.`;
+  if (input.sendReceipt) {
+    const r = await sendPaymentReceipt(payment.id);
+    message += r.ok ? " Στάλθηκε αποδεικτικό με email." : r.skipped && !r.error ? "" : ` Το αποδεικτικό δεν στάλθηκε: ${r.error}`;
   }
   refresh(input.tenantId);
   return { ok: true, message };

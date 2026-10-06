@@ -127,6 +127,13 @@ function PaymentForm({
           </span>
           <Switch key={String(isLinked)} name="postToSoftOne" defaultChecked={isLinked} disabled={!isLinked} />
         </label>
+        <label className="flex items-center justify-between gap-3 rounded-md border p-3 sm:col-span-2">
+          <span>
+            <span className="block font-medium">Αποδεικτικό με email</span>
+            <span className="text-xs text-muted-foreground">Στο email του πελάτη και στους διαχειριστές του· η συνδρομή παρατείνεται κατά μία περίοδο.</span>
+          </span>
+          <Switch name="sendReceipt" defaultChecked />
+        </label>
       </div>
       <DialogFooter>
         <Button type="submit" disabled={pending}>

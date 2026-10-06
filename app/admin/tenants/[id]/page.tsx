@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import {
   ArrowLeft,
   Building2,
+  CalendarClock,
   Cable,
   ClipboardList,
   CreditCard,
@@ -40,6 +41,8 @@ import { openSoftOneCredentials } from "@/lib/softone";
 import type { Capabilities } from "@/lib/softone-detect";
 import { WarehousePanel } from "./warehouse-panel";
 import { OrderSettings } from "./order-settings";
+import { TenantUsers } from "./tenant-users";
+import { SubscriptionForm } from "./subscription-form";
 
 export async function generateMetadata({
   params,
@@ -69,7 +72,20 @@ export default async function TenantPage({
       where: { id },
       include: {
         memberships: {
-          include: { user: { select: { name: true, email: true } } },
+          orderBy: { createdAt: "asc" },
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                active: true,
+                platformRole: true,
+                _count: { select: { memberships: true } },
+                sessions: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } },
+              },
+            },
+          },
         },
         connections: {
           select: {
@@ -373,26 +389,56 @@ export default async function TenantPage({
                 </SectionTitle>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {tenant.memberships.length === 0 ? (
-                <p className="text-muted-foreground">Κανένας χρήστης ακόμα.</p>
-              ) : (
-                tenant.memberships.map((m) => (
-                  <div key={m.id}>
-                    <div className="font-medium">{m.user.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {m.user.email} ·{" "}
-                      {m.role === "TENANT_ADMIN"
-                        ? "Tenant admin"
-                        : "Tenant user"}
-                    </div>
-                  </div>
-                ))
-              )}
+            <CardContent>
+              <TenantUsers
+                tenantId={tenant.id}
+                currentUserId={user.id}
+                canManage={can(user, "tenant.users.manage", tenant.id)}
+                users={tenant.memberships
+                  .filter((m) => m.user.platformRole === "USER")
+                  .map((m) => ({
+                    id: m.user.id,
+                    name: m.user.name,
+                    email: m.user.email,
+                    role: m.role,
+                    active: m.user.active,
+                    otherTenants: m.user._count.memberships - 1,
+                    lastLogin: m.user.sessions[0]?.createdAt.toISOString() ?? null,
+                  }))}
+              />
             </CardContent>
           </Card>
         </div>
       </div>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>
+            <SectionTitle icon={CalendarClock} tone="amber">
+              Συνδρομή
+            </SectionTitle>
+          </CardTitle>
+          <CardDescription>
+            Περίοδος, ποσό και λήξη. Κάθε καταχωρημένη πληρωμή την παρατείνει κατά μία περίοδο· οι υπενθυμίσεις ανανέωσης και πληρωμής
+            στέλνονται αυτόματα (Ρυθμίσεις → Email).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <SubscriptionForm
+            tenantId={tenant.id}
+            canManage={canBill}
+            today={new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens" }).format(new Date())}
+            values={{
+              period: tenant.subscriptionPeriod ?? "",
+              amount: tenant.subscriptionAmount ? tenant.subscriptionAmount.toString() : "",
+              endsAt: tenant.subscriptionEndsAt
+                ? new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens" }).format(tenant.subscriptionEndsAt)
+                : "",
+              email: tenant.email ?? "",
+            }}
+          />
+        </CardContent>
+      </Card>
 
       <Card className="mt-6">
         <CardHeader>

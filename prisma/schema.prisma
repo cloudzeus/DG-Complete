@@ -131,6 +131,11 @@ model Tenant {
   connections        DataConnection[]
   softoneConnections SoftOneConnection[]
   payments           Payment[]
+  // Subscription: period + amount, valid until `subscriptionEndsAt`. A payment extends it by one period.
+  subscriptionPeriod SubscriptionPeriod?
+  subscriptionAmount Decimal?            @db.Decimal(12, 2)
+  subscriptionEndsAt DateTime?
+  emailLogs          EmailLog[]
   /// BI settings, e.g. { mainWarehouses: [1000], receivablePrefixes: ["30"], payablePrefixes: ["50"] }
   biSettings         Json?
   biBuiltAt          DateTime?
@@ -498,6 +503,65 @@ model AiUsage {
   @@index([tenantId, createdAt])
   @@index([createdAt])
   @@map("ai_usage")
+}
+
+enum SubscriptionPeriod {
+  MONTHLY
+  YEARLY
+}
+
+// Outgoing email through Mailgun (EU region by default). One row, id "default".
+model EmailSettings {
+  id            String    @id @default("default")
+  apiKeyEnc     String? // AES-256-GCM
+  keyHint       String?
+  domain        String?
+  region        String    @default("EU") // EU → api.eu.mailgun.net, US → api.mailgun.net
+  fromName      String    @default("DGsmart BI")
+  fromEmail     String?
+  replyTo       String?
+  enabled       Boolean   @default(false)
+  // Days before the subscription end for renewal reminders, and after it for overdue reminders.
+  reminderDays  Int[]     @default([14, 3])
+  overdueDays   Int[]     @default([1, 7])
+  // Copy of every customer email (e.g. accounting@…), optional.
+  bcc           String?
+  lastTestAt    DateTime?
+  lastTestOk    Boolean?
+  lastTestError String?
+  updatedAt     DateTime  @updatedAt
+
+  @@map("email_settings")
+}
+
+// Edited copies of the built-in templates (lib/email-templates.ts); no row = the default text.
+model EmailTemplate {
+  key         String   @id
+  subject     String
+  body        String
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("email_template")
+}
+
+model EmailLog {
+  id        String   @id @default(cuid())
+  template  String
+  to        String
+  subject   String
+  ok        Boolean
+  messageId String?
+  error     String?
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  // Reminders are sent once: e.g. renewal:<tenant>:<endsAt>:14
+  dedupeKey String?  @unique
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([tenantId, createdAt])
+  @@map("email_log")
 }
 
 // Κίμων — the AI business advisor. One conversation per thread, private to its user and tenant.
