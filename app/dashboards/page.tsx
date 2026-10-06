@@ -7,5 +7,5 @@ export default async function DashboardsHome() {
   const user = await requireUser();
   const tenants = await dashboardTenants(user);
   if (!tenants.length) redirect("/portal");
-  redirect(`/dashboards/${tenants[0].id}/pnl`);
+  redirect(`/dashboards/${tenants[0].id}`);
 }

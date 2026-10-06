@@ -4,5 +4,5 @@ import { getCurrentUser, isPlatformStaff } from "@/lib/rbac";
 export default async function Home() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  redirect(isPlatformStaff(user) ? "/admin" : "/portal");
+  redirect(isPlatformStaff(user) ? "/admin" : "/dashboards");
 }
