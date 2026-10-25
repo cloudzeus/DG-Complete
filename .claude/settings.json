@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(node *)",
+      "Bash(git *)",
+      "Bash(gh repo *)",
+      "Bash(docker compose *)",
+      "Bash(psql *)",
+      "Bash(redis-cli *)",
+      "Read",
+      "Edit",
+      "Write"
+    ],
+    "deny": ["Bash(git push --force*)", "Bash(rm -rf /*)"]
+  }
+}

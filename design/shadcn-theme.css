@@ -1,0 +1,141 @@
+/* =========================================================
+   DG Complete — shadcn/ui θέμα πάνω στα DG tokens (Tailwind v4)
+   Χρήση: apps/web/app/globals.css
+     @import "tailwindcss";
+     (Το dgsmartbi έχει ήδη τα DG tokens στο app/globals.css — αρχείο αναφοράς.)
+
+   Product interior → primary = Sisyphus Blue. DG Red = brand/destructive.
+   ========================================================= */
+
+@custom-variant dark (&:is([data-theme="dark"] *));
+
+:root {
+  --background: var(--bg-canvas);          /* #F3F2F1 */
+  --foreground: var(--fg-1);
+  --card: var(--bg-card);
+  --card-foreground: var(--fg-1);
+  --popover: var(--bg-card);
+  --popover-foreground: var(--fg-1);
+
+  --primary: var(--sisyphus-500);          /* #0078D4 */
+  --primary-foreground: #FFFFFF;
+  --secondary: var(--n-6);
+  --secondary-foreground: var(--fg-1);
+  --muted: var(--n-6);
+  --muted-foreground: var(--fg-3);
+  --accent: var(--n-10);                   /* hover */
+  --accent-foreground: var(--fg-1);
+  --destructive: var(--dg-red-600);        /* #C8121D — AA σε λευκό κείμενο */
+  --destructive-foreground: #FFFFFF;
+
+  --border: rgba(0, 0, 0, 0.10);
+  --input: rgba(0, 0, 0, 0.16);
+  --ring: var(--sisyphus-500);
+
+  --brand: var(--dg-red-500);
+  --success: var(--success-500);
+  --warning: var(--warning-500);
+  --danger: var(--danger-500);
+
+  --sidebar: var(--n-8);
+  --sidebar-foreground: var(--fg-2);
+  --sidebar-primary: var(--sisyphus-600);
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: var(--n-10);
+  --sidebar-accent-foreground: var(--fg-1);
+  --sidebar-border: rgba(0, 0, 0, 0.06);
+  --sidebar-ring: var(--sisyphus-500);
+
+  --chart-1: var(--sisyphus-500);
+  --chart-2: var(--success-500);
+  --chart-3: var(--danger-500);
+  --chart-4: var(--warning-500);
+  --chart-5: var(--n-50);
+
+  --radius: 4px;
+}
+
+[data-theme="dark"] {
+  --background: #1D1C1B;
+  --foreground: #F5F4F3;
+  --card: #252423;
+  --card-foreground: #F5F4F3;
+  --popover: #2B2A29;
+  --popover-foreground: #F5F4F3;
+  --primary: var(--sisyphus-400);
+  --primary-foreground: #0B1A2A;
+  --secondary: #322F2E;
+  --secondary-foreground: #F5F4F3;
+  --muted: #322F2E;
+  --muted-foreground: #9D9B99;
+  --accent: #322F2E;
+  --accent-foreground: #F5F4F3;
+  --border: rgba(255, 255, 255, 0.10);
+  --input: rgba(255, 255, 255, 0.18);
+  --ring: var(--sisyphus-400);
+  --sidebar: #1D1C1B;
+  --sidebar-foreground: #C8C6C4;
+  --sidebar-accent: #2B2A29;
+  --sidebar-border: rgba(255, 255, 255, 0.06);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --radius-sm: 2px;
+  --radius-md: 4px;   /* buttons, inputs */
+  --radius-lg: 8px;   /* cards */
+  --radius-xl: 12px;  /* dialogs */
+
+  --shadow-xs: var(--elev-2);
+  --shadow-sm: var(--elev-4);
+  --shadow-md: var(--elev-8);
+  --shadow-lg: var(--elev-16);
+  --shadow-xl: var(--elev-28);
+
+  --ease-standard: cubic-bezier(0.33, 0, 0.67, 1);
+}
+
+@layer base {
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground; font-size: 14px; }
+  .tabular { font-variant-numeric: tabular-nums; }
+}

@@ -1,0 +1,962 @@
+// =====================================================================
+// DG Complete — ΠΡΟΣΘΗΚΕΣ στο schema του dgsmartbi (Prisma ORM 7)
+// ---------------------------------------------------------------------
+// Το fork κρατά από το dgsmartbi: User, Session, Account, Verification,
+// Tenant, Membership, RolePermission, Plan, Payment, ApiKey, AuditLog,
+// Email*, AfmLookupSettings, AfmRegistry, SoftOneConnection (scope DGSOFT),
+// S1Customer, SyncJob, SyncRun, S1Record (συγχρονισμοί με το SoftOne της DGsoft:
+// κάθε tenant = πελάτης της DGsoft μέσω Tenant.s1Trdr),
+// Ai* (απενεργοποιημένα). Βλ. docs/15-fork-dgsmartbi.md.
+//
+// Conventions του dgsmartbi που ακολουθούμε:
+//  - ids: String @id @default(cuid())
+//  - πίνακες snake_case με @@map
+//  - generator "prisma-client" → lib/generated/prisma, adapter-pg
+//  - κρυπτογραφημένα πεδία ως String (envelope <keyId>.<iv>.<tag>.<ct> του lib/crypto.ts)
+// =====================================================================
+
+// ---------------------------------------------------------------------
+// ΑΛΛΑΓΕΣ σε υπάρχοντα μοντέλα του dgsmartbi (εφαρμόζονται στο P02)
+// ---------------------------------------------------------------------
+// enum TenantRole {
+//   TENANT_ADMIN
+//   TENANT_DESIGNER     // νέο
+//   TENANT_OPERATOR     // νέο
+//   TENANT_USER         // = viewer
+// }
+//
+// model Tenant {
+//   …υπάρχοντα πεδία (χωρίς τα warehouse/BI πεδία)
+//   runBalance       Int               @default(0)
+//   settings         Json?             // timezone, ειδοποιήσεις, προεπιλογές
+//   targets          TargetSystem[]
+//   credentials      Credential[]
+//   recordings       Recording[]
+//   workflows        Workflow[]
+//   collections      MethodCollection[]
+//   jobs             Job[]
+//   runs             Run[]
+//   webhooks         WebhookEndpoint[]
+//   runCreditLedger  RunCreditLedger[]
+//   runCreditRequests RunCreditRequest[]
+//   usageDaily       UsageDaily[]
+//   notifications    Notification[]
+// }
+//
+// model Plan {
+//   …υπάρχοντα πεδία (name, description, services[], period, price, active, sortOrder)
+//   runsMonthly           Int      @default(0)
+//   overageEnabled        Boolean  @default(false)
+//   overagePricePerRun    Decimal? @db.Decimal(10, 4)
+//   freeTestRunsDaily     Int      @default(50)
+//   maxConcurrentRuns     Int      @default(2)
+//   maxWorkflows          Int      @default(10)
+//   artifactRetentionDays Int      @default(30)
+//   logRetentionDays      Int      @default(90)
+//   maxFailedRunsDaily    Int      @default(500)   // όριο κατάχρησης — χρεώνονται μόνο επιτυχίες
+//   aiMarkupPct           Decimal  @default(0) @db.Decimal(5, 2) // markup στο κόστος OpenRouter (docs/14 §7)
+// }
+//
+// model AiUsage {   // υπάρχον του dgsmartbi
+//   …υπάρχοντα πεδία
+//   costUsd       Decimal? @db.Decimal(12, 6)  // usage.cost από OpenRouter
+//   billedAmount  Decimal? @db.Decimal(12, 4)  // EUR, με markup, κλειδωμένο στην κλήση
+//   billedPaymentId String?                    // μηνιαία χρέωση AI_USAGE
+// }
+//
+// model Payment {   // = ΧΡΕΩΣΗ προς SoftOne (docs/14 §5) — πληρωμές καταχωρίζονται στο SoftOne
+//   …υπάρχοντα πεδία (amount, description, status PENDING|PAID, s1Status, s1Findoc, s1Fincode …)
+//   method        PaymentMethod?           // γίνεται nullable
+//   kind          String   @default("SUBSCRIPTION") // SUBSCRIPTION | RUN_PACK | OVERAGE | AI_USAGE
+//   periodFrom    DateTime?
+//   periodTo      DateTime?
+//   runs          Int?
+//   s1OpenAmount  Decimal? @db.Decimal(12, 2) // ανοιχτό υπόλοιπο από sync SoftOne
+//   s1CheckedAt   DateTime?
+// }
+//
+// model ApiKey {
+//   …υπάρχοντα πεδία (prefix dgc_)
+//   scopes        String[]  @default([])
+//   collectionIds String[]  @default([])
+//   ipAllowlist   String[]  @default([])
+//   rateLimitRpm  Int       @default(600)
+//   expiresAt     DateTime?
+// }
+
+// ---------------------------------------------------------------------
+// ENUMS
+// ---------------------------------------------------------------------
+enum CredentialKind {
+  USERNAME_PASSWORD
+  USERNAME_PASSWORD_TOTP
+  CUSTOM
+}
+
+enum RecordingSource {
+  EXTENSION
+  IMPORT
+}
+
+enum RecordingStatus {
+  RECORDING
+  FINISHED
+  VERIFIED // επιτυχής επανάληψη στον browser του χρήστη (docs/24 §6)
+  COMPILED
+  DISCARDED
+}
+
+enum WorkflowVersionStatus {
+  DRAFT
+  PENDING_APPROVAL
+  PUBLISHED
+  DEPRECATED
+  ARCHIVED
+}
+
+enum ExecutionMode {
+  SYNC
+  ASYNC
+}
+
+enum JobSource {
+  API
+  UI
+  CSV
+  XLSX
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  COMPLETED_WITH_ERRORS
+  CANCELLED
+  FAILED
+}
+
+enum RunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  RETRY_SCHEDULED
+  NEEDS_ATTENTION
+  HELD // μέθοδος σε παύση λόγω incident (docs/23 §4)
+  CANCELLED
+}
+
+enum RunTrigger {
+  API
+  UI_TEST
+  UI_MANUAL
+  JOB
+  RETRY
+  HEALTH // συνθετικός έλεγχος συστήματος (docs/23), δεν χρεώνεται
+}
+
+enum StepStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+}
+
+enum ArtifactKind {
+  SCREENSHOT_FULL
+  SCREENSHOT_VIEWPORT
+  SCREENSHOT_ELEMENT
+  DOM_SNAPSHOT
+  CONSOLE_LOG
+  NETWORK_HAR
+  PLAYWRIGHT_TRACE
+  DOWNLOAD
+  RECORDING_THUMB
+  STEP_THUMB // μικρογραφία βήματος για τον οπτικό καμβά (docs/19)
+}
+
+enum LogLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  GAVE_UP
+}
+
+// ---------------------------------------------------------------------
+// TARGET SYSTEMS & CREDENTIALS
+// ---------------------------------------------------------------------
+model TargetSystem {
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name            String
+  slug            String
+  baseUrl         String
+  allowedOrigins  String[] // SSRF allowlist για τον worker
+  description     String?
+  loginWorkflowId String?
+  sessionTtlSec   Int      @default(1800)
+  maxConcurrency  Int      @default(2)
+  minDelayMs      Int      @default(0)
+  errorDetectors  Json     @default("[]") // [{ name, css, kind: error|duplicate|success }]
+  browserOptions  Json     @default("{}") // locale el-GR, timezone Europe/Athens, viewport
+  automationConsentAt DateTime? // δήλωση tenant ότι έχει δικαίωμα αυτοματοποίησης
+  automationConsentBy String?
+  healthWorkflowId    String? // ροή ελέγχου (docs/23 §1)
+  healthCredentialRef String? // δοκιμαστικός δικαιούχος
+  healthSchedule      String? // cron έκφραση, default ωριαία 07–22 + νυχτερινή
+  ownerIds            String[] @default([])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  credentials Credential[]
+  recordings  Recording[]
+  workflows   Workflow[]
+  sessions    BrowserSession[]
+
+  @@unique([tenantId, slug])
+  @@map("target_system")
+}
+
+model Credential {
+  id             String         @id @default(cuid())
+  tenantId       String
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  targetSystemId String
+  targetSystem   TargetSystem   @relation(fields: [targetSystemId], references: [id], onDelete: Cascade)
+  label          String
+  kind           CredentialKind
+  externalRef    String? // π.χ. "afm:094014201" — δικαιούχος (docs/18 §2), για credentialRef στο API
+  tags           String[] @default([])
+  authorizationRef String? // αναφορά εξουσιοδότησης χρήσης κωδικών
+  authorizationExpiresAt DateTime?
+  maxSessions    Int      @default(1)
+  payloadEnc     String // AES-256-GCM {username,password,totpSecret,extra}, AAD tenantId:id
+  usernameHint   String?
+  isDefault      Boolean        @default(false)
+  lastUsedAt     DateTime?
+  rotatedAt      DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  sessions BrowserSession[]
+
+  @@unique([tenantId, targetSystemId, externalRef])
+  @@index([tenantId, targetSystemId])
+  @@map("credential")
+}
+
+model BrowserSession {
+  id              String       @id @default(cuid())
+  tenantId        String
+  targetSystemId  String
+  targetSystem    TargetSystem @relation(fields: [targetSystemId], references: [id], onDelete: Cascade)
+  credentialId    String
+  credential      Credential   @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  storageStateEnc String // Playwright storageState κρυπτογραφημένο
+  expiresAt       DateTime
+  createdAt       DateTime     @default(now())
+  lastUsedAt      DateTime     @default(now())
+
+  @@index([tenantId, targetSystemId, credentialId])
+  @@map("browser_session")
+}
+
+// ---------------------------------------------------------------------
+// RECORDINGS & WORKFLOWS
+// ---------------------------------------------------------------------
+model Recording {
+  id             String          @id @default(cuid())
+  tenantId       String
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  targetSystemId String
+  targetSystem   TargetSystem    @relation(fields: [targetSystemId], references: [id])
+  name           String
+  source         RecordingSource @default(EXTENSION)
+  status         RecordingStatus @default(RECORDING)
+  events         Json            @default("[]") // RecorderEvent[] (docs/04)
+  eventCount     Int             @default(0)
+  startUrl       String?
+  browserInfo    Json?
+  createdById    String
+  workflowId     String?
+  completion     Json? // πρόταση intent/όνομα/slug/κλειδί + επιλογή χρήστη (docs/24)
+  replays        Json            @default("[]") // ιστορικό επαναλήψεων και διορθώσεων
+  createdAt      DateTime        @default(now())
+  finishedAt     DateTime?
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@map("recording")
+}
+
+model Workflow {
+  id                 String            @id @default(cuid())
+  tenantId           String
+  tenant             Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  targetSystemId     String
+  targetSystem       TargetSystem      @relation(fields: [targetSystemId], references: [id])
+  name               String
+  slug               String
+  description        String?
+  tags               String[]
+  isLoginFlow        Boolean           @default(false)
+  ownerId            String? // παραλήπτης ειδοποιήσεων incidents (docs/23 §3)
+  intent             String? // CREATE | UPDATE | DELETE | READ | ACTION (docs/24 §2)
+  resourceSlug       String? // π.χ. "aitima-katavolis"
+  latestVersionNo    Int               @default(0)
+  publishedVersionId String?
+  createdById        String
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  archivedAt         DateTime?
+
+  versions WorkflowVersion[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, targetSystemId])
+  @@map("workflow")
+}
+
+model WorkflowVersion {
+  id              String                @id @default(cuid())
+  tenantId        String
+  workflowId      String
+  workflow        Workflow              @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  versionNo       Int
+  status          WorkflowVersionStatus @default(DRAFT)
+  definition      Json // WorkflowDefinition (docs/05) — αμετάβλητο όταν PUBLISHED (DB trigger)
+  inputSchema     Json
+  outputSchema    Json
+  checksum        String?
+  dslVersion      Int                   @default(1)
+  changelog       String?
+  createdById     String
+  submittedById   String?
+  submittedAt     DateTime?
+  approvedById    String? // TENANT_ADMIN που ενέκρινε
+  approvedAt      DateTime?
+  rejectedReason  String?
+  lastTestRunId   String? // απαιτείται επιτυχημένο test run για έγκριση
+  publishedAt     DateTime?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  methods Method[]
+  runs    Run[]
+  layout  WorkflowLayout?
+
+  @@unique([workflowId, versionNo])
+  @@index([tenantId, status])
+  @@map("workflow_version")
+}
+
+// ---------------------------------------------------------------------
+// METHOD COLLECTIONS (public API surface)
+// ---------------------------------------------------------------------
+model MethodCollection {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  slug        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  methods Method[]
+
+  @@unique([tenantId, slug])
+  @@map("method_collection")
+}
+
+model Method {
+  id                String           @id @default(cuid())
+  tenantId          String
+  collectionId      String
+  collection        MethodCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  workflowVersionId String // pinned έκδοση
+  workflowVersion   WorkflowVersion  @relation(fields: [workflowVersionId], references: [id])
+  credentialId      String?
+  name              String
+  slug              String
+  summary           String?
+  defaultMode       ExecutionMode    @default(ASYNC)
+  syncTimeoutSec    Int              @default(60)
+  runTimeoutSec     Int              @default(300)
+  maxAttempts       Int              @default(3)
+  retryBackoffSec   Int              @default(30)
+  priority          Int              @default(5)
+  screenshotPolicy  String           @default("ON_ERROR") // ON_ERROR | EVERY_STEP | NEVER
+  traceOnError      Boolean          @default(true)
+  isActive          Boolean          @default(true)
+  state             String           @default("ACTIVE") // ACTIVE | PAUSED | HALF_OPEN (docs/23 §4)
+  pausedAt          DateTime?
+  pausedReason      String? // incidentId ή "manual"
+  pausePolicy       String           @default("QUEUE") // QUEUE | REJECT
+  heldMaxHours      Int              @default(24)
+  httpMethod        String           @default("POST") // POST | PUT | DELETE | GET (docs/24 §5)
+  resource          String? // slug πόρου — κοινός για CREATE/UPDATE/DELETE/READ του ίδιου αντικειμένου
+  action            String? // για ACTION, π.χ. "oristikopoiisi"
+  keyParams         String[]         @default([]) // path params, π.χ. ["requestNo"]
+  optionValidation  String           @default("warn") // warn | strict | off — έλεγχος εξαρτώμενων λιστών πριν την ουρά (docs/25 §4)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  jobs Job[]
+  runs Run[]
+
+  @@unique([collectionId, slug])
+  @@unique([collectionId, resource, httpMethod, action])
+  @@index([tenantId])
+  @@map("method")
+}
+
+// ---------------------------------------------------------------------
+// EXECUTION
+// ---------------------------------------------------------------------
+model Job {
+  id              String    @id @default(cuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  methodId        String
+  method          Method    @relation(fields: [methodId], references: [id])
+  source          JobSource
+  status          JobStatus @default(PENDING)
+  name            String?
+  idempotencyKey  String?
+  callbackUrl     String?
+  totalItems      Int
+  queuedCount     Int       @default(0)
+  succeededCount  Int       @default(0)
+  failedCount     Int       @default(0)
+  cancelledCount  Int       @default(0)
+  sourceFilePath  String? // path στο Bunny Storage
+  columnMapping   Json?
+  mappingId       String? // ImportMapping (docs/20)
+  mappingVersion  Int?
+  options         Json? // stopOnErrorRate κ.λπ.
+  createdByUserId String?
+  apiKeyId        String?
+  createdAt       DateTime  @default(now())
+  startedAt       DateTime?
+  finishedAt      DateTime?
+
+  runs Run[]
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@map("job")
+}
+
+model Run {
+  id                String          @id @default(cuid())
+  tenantId          String
+  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  methodId          String?
+  method            Method?         @relation(fields: [methodId], references: [id])
+  workflowVersionId String
+  workflowVersion   WorkflowVersion @relation(fields: [workflowVersionId], references: [id])
+  jobId             String?
+  job               Job?            @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  itemIndex         Int?
+  externalRef       String?
+  trigger           RunTrigger
+  status            RunStatus       @default(QUEUED)
+  attempt           Int             @default(1)
+  maxAttempts       Int             @default(3)
+  idempotencyKey    String?
+  requestHash       String? // sha256 του body για έλεγχο idempotency conflict
+  inputEnc          String
+  inputPreview      Json
+  output            Json?
+  errorCode         String?
+  errorMessage      String?
+  errorStepId       String?
+  targetMessage     String?
+  mayHaveCommitted  Boolean         @default(false)
+  billedUnits       Int             @default(0) // μονάδες που χρεώθηκαν (docs/14)
+  workerId          String?
+  queuedAt          DateTime        @default(now())
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  durationMs        Int?
+  browserMs         Int?
+  callbackUrl       String?
+  apiKeyId          String?
+  createdByUserId   String?
+  retryOfRunId      String?
+
+  steps     RunStep[]
+  artifacts RunArtifact[]
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, status, queuedAt(sort: Desc)])
+  @@index([tenantId, methodId, queuedAt(sort: Desc)])
+  @@index([jobId, status])
+  @@index([tenantId, externalRef])
+  @@map("run")
+}
+
+model RunStep {
+  id           String     @id @default(cuid())
+  tenantId     String
+  runId        String
+  run          Run        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  stepId       String
+  seq          Int
+  path         String
+  type         String
+  label        String
+  status       StepStatus @default(PENDING)
+  attempt      Int        @default(1)
+  locatorUsed  Json?
+  valuePreview String?
+  pageUrl      String?
+  message      String?
+  errorCode    String?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  durationMs   Int?
+
+  artifacts RunArtifact[]
+
+  @@index([runId, seq])
+  @@map("run_step")
+}
+
+model RunArtifact {
+  id          String       @id @default(cuid())
+  tenantId    String
+  runId       String
+  run         Run          @relation(fields: [runId], references: [id], onDelete: Cascade)
+  runStepId   String?
+  runStep     RunStep?     @relation(fields: [runStepId], references: [id], onDelete: SetNull)
+  kind        ArtifactKind
+  storagePath String // tenants/{t}/runs/{yyyy}/{mm}/{runId}/{artifactId}.{ext} στο Bunny Storage zone
+  contentType String
+  sizeBytes   Int
+  sha256      String
+  width       Int?
+  height      Int?
+  meta        Json? // bbox στοιχείου, viewport
+  expiresAt   DateTime
+  deletedAt   DateTime? // όταν σβηστεί από το Bunny
+  createdAt   DateTime     @default(now())
+
+  @@index([runId])
+  @@index([tenantId, expiresAt])
+  @@map("run_artifact")
+}
+
+// Υψηλού όγκου — partitioned ανά μήνα με custom SQL migration (docs/03 §4)
+model RunLog {
+  id       BigInt   @default(autoincrement())
+  tenantId String
+  runId    String
+  stepId   String?
+  ts       DateTime @default(now())
+  level    LogLevel
+  source   String // engine | page.console | network | target | system
+  message  String
+  data     Json?
+
+  @@id([id, ts])
+  @@index([runId, ts])
+  @@map("run_log")
+}
+
+// ---------------------------------------------------------------------
+// WEBHOOKS
+// ---------------------------------------------------------------------
+model WebhookEndpoint {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  url         String
+  description String?
+  events      String[] // run.succeeded, run.failed, run.needs_attention, job.completed
+  secretEnc   String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  deliveries WebhookDelivery[]
+
+  @@index([tenantId])
+  @@map("webhook_endpoint")
+}
+
+model WebhookDelivery {
+  id             String                @id @default(cuid())
+  tenantId       String
+  endpointId     String?
+  endpoint       WebhookEndpoint?      @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  adHocUrl       String?
+  event          String
+  payload        Json
+  status         WebhookDeliveryStatus @default(PENDING)
+  attempts       Int                   @default(0)
+  lastStatusCode Int?
+  lastError      String?
+  nextAttemptAt  DateTime?
+  createdAt      DateTime              @default(now())
+  deliveredAt    DateTime?
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([status, nextAttemptAt])
+  @@map("webhook_delivery")
+}
+
+// ---------------------------------------------------------------------
+// BILLING — εκτελέσεις (docs/14), ίδιο pattern με AiTokenLedger/AiTokenRequest
+// ---------------------------------------------------------------------
+model RunCreditPack {
+  id        String   @id @default(cuid())
+  name      String
+  runs      Int
+  priceEur  Decimal  @db.Decimal(12, 2) // incl. VAT
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("run_credit_pack")
+}
+
+model RunCreditLedger {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  delta        Int
+  balanceAfter Int
+  kind         String // grant | topup | gift | usage | refund | adjust | overage_invoice
+  runId        String?
+  requestId    String?
+  paymentId    String?
+  note         String?
+  key          String?  @unique // usage:<runId> | refund:<runId> | grant:<tenant>:<YYYY-MM>
+  createdById  String?
+  expiresAt    DateTime? // πακέτα: 12 μήνες
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@map("run_credit_ledger")
+}
+
+model RunCreditRequest {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  packId        String?
+  runs          Int
+  priceEur      Decimal   @db.Decimal(12, 2)
+  status        String    @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELED
+  requestedById String?
+  decidedById   String?
+  decidedAt     DateTime?
+  paymentId     String?
+  note          String?
+  createdAt     DateTime  @default(now())
+
+  @@index([status, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("run_credit_request")
+}
+
+model UsageDaily {
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  day           DateTime @db.Date
+  runs          Int      @default(0)
+  succeeded     Int      @default(0)
+  failed        Int      @default(0)
+  billedUnits   Int      @default(0)
+  browserSecs   Int      @default(0)
+  artifactBytes BigInt   @default(0)
+
+  @@id([tenantId, day])
+  @@map("usage_daily")
+}
+
+// ---------------------------------------------------------------------
+// NOTIFICATIONS (εγκρίσεις, alerts, όρια χρήσης)
+// ---------------------------------------------------------------------
+model Notification {
+  id        String    @id @default(cuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String? // null = όλοι με το σχετικό δικαίωμα
+  kind      String // approval.requested | approval.decided | method.failure_rate | credential.invalid | usage.80 | usage.100 | job.completed
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([tenantId, userId, readAt])
+  @@map("notification")
+}
+
+// ---------------------------------------------------------------------
+// ΤΕΚΜΗΡΙΩΣΗ ΣΥΣΤΗΜΑΤΩΝ (docs/17)
+// ---------------------------------------------------------------------
+model SystemDoc {
+  id             String    @id @default(cuid())
+  tenantId       String
+  targetSystemId String
+  version        Int
+  status         String    @default("DRAFT") // DRAFT | PUBLISHED
+  sections       Json // overview, flows[], fields[], outputs[], messages[], methods[], changelog[] + manualEdits
+  pdfPath        String? // Bunny Storage
+  shareToken     String?   @unique
+  shareExpiresAt DateTime?
+  generatedById  String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([targetSystemId, version])
+  @@index([tenantId])
+  @@map("system_doc")
+}
+
+// ---------------------------------------------------------------------
+// SCHEDULER — εργασίες ορισμένες στον κώδικα (lib/jobs/registry.ts), docs/10 §4β
+// Κατάσταση + κλείδωμα ανά εργασία· όχι Coolify Scheduled Tasks.
+// ---------------------------------------------------------------------
+model ScheduledTask {
+  name       String    @id // ίδιο με το name στο registry, π.χ. "billing.close-month"
+  nextRunAt  DateTime?
+  lastRunAt  DateTime?
+  lastStatus String? // OK | FAILED | SKIPPED
+  lastError  String?
+  lastMs     Int?
+  lockedUntil DateTime?
+  lockedBy   String? // hostname/pid του replica
+  runCount   Int       @default(0)
+  updatedAt  DateTime  @updatedAt
+
+  @@map("scheduled_task")
+}
+
+// ---------------------------------------------------------------------
+// ΟΠΤΙΚΟΣ ΚΑΜΒΑΣ — θέσεις κόμβων ανά έκδοση (docs/19 §7). Χωριστά από τον ορισμό:
+// δεν αλλάζει το checksum και επιτρέπεται και σε PUBLISHED έκδοση.
+// ---------------------------------------------------------------------
+model WorkflowLayout {
+  id        String          @id @default(cuid())
+  tenantId  String
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  versionId String          @unique
+  version   WorkflowVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  positions Json            @default("{}") // { [stepId]: { x, y } } — μόνο όσα μετακίνησε ο χρήστης
+  collapsed Json            @default("{}") // { [stepId]: true }
+  viewport  Json?
+  updatedAt DateTime        @updatedAt
+
+  @@index([tenantId])
+  @@map("workflow_layout")
+}
+
+// ---------------------------------------------------------------------
+// DATA MAPPING από Excel/CSV (docs/20)
+// ---------------------------------------------------------------------
+model ImportMapping {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  methodId    String
+  name        String
+  fingerprint String // hash κανονικοποιημένων επικεφαλίδων + φύλλου
+  definition  Json // docs/20 §2
+  schemaHash  String // inputSchema με το οποίο ελέγχθηκε
+  status      String   @default("ACTIVE") // ACTIVE | NEEDS_UPDATE | ARCHIVED
+  version     Int      @default(1)
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([methodId, name])
+  @@index([tenantId, fingerprint])
+  @@map("import_mapping")
+}
+
+model ValueMap {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String // π.χ. "opske-regions"
+  entries   Json // [{ from, to }]
+  fallback  String? // "error" | "keep" | σταθερή τιμή
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, name])
+  @@map("value_map")
+}
+
+// ---------------------------------------------------------------------
+// ΑΡΧΕΙΑ ΜΕΣΩ API (docs/21)
+// ---------------------------------------------------------------------
+model FileObject {
+  id           String    @id @default(cuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name         String
+  contentType  String
+  size         Int
+  sha256       String
+  storagePath  String
+  purpose      String?
+  externalRef  String?
+  source       String // API | API_URL | INLINE | IMPORT_ZIP | UI
+  scanStatus   String    @default("PENDING") // PENDING | CLEAN | INFECTED | SUSPICIOUS | ERROR
+  scannedAt    DateTime?
+  apiKeyId     String?
+  uploadedById String?
+  expiresAt    DateTime?
+  lastUsedAt   DateTime?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  runs RunFile[]
+
+  @@index([tenantId, createdAt])
+  @@index([expiresAt])
+  @@map("file_object")
+}
+
+model RunFile {
+  id       String     @id @default(cuid())
+  tenantId String
+  runId    String
+  fileId   String
+  file     FileObject @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  stepId   String
+
+  @@index([runId])
+  @@index([fileId])
+  @@map("run_file")
+}
+
+// ---------------------------------------------------------------------
+// ΑΝΑΓΝΩΡΙΣΗ ΑΛΛΑΓΩΝ & INCIDENTS (docs/23)
+// ---------------------------------------------------------------------
+model Incident {
+  id             String    @id @default(cuid())
+  tenantId       String
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  targetSystemId String
+  workflowId     String?
+  stepId         String?
+  severity       String // WARNING | SERIOUS | CRITICAL
+  status         String    @default("OPEN") // OPEN | ACKNOWLEDGED | FIXING | MONITORING | RESOLVED | AUTO_RESOLVED
+  rule           String // health_failed | same_error_burst | failure_rate | login_all | drift | fallback
+  errorCode      String?
+  firstRunId     String?
+  occurrences    Int       @default(1)
+  ackById        String?
+  ackAt          DateTime?
+  resolvedAt     DateTime?
+  openedAt       DateTime  @default(now())
+  lastSeenAt     DateTime  @default(now())
+
+  @@index([tenantId, status])
+  @@index([targetSystemId, status])
+  @@map("incident")
+}
+
+model StepBaseline {
+  id           String   @id @default(cuid())
+  tenantId     String
+  versionId    String
+  stepId       String
+  domSignature String
+  imageHash    String?
+  thumbPath    String?
+  runId        String
+  updatedAt    DateTime @updatedAt
+
+  @@unique([versionId, stepId])
+  @@map("step_baseline")
+}
+
+// ---------------------------------------------------------------------
+// ΕΞΑΡΤΩΜΕΝΑ ΠΕΔΙΑ — κατάλογος επιλογών ανά τιμή γονέα (docs/25 §4)
+// ---------------------------------------------------------------------
+model OptionCatalog {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  versionId String
+  stepId    String // το βήμα choose
+  parentKey String // κανονικοποιημένες τιμές γονέων ("" για ρίζα)
+  options   Json // [{ label, value }]
+  seenAt    DateTime
+  source    String // RUN | HEALTH | LIVE
+
+  @@unique([versionId, stepId, parentKey])
+  @@index([tenantId])
+  @@map("option_catalog")
+}
+
+// ---------------------------------------------------------------------
+// ΕΞΑΓΩΓΗ ΔΕΔΟΜΕΝΩΝ & ΠΡΟΟΡΙΣΜΟΙ (docs/26)
+// ---------------------------------------------------------------------
+model Destination {
+  id         String    @id @default(cuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  methodId   String
+  kind       String // FILE | WEBHOOK | DATABASE | SOFTONE | FOLDER
+  name       String
+  config     Json // format, url, table, mapping, batchSize, mode (all|new|changed)…
+  secretEnc  String? // κρυπτογραφημένα στοιχεία σύνδεσης (lib/crypto)
+  isActive   Boolean   @default(true)
+  lastRunAt  DateTime?
+  lastStatus String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  deliveries DestinationDelivery[]
+
+  @@index([tenantId, methodId])
+  @@map("destination")
+}
+
+model DestinationDelivery {
+  id            String      @id @default(cuid())
+  tenantId      String
+  destinationId String
+  destination   Destination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  runId         String
+  status        String // PENDING | SENT | FAILED | SKIPPED
+  rows          Int         @default(0)
+  newRows       Int         @default(0)
+  changedRows   Int         @default(0)
+  attempts      Int         @default(0)
+  error         String?
+  createdAt     DateTime    @default(now())
+
+  @@index([destinationId, createdAt])
+  @@map("destination_delivery")
+}
+
+model ExtractSnapshot {
+  id            String   @id @default(cuid())
+  tenantId      String
+  destinationId String
+  scopeKey      String // π.χ. credentialRef (δικαιούχος)
+  rowKey        String
+  rowHash       String
+  seenAt        DateTime
+
+  @@unique([destinationId, scopeKey, rowKey])
+  @@map("extract_snapshot")
+}
