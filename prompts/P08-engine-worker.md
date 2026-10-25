@@ -4,10 +4,10 @@
 Διάβασε: `docs/06-execution-engine.md` (όλο), `docs/08` §2 (Bunny), `docs/14` §1–§2 (χρέωση), `docs/02` §4, §6.
 
 ## Στόχος
-`lib/engine` (Playwright step interpreter) και `worker/` (BullMQ consumer) που εκτελούν runs με sessions, όρια, retries, artifacts στο Bunny και χρέωση στο ledger.
+`lib/engine` (Playwright step interpreter) και `worker/` (pg-boss consumer) που εκτελούν runs με sessions, όρια, retries, artifacts στο Bunny και χρέωση στο ledger.
 
 ## Εργασίες
-1. `lib/queue`: queues, zod payloads, producers, connection factory (Valkey).
+1. `lib/queue`: queues, zod payloads, producers, pg-boss factory (`QUEUE_DATABASE_URL`, απευθείας 5432, ADR‑022).
 2. `lib/storage`: interface του docs/08 §2 με drivers `bunny` (Storage API με `AccessKey`, signed CDN URLs με Token Authentication — υλοποίησε το token ακριβώς κατά την τεκμηρίωση «Token Authentication» του Bunny και γράψε test σε staging pull zone) και `local` (dev/tests). Επιλογή με `STORAGE_DRIVER`.
 3. `lib/engine`:
    - `Interpreter.run(def, { input, secrets, page, hooks })` για όλους τους τύπους βημάτων (docs/05 §3).
@@ -18,7 +18,7 @@
    - `redact()` (docs/08 §3), SSRF guard με `page.route`.
 4. `worker/`:
    - Consumers `runs` και `runs-priority`, κλείδωμα run (`updateMany where status=QUEUED` atomic claim, όπως το `Payment` claim του dgsmartbi), μεταβάσεις κατάστασης docs/01 §5.
-   - Semaphores (tenant από `Plan.maxConcurrentRuns`, target, credential) σε Valkey με Lua.
+   - Semaphores (tenant από `Plan.maxConcurrentRuns`, target, credential) στον πίνακα `ConcurrencyLease` (ατομικό INSERT με TTL, ADR‑022).
    - Session manager (storageState κρυπτογραφημένο, sessionCheck, login flow, TOTP με `otplib`).
    - Browser pool με recycle.
    - Retry με backoff και commitPoint λογική (`mayHaveCommitted`).

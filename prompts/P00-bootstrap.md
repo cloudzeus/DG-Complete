@@ -23,9 +23,9 @@
 4. Δημιούργησε migration που αφαιρεί τα BI μοντέλα (νέα βάση `DG_COMPLETE`, οπότε προτίμησε **reset**: σβήσε τα παλιά migrations και φτιάξε ένα αρχικό `init` από το καθαρό schema).
 5. Μετονομασία: `appName` του Better Auth, `metadata` στο `app/layout.tsx`, `package.json` name `dg-complete`, email templates/αποστολέας, λογότυπα (`public/brand`) — κείμενο «DG Complete».
 6. Upgrade: `npx next upgrade` σε **16.4+** (React 19.3), `cacheComponents: true` στο `next.config.ts`· Node 24 στο Dockerfile. Pin `prisma`/`@prisma/client`/`@prisma/adapter-pg` σε `^7`.
-7. Δομή φακέλων: κενά `lib/dsl`, `lib/engine`, `lib/queue`, `lib/storage`, `lib/billing`, `lib/recorder`, `worker/index.ts` (συνδέεται σε Valkey και κάνει log), `extension/` (`npx wxt@latest init` με React), `sandbox/` (μικρό Next ή Hono app στο port 4100).
+7. Δομή φακέλων: κενά `lib/dsl`, `lib/engine`, `lib/queue`, `lib/storage`, `lib/billing`, `lib/recorder`, `worker/index.ts` (ξεκινά pg-boss στο `QUEUE_DATABASE_URL` και κάνει log — χωρίς Redis/Valkey, ADR‑022), `extension/` (`npx wxt@latest init` με React), `sandbox/` (μικρό Next ή Hono app στο port 4100).
 8. Scripts στο `package.json`: `worker:dev` (`tsx --conditions=react-server worker/index.ts`), `sandbox:dev`, `seed:dev`, `test`, `test:int`, `test:e2e`.
-9. `docker-compose.dev.yml`: postgres, valkey, mailpit. `.env.example` με τις μεταβλητές του docs/10 §3. `lib/env.ts` (zod) που φορτώνεται από web και worker.
+9. `docker-compose.dev.yml`: postgres, mailpit (χωρίς valkey, ADR‑022). `.env.example` με τις μεταβλητές του docs/10 §3. `lib/env.ts` (zod) που φορτώνεται από web και worker.
 10. Ενημέρωσε τον πίνακα «αρχείο → κατάσταση» στο docs/15 §6.
 11. Commit και `git push origin master` (χωρίς force).
 
@@ -53,7 +53,7 @@
 - [ ] `npm run db:migrate && npm run seed:admin` σε κενή βάση `DG_COMPLETE`· login του SUPER_ADMIN στο `/login` → `/admin`.
 - [ ] `grep -ri "cube\|kimon\|dgsmart bi" app lib` → μόνο σχόλια/τίποτα.
 - [ ] Στο `/admin/settings/sync` το job «Πελάτες» τρέχει χειροκίνητα, γεμίζει το `/admin/customers` και από εκεί δημιουργείται tenant συνδεδεμένος με πελάτη (TRDR).
-- [ ] `npm run worker:dev` ξεκινά και συνδέεται σε Valkey χωρίς σφάλμα `server-only`.
+- [ ] `npm run worker:dev` ξεκινά και συνδέεται στο pg-boss χωρίς σφάλμα `server-only`.
 - [ ] `git remote -v` δείχνει `origin` (`cloudzeus/DG-Complete`) και `upstream` (`cloudzeus/dgsmartbi`)· το `master` έχει γίνει push χωρίς force.
 
 ## Μην κάνεις

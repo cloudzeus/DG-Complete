@@ -11,7 +11,7 @@
 2. Better Auth: social provider **Microsoft** (Entra ID, `tenantId: common`), με κανόνα: σύνδεση επιτρέπεται μόνο αν υπάρχει ήδη χρήστης με το ίδιο email ή εκκρεμής πρόσκληση (κράτα `disableSignUp`). Κουμπί «Σύνδεση με Microsoft» πρώτο στο `/login`.
 3. `/t/[tenantId]/settings/members`: λίστα μελών, πρόσκληση με email (επαναχρησιμοποίησε τη ροή προσκλήσεων/δημιουργίας χρήστη του dgsmartbi), αλλαγή ρόλου, αφαίρεση· τουλάχιστον ένας TENANT_ADMIN.
 4. `lib/notifications.ts`: `notify(tenantId, { kind, title, link }, { permission })` → γραμμές `Notification` για όλους με το δικαίωμα + email (Mailgun template). Καμπανάκι στο header με μη αναγνωσμένα.
-5. Rate limit login σε Valkey (5/λεπτό ανά IP+email) — `lib/rate-limit.ts` (θα το χρησιμοποιήσει και το API στο P10).
+5. Rate limit login στον Postgres — πίνακας `RateLimitBucket` (ADR‑022) (5/λεπτό ανά IP+email) — `lib/rate-limit.ts` (θα το χρησιμοποιήσει και το API στο P10).
 6. `audit()` σε login, πρόσκληση, αλλαγή ρόλου.
 7. Tests: πίνακας permissions (snapshot), Designer δεν έχει `tenant.workflows.approve`, Operator δεν βλέπει «Μέλη».
 

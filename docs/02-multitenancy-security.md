@@ -49,7 +49,7 @@ CREATE POLICY tenant_isolation ON "run"
 - Sessions 7 ημερών, ανανέωση ανά 24 ώρες.
 - **Νέο:** Microsoft Entra ID ως social provider (οι πελάτες είναι σε M365), με αντιστοίχιση σε υπάρχοντα χρήστη μόνο αν υπάρχει ήδη ο λογαριασμός ή πρόσκληση.
 - **Νέο:** 2FA (plugin `twoFactor` του Better Auth) υποχρεωτικό για platform staff και TENANT_ADMIN — φάση 2.
-- Brute force: rate limit στο login (Valkey).
+- Brute force: rate limit στο login (πίνακας `RateLimitBucket`, ADR‑022).
 
 ## 3. Ρόλοι & δικαιώματα
 
@@ -76,7 +76,7 @@ CREATE POLICY tenant_isolation ON "run"
 **Έγκριση δημοσίευσης (υποχρεωτική):** ο Designer υποβάλλει έκδοση → `PENDING_APPROVAL` → ειδοποίηση στους TENANT_ADMIN (in‑app + email) → έγκριση ή απόρριψη με σχόλιο. Ο εγκρίνων βλέπει diff με την προηγούμενη δημοσιευμένη έκδοση και το τελευταίο επιτυχημένο test run. Δεν επιτρέπεται έγκριση έκδοσης χωρίς επιτυχημένο test run.
 
 ### API key scopes
-Επέκταση του `ApiKey` του dgsmartbi: `scopes[]` (`runs:write`, `runs:read`, `jobs:write`, `jobs:read`, `artifacts:read`, `collections:read`, `usage:read`), `collectionIds[]` (κενό = όλες), `ipAllowlist[]`, `expiresAt`. Μορφή `dgc_` + 32 bytes base64url, αποθήκευση SHA‑256, εμφάνιση μία φορά. Rate limit σε Valkey (sliding window ανά key), όχι in‑process.
+Επέκταση του `ApiKey` του dgsmartbi: `scopes[]` (`runs:write`, `runs:read`, `jobs:write`, `jobs:read`, `artifacts:read`, `collections:read`, `usage:read`), `collectionIds[]` (κενό = όλες), `ipAllowlist[]`, `expiresAt`. Μορφή `dgc_` + 32 bytes base64url, αποθήκευση SHA‑256, εμφάνιση μία φορά. Rate limit σε Postgres (`RateLimitBucket`) (sliding window ανά key), όχι in‑process.
 
 ## 4. Θυρίδα διαπιστευτηρίων
 
@@ -98,7 +98,7 @@ CREATE POLICY tenant_isolation ON "run"
 
 - [ ] CSP αυστηρό, `frame-ancestors 'none'`, HSTS.
 - [ ] Server Actions: πάντα `requirePermission(perm, tenantId)` πρώτα (pattern dgsmartbi).
-- [ ] Rate limiting σε Valkey: API ανά key, login ανά IP.
+- [ ] Rate limiting στον Postgres (`RateLimitBucket`): API ανά key, login ανά IP.
 - [ ] SSRF: ο worker ανοίγει **μόνο** URLs των `TargetSystem.allowedOrigins`· μπλοκ private IP ranges.
 - [ ] Webhook URLs: μόνο https, όχι private IPs, timeout 10s.
 - [ ] Worker container non‑root, read‑only FS εκτός `/tmp`.

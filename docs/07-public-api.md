@@ -75,7 +75,7 @@ Location: /v1/runs/0192f1d2-…
 ```
 
 ### 3.2 Run (sync)
-`"mode": "sync"` → το request περιμένει έως `Method.syncTimeoutSec` (max 120s). Αν τελειώσει: `200` με πλήρες αποτέλεσμα. Αν όχι: `202` όπως πάνω (ο client συνεχίζει με polling/webhook). Υλοποίηση: subscribe σε Redis `run:{id}` πριν το enqueue.
+`"mode": "sync"` → το request περιμένει έως `Method.syncTimeoutSec` (max 120s). Αν τελειώσει: `200` με πλήρες αποτέλεσμα. Αν όχι: `202` όπως πάνω (ο client συνεχίζει με polling/webhook). Υλοποίηση: LISTEN στο κανάλι `run_events` (φιλτράρισμα ανά `runId`) πριν το enqueue.
 
 ```json
 {

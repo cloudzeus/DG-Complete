@@ -11,7 +11,7 @@
 ```mermaid
 sequenceDiagram
   participant WK as Worker (Playwright)
-  participant VK as Valkey
+  participant VK as Postgres (pg_notify)
   participant WEB as Web
   actor OP as Χειριστής
   WK->>WK: humanTask ή CAPTCHA → παύση βήματος
@@ -51,9 +51,9 @@ sequenceDiagram
 ## 4. Τεχνικά
 
 - **Πηγή εικόνας:** CDP `Page.startScreencast` (JPEG, quality 60, max 1280px, έως 5 fps) από τον worker. Μόνο για runs σε `NEEDS_ATTENTION` και μόνο όσο είναι ανοιχτό το panel.
-- **Μεταφορά:** WebSocket από τον browser του χειριστή προς ένα **assist gateway** στο web (`/api/assist/[runId]`), το οποίο προωθεί μέσω Valkey (κανάλι `assist:{runId}`) προς τον worker που κρατά το session. Ο worker δεν εκτίθεται ποτέ απευθείας στο internet.
+- **Μεταφορά:** WebSocket από τον browser του χειριστή προς ένα **assist gateway** στο web (`/api/assist/[runId]`), το οποίο ανοίγει εσωτερικό WebSocket (`WORKER_ASSIST_URL`, κοινό secret) προς τον worker που κρατά το session, μόνο στο ιδιωτικό δίκτυο (ADR‑022). Ο worker δεν εκτίθεται ποτέ απευθείας στο internet.
 - **Είσοδος:** τα γεγονότα ποντικιού/πληκτρολογίου μετατρέπονται σε `Input.dispatchMouseEvent` / `Input.insertText` στον worker, **αφού** ελεγχθεί ότι οι συντεταγμένες πέφτουν μέσα σε επιτρεπτό στοιχείο (bounding box των `allow` locators, ξαναϋπολογισμένο σε κάθε frame).
-- **Token:** εφήμερο (2′, ένα run, ένας χρήστης), υπογεγραμμένο, που ανανεώνεται όσο το panel είναι ανοιχτό. Μόνο ένας χειριστής κάθε φορά σε κάθε run (lock στο Valkey).
+- **Token:** εφήμερο (2′, ένα run, ένας χρήστης), υπογεγραμμένο, που ανανεώνεται όσο το panel είναι ανοιχτό. Μόνο ένας χειριστής κάθε φορά σε κάθε run (lock με `expiresAt` στη βάση).
 - **Έλεγχος ολοκλήρωσης:** το `humanTask` ορίζει `completeWhen` (εμφάνιση/εξαφάνιση selector, αλλαγή URL ή ρητό «Ολοκληρώθηκε» του χειριστή). Μετά την ολοκλήρωση γίνεται κανονικά `checkTargetErrors`.
 - **Coolify/Traefik:** WebSocket upgrade στο route `/api/assist/*` (docs/10).
 

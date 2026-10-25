@@ -8,7 +8,6 @@
       "Bash(gh repo *)",
       "Bash(docker compose *)",
       "Bash(psql *)",
-      "Bash(redis-cli *)",
       "Read",
       "Edit",
       "Write"

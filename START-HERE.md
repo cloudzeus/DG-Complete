@@ -9,14 +9,14 @@
 ```bash
 # Node 24 LTS + git + gh
 curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
-sudo apt-get install -y nodejs git gh postgresql-client redis-tools
+sudo apt-get install -y nodejs git gh postgresql-client
 gh auth login                      # λογαριασμός με δικαίωμα στο org cloudzeus
 
 # Claude Code
 npm install -g @anthropic-ai/claude-code
 claude --version
 
-# Docker (για Valkey/Postgres/Mailpit του dev και για το Playwright αργότερα)
+# Docker (για Postgres/Mailpit του dev και για το Playwright αργότερα)
 docker --version                   # αν λείπει: https://docs.docker.com/engine/install/
 ```
 
@@ -57,7 +57,7 @@ CREATE DATABASE "DG_COMPLETE" OWNER dgcomplete_migrator;
   "permissions": {
     "allow": [
       "Bash(npm *)", "Bash(npx *)", "Bash(node *)", "Bash(git *)", "Bash(gh repo *)",
-      "Bash(docker compose *)", "Bash(psql *)", "Bash(redis-cli *)",
+      "Bash(docker compose *)", "Bash(psql *)",
       "Read", "Edit", "Write"
     ],
     "deny": ["Bash(git push --force*)", "Bash(rm -rf /*)"]
@@ -77,7 +77,7 @@ claude
 ```
 Διάβασε CLAUDE.md, START-HERE.md και prompts/P00-bootstrap.md (μαζί με την ενότητα «Γνωστά σημεία από δοκιμαστική εκτέλεση»).
 Κάνε πρώτα σύντομο πλάνο, μετά υλοποίησε το P00 στον τρέχοντα φάκελο (merge του dgsmartbi ως upstream).
-Για βάση στο dev χρησιμοποίησε docker compose (postgres + valkey + mailpit) — όχι την παραγωγική βάση.
+Για βάση στο dev χρησιμοποίησε docker compose (postgres + mailpit) — όχι την παραγωγική βάση.
 Στο τέλος επιβεβαίωσε ένα-ένα τα κριτήρια αποδοχής με εντολές και δείξε μου το output.
 ```
 

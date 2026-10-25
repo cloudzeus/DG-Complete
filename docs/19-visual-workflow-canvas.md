@@ -72,7 +72,7 @@ flowchart LR
 ```mermaid
 sequenceDiagram
   participant WK as Worker
-  participant VK as Valkey pub/sub
+  participant VK as Postgres pg_notify
   participant WEB as Web (SSE)
   participant UI as Καμβάς
   WK->>VK: step.started {stepId, iteration}

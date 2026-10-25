@@ -66,7 +66,7 @@ curl -X POST https://complete.dgsmart.gr/api/v1/collections/opske/methods/aitima
 | Αρχεία ανά run | 50 | — |
 | Επιτρεπτοί τύποι (αν το πεδίο δεν ορίζει) | PDF, JPEG, PNG, TIFF, DOCX, XLSX, ZIP (μόνο για import, docs/20) | allowlist ανά tenant |
 | Αποθήκευση ανά tenant | κατά πακέτο (π.χ. 5 / 50 / 250 GB) | Plan |
-| Rate limit uploads | 120 / λεπτό ανά API key | Valkey |
+| Rate limit uploads | 120 / λεπτό ανά API key | Postgres `RateLimitBucket` |
 
 Εκτελέσιμα, scripts και αρχεία με macros (`.exe`, `.js`, `.docm`, `.xlsm` κ.λπ.) απορρίπτονται πάντα.
 

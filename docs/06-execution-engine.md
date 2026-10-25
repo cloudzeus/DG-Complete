@@ -5,7 +5,7 @@
 ```mermaid
 flowchart TB
   subgraph Worker["apps/worker (Node 24, Docker με Chromium)"]
-    C["BullMQ Consumer\nqueue: runs"] --> L["Run Lifecycle\nload run, decrypt input, lock"]
+    C["pg-boss Consumer\nqueue: runs"] --> L["Run Lifecycle\nload run, decrypt input, lock"]
     L --> SM["Session Manager\nreuse storageState ή login flow"]
     SM --> BP["Browser Pool\n1 Browser / N BrowserContexts"]
     BP --> EX["Step Interpreter\n(lib/engine)"]
@@ -14,17 +14,17 @@ flowchart TB
     EX --> ART["Artifact Collector\nscreenshot, DOM, console, HAR, trace"]
     ART --> BN[("Bunny Storage")]
     REC --> DB[("Postgres")]
-    EX --> PUB["Redis pub/sub\nlive progress"]
+    EX --> PUB["pg_notify\nlive progress"]
   end
 ```
 
-## 2. Ουρές (BullMQ)
+## 2. Ουρές (pg-boss, ADR‑022)
 
 | Queue | Περιεχόμενο | Σημειώσεις |
 |---|---|---|
-| `runs` | `{ runId, tenantId }` | Group ανά `tenantId` (BullMQ Pro groups ή δικό μας fair‑scheduling: ξεχωριστή queue ανά πλάνο + token bucket ανά tenant) |
+| `runs` | `{ runId, tenantId }` | Fair scheduling ανά `tenantId`: ξεχωριστή queue ανά πλάνο + όριο ανά tenant μέσω `ConcurrencyLease` |
 | `runs-priority` | sync runs & UI tests | Ξεχωριστοί consumers ώστε τα sync calls να μην περιμένουν πίσω από batch |
-| `jobs` | Parent jobs (FlowProducer) | Ενημέρωση counters, ολοκλήρωση job |
+| `jobs` | Parent jobs (counters στο `Job`) | Ενημέρωση counters, ολοκλήρωση job |
 | `webhooks` | `{ deliveryId }` | Exponential backoff: 30s, 2m, 10m, 1h, 6h, 24h → GAVE_UP |
 | `imports` | `{ jobId, fileKey, mappingId? }` | Parsing CSV/XLSX και εφαρμογή προτύπου αντιστοίχισης (docs/20) |
 | `files` | `{ fileId }` | Έλεγχος ιών (ClamAV), magic bytes, μετακίνηση από quarantine (docs/21) |
@@ -34,8 +34,8 @@ flowchart TB
 
 **Concurrency controls**
 - Ανά worker: `WORKER_CONCURRENCY` (default 8 contexts).
-- Ανά tenant: `Plan.maxConcurrentRuns` — semaphore στο Valkey (`SET NX` με TTL + Lua).
-- Ανά Σύστημα‑στόχο: `TargetSystem.maxConcurrency` — ίδιο μηχανισμό (κλειδί `sem:target:{id}`). Αν δεν υπάρχει slot → `job.moveToDelayed(now + 2–5s jitter)`.
+- Ανά tenant: `Plan.maxConcurrentRuns` — semaphore στον πίνακα `ConcurrencyLease` (ατομικό `INSERT … WHERE count < max` με TTL, ADR‑022).
+- Ανά Σύστημα‑στόχο: `TargetSystem.maxConcurrency` — ίδιο μηχανισμό (scope `target`, key `{id}`). Αν δεν υπάρχει slot → νέο send με `startAfter` 2–5″ (jitter).
 - Ανά credential: 1 ταυτόχρονο run αν το σύστημα δεν επιτρέπει πολλαπλά sessions (`TargetSystem.browserOptions.singleSessionPerUser`).
 
 ## 3. Κύκλος ζωής ενός run

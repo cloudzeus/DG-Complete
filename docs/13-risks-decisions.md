@@ -38,8 +38,8 @@ Ledger εκτελέσεων στο pattern του `AiTokenLedger` (docs/14). Χ�
 ## ADR‑011 — JSON DSL αντί για παραγόμενο κώδικα
 Ασφάλεια (καμία εκτέλεση αυθαίρετου κώδικα), οπτική επεξεργασία, versioning, diff, στατική ανάλυση.
 
-## ADR‑012 — BullMQ + Valkey
-Flows για batch, delayed retries, rate limits και το rate limiting του API (αντί για το in‑process του dgsmartbi, γιατί έχουμε πολλά replicas).
+## ADR‑012 — ~~BullMQ + Valkey~~ (αντικαταστάθηκε από ADR‑022)
+Αρχική επιλογή για ουρές, flows και rate limiting. Δεν ισχύει πλέον: χωρίς Redis/Valkey, βλ. ADR‑022.
 
 ## Ρίσκα
 
@@ -74,6 +74,18 @@ Pilot με τη World Wide Associates σε TAXIS και ΟΠΣΚΕ (docs/18). Σ
 
 ## ADR‑020 — PgBouncer μπροστά στον Postgres
 Web και worker συνδέονται μέσω PgBouncer (port 6432, `pool_mode = transaction`, `max_prepared_statements` ενεργό) για να μη γεμίζουν οι συνδέσεις του κοινού server με το dgsmartbi όταν κλιμακώνονται τα replicas. Συνέπειες στον κώδικα: RLS context μόνο με `set_config(..., true)` μέσα σε transaction, όχι session advisory locks, όχι LISTEN/NOTIFY, migrations απευθείας στο 5432 (docs/10 §4α).
+
+## ADR‑022 — Χωρίς Redis/Valkey: ουρές με pg-boss και συντονισμός στον Postgres
+**Απόφαση (25/10/2026):** δεν χρησιμοποιούμε Redis ούτε Valkey. Ουρές, rate limits, semaphores και live events γίνονται στον Postgres.
+- **Ουρές:** [pg-boss](https://github.com/timgit/pg-boss) (`^12`) σε δικό του schema `pgboss` της βάσης `DG_COMPLETE`. Retries με backoff, delayed jobs, singleton keys, priority. Τα «flows» (parent job + N children) γίνονται με counters στον πίνακα `Job` (`{ increment: 1 }`) και ολοκλήρωση όταν `done = total`.
+- **Σύνδεση:** το pg-boss συνδέεται με `QUEUE_DATABASE_URL` **απευθείας στο 5432** (ρόλος `dgcomplete_app`, όχι μέσω PgBouncer), μικρό pool (`QUEUE_POOL_MAX`, default 4). Στη σύνδεση αυτή επιτρέπεται `LISTEN/NOTIFY`.
+- **Live events (worker → web):** `pg_notify` με μικρά payloads (ids/κατάσταση, < 8 KB) στα κανάλια `run_events` και `tenant_events`· το web κρατά μία `LISTEN` σύνδεση ανά replica (στο `QUEUE_DATABASE_URL`) και τροφοδοτεί τα SSE.
+- **Rate limits** (login, API keys, uploads): πίνακας `RateLimitBucket` (`key`, `windowStart`, `count`) με ατομικό `INSERT … ON CONFLICT DO UPDATE … RETURNING count` — ένα statement, λειτουργεί πίσω από PgBouncer.
+- **Semaphores** (tenant, σύστημα‑στόχος, credential): πίνακας `ConcurrencyLease` (`scope`, `key`, `slot`, `runId`, `expiresAt`) — δέσμευση με ένα `INSERT … SELECT … WHERE count < max` και TTL· αποδέσμευση στο τέλος του run, τα ληγμένα leases καθαρίζονται. Χωρίς slot → το run ξαναμπαίνει στην ουρά με `startAfter` 2–5″ (jitter).
+- **Εφήμεροι κωδικοί / locks** (σύζευξη recorder, ένας χειριστής ανά run στο live assist, αναμονή `human:{runId}`): γραμμές με `expiresAt` στη βάση + `pg_notify` για αφύπνιση.
+- **Live assist frames (docs/22):** δεν περνούν από τη βάση. Το assist gateway του web ανοίγει εσωτερικό WebSocket προς τον worker που κρατά το session, **μόνο στο ιδιωτικό δίκτυο** (Coolify network / Tailscale, `WORKER_ASSIST_URL` + κοινό secret). Ο worker δεν εκτίθεται ποτέ στο internet· frames δεν αποθηκεύονται.
+- **Tests:** Testcontainers μόνο με Postgres.
+**Συνέπειες:** ένα service λιγότερο στο deploy· λιγότερο throughput από Redis, επαρκές για τον όγκο του DG Complete (χιλιάδες runs/ώρα). Αν χρειαστεί κλιμάκωση, οι ουρές περνούν πίσω από το `lib/queue` ώστε να αλλάξει ο driver χωρίς αλλαγές στους καταναλωτές.
 
 ## ADR‑021 — Προγραμματισμένες εργασίες στον κώδικα, όχι στο Coolify
 Όλες οι περιοδικές εργασίες (χρεώσεις, συγχρονισμοί SoftOne, retention, health runs κ.λπ.) ορίζονται στο `lib/jobs/registry.ts` και τρέχουν από τον in‑process scheduler του dgsmartbi, με κλείδωμα ανά εργασία στον πίνακα `ScheduledTask`. Δεν χρησιμοποιούνται Scheduled Tasks του Coolify ούτε crontab στον server: τα ωράρια είναι versioned, ελέγχονται σε review/tests και μεταφέρονται αυτούσια σε κάθε περιβάλλον (docs/10 §4β).

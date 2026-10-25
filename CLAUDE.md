@@ -14,7 +14,7 @@
 - shadcn/ui (`radix-nova`) + **Vengeance UI** (`@vengeance`, skill `vengeance-ui`) + Tailwind v4· DG Design System ήδη στο `app/globals.css`· icons **lucide** (όπως dgsmartbi).
 - GSAP (`@gsap/react`) μόνο για διακριτικό motion.
 - zod 4, react-hook-form, TanStack Table, exceljs, Mailgun.
-- BullMQ + Valkey, Playwright, **Bunny Storage + Pull zone (token auth)**, WXT για το extension.
+- **pg-boss** (ουρές στον Postgres — χωρίς Redis/Valkey, ADR‑022), Playwright, **Bunny Storage + Pull zone (token auth)**, WXT για το extension.
 
 ## Δομή
 `app/` (admin, t/[tenantId], api) · `lib/` (dgsmartbi modules + `dsl/`, `engine/`, `queue/`, `storage/`, `billing/`, `recorder/`) · `worker/` · `extension/` · `sandbox/` · `prisma/` — λεπτομέρειες στο `docs/01-architecture.md`.
@@ -45,7 +45,7 @@
 npm run dev                 # web
 npm run worker:dev          # worker (tsx --conditions=react-server worker/index.ts)
 npm run sandbox:dev         # δοκιμαστικό σύστημα-στόχος (port 4100)
-docker compose -f docker-compose.dev.yml up -d   # postgres, valkey, mailpit
+docker compose -f docker-compose.dev.yml up -d   # postgres, mailpit
 npm run db:migrate          # prisma migrate dev
 npm run seed:admin && npm run seed:dev
 npm test                    # vitest unit
@@ -58,7 +58,7 @@ npm run lint && npm run typecheck
 - Υλοποίηση ανά φάση από `prompts/Pxx-*.md`. Στο τέλος κάθε φάσης: lint, typecheck, tests και επιβεβαίωση των «Κριτηρίων αποδοχής» ένα‑ένα.
 - Μικρά, θεματικά commits (Conventional Commits).
 - Αν κάτι στα docs είναι ασαφές ή αντιφατικό, σταμάτα και ρώτα.
-- **PgBouncer (transaction mode):** όχι session `SET`, όχι `pg_advisory_lock`, όχι `LISTEN/NOTIFY`· RLS μόνο μέσω `withTenantTx`. Migrations με `DATABASE_URL_MIGRATOR` (απευθείας 5432).
+- **PgBouncer (transaction mode):** όχι session `SET`, όχι `pg_advisory_lock`, όχι `LISTEN/NOTIFY` μέσω PgBouncer (pg-boss και `pg_notify` μόνο στην απευθείας σύνδεση `QUEUE_DATABASE_URL`)· RLS μόνο μέσω `withTenantTx`. Migrations με `DATABASE_URL_MIGRATOR` (απευθείας 5432).
 - **Cron jobs μόνο στον κώδικα:** κάθε περιοδική εργασία δηλώνεται στο `lib/jobs/registry.ts` (cron έκφραση, Europe/Athens, handler, inline|enqueue). Ποτέ Scheduled Tasks του Coolify ή crontab στον server.
 - **Αρχεία (docs/21):** μόνο ως `FileObject` στο Bunny (ιδιωτικό path, signed URLs), ποτέ base64 σε DSL/βάση/logs· έλεγχος ClamAV πριν τη χρήση· προστασία SSRF στα URLs.
 - **Incidents (docs/23):** runs μεθόδου σε παύση γίνονται `HELD` (όχι FAILED) και δεν χρεώνονται· τα σφάλματα δεδομένων δεν ανοίγουν incident.

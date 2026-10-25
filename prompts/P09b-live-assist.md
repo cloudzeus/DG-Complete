@@ -9,8 +9,8 @@
 ## Εργασίες
 1. DSL: επέκταση του `humanTask` με `fields[].fill`, `allow[]`, `mode` (`focus` | `full`), `completeWhen`· `detectCaptcha` σε login flows (docs/22 §6). Ενημέρωση `validateDefinition` και tests.
 2. Worker: στο `humanTask`, παύση με ανοιχτό context, `run.needs_attention` event και μετακίνηση του run σε χωριστό όριο `maxWaitingRuns` ώστε να μη δεσμεύει slot. Όταν δοθούν τιμές από τη φόρμα (`fields`), συμπλήρωσή τους από τον worker.
-3. Assist channel: `lib/assist/` — εφήμερο υπογεγραμμένο token (2′, ανανέωση), lock ενός χειριστή ανά run στο Valkey, κανάλι `assist:{runId}`. Ο worker κάνει CDP `Page.startScreencast` (JPEG q60, ≤ 1280px, ≤ 5 fps) μόνο όσο είναι ανοιχτό το panel.
-4. Web gateway: route `/api/assist/[runId]` με WebSocket (Node runtime) που προωθεί frames και input μέσω Valkey. Ρύθμιση Traefik/Coolify για upgrade.
+3. Assist channel: `lib/assist/` — εφήμερο υπογεγραμμένο token (2′, ανανέωση), lock ενός χειριστή ανά run με `expiresAt` στη βάση (ADR‑022). Ο worker κάνει CDP `Page.startScreencast` (JPEG q60, ≤ 1280px, ≤ 5 fps) μόνο όσο είναι ανοιχτό το panel.
+4. Web gateway: route `/api/assist/[runId]` με WebSocket (Node runtime) που προωθεί frames και input μέσω εσωτερικού WebSocket προς τον worker (`WORKER_ASSIST_URL`, κοινό secret, μόνο ιδιωτικό δίκτυο — ADR‑022). Ρύθμιση Traefik/Coolify για upgrade.
 5. Έλεγχος input στον worker: συντεταγμένες κλικ και focus πληκτρολόγησης μόνο μέσα στα bounding boxes των `allow` locators (σε `focus` mode). Χωρίς πλοήγηση, νέα tabs ή downloads. `Input.insertText` για paste.
 6. UI: panel «Χρειάζεται ενέργεια» στη σελίδα εκτέλεσης και πάνω στον κόμβο του καμβά (docs/19 §4). Περιέχει: εικόνα, θόλωμα εκτός επιτρεπτής περιοχής, οδηγίες, αντίστροφη μέτρηση, φόρμα `fields`, «Ολοκληρώθηκε» / «Αδυναμία». Λίστα «Αναμένουν ενέργεια» στη σελίδα του job.
 7. Ειδοποιήσεις: in‑app (με ήχο αν η καρτέλα είναι ανοιχτή), email, Teams webhook αν υπάρχει. Υπενθύμιση στο 50% του timeout, `E_HUMAN_TIMEOUT` στη λήξη (χωρίς χρέωση).

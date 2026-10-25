@@ -9,7 +9,7 @@
 ## Εργασίες
 1. `lib/collections.ts`, `lib/methods.ts`.
 2. UI: `/t/[tenantId]/collections` (κάρτες), `/collections/[c]` (μέθοδοι, Τεκμηρίωση API με `@scalar/api-reference-react`, κλειδιά με πρόσβαση), `/collections/[c]/methods/[m]` (ρυθμίσεις, pinned έκδοση + «Αναβάθμιση» με breaking‑change προειδοποίηση, «Χειροκίνητη εκτέλεση» με auto‑form από το inputSchema, δείγματα curl / TypeScript / C#).
-3. `lib/api-keys.ts`: prefix `dgc_`, scopes, `collectionIds`, `ipAllowlist`, `expiresAt`· το rate limit μεταφέρεται σε Valkey (`lib/rate-limit.ts`) με headers `RateLimit-*`. Έλεγχος ότι το πακέτο έχει την υπηρεσία `api` (όπως ήδη κάνει). `/t/[tenantId]/settings/api-keys` για διαχείριση.
+3. `lib/api-keys.ts`: prefix `dgc_`, scopes, `collectionIds`, `ipAllowlist`, `expiresAt`· το rate limit μεταφέρεται στον Postgres (`lib/rate-limit.ts`, πίνακας `RateLimitBucket`, ADR‑022) με headers `RateLimit-*`. Έλεγχος ότι το πακέτο έχει την υπηρεσία `api` (όπως ήδη κάνει). `/t/[tenantId]/settings/api-keys` για διαχείριση.
 4. `lib/api-v1.ts`: κράτα το `apiHandler`/`apiJson`· πρόσθεσε problem+json (RFC 9457) και header `X-DGComplete-Runs-Remaining`.
 5. Route handlers (Node runtime, χωρίς cache) για όλα τα endpoints του docs/07 §3 πλην jobs: runs create (sync/async), validate, get, list, steps, artifacts (signed URLs), retry, cancel, collections, openapi.json, usage.
 6. Input validation με Ajv (compiled ανά `workflowVersionId`, LRU cache).

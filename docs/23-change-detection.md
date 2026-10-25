@@ -73,7 +73,7 @@ flowchart LR
   T -->|"αποτυχία"| P
 ```
 
-- **Runs που περιμένουν:** μένουν στη βάση με κατάσταση `HELD` (νέα κατάσταση run) και αφαιρούνται από την ουρά BullMQ. Δεν χάνονται, δεν χρεώνονται, και το `GET /runs/{id}` δείχνει `status: HELD, reason: "method_paused", incidentId`.
+- **Runs που περιμένουν:** μένουν στη βάση με κατάσταση `HELD` (νέα κατάσταση run) και αφαιρούνται από την ουρά pg-boss. Δεν χάνονται, δεν χρεώνονται, και το `GET /runs/{id}` δείχνει `status: HELD, reason: "method_paused", incidentId`.
 - **Νέες κλήσεις:** ρυθμίζεται ανά μέθοδο (`pausePolicy`):
   - **`QUEUE`** (default): δέχονται και γίνονται `HELD` (202 με `X-DGComplete-Method-State: paused`).
   - **`REJECT`**: `503 E_METHOD_PAUSED` με `Retry-After`, για εφαρμογές που προτιμούν να ξαναπροσπαθήσουν μόνες τους.

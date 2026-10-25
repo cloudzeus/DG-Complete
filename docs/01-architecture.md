@@ -12,7 +12,7 @@ flowchart LR
 
   subgraph Platform["DG Complete (fork dgsmartbi) — Coolify"]
     WEB["web: Next.js\nUI + Server Actions\n+ Route Handlers /api/v1\n+ in-process scheduler"]
-    Q[("Valkey\nBullMQ queues + rate limits")]
+    Q[("Postgres\npg-boss queues + rate limits")]
     WK["worker × N\nPlaywright Chromium"]
     DB[("PostgreSQL\nPrisma 7")]
   end
@@ -57,11 +57,11 @@ dg-complete/
 │  ├─ services.ts tenant-services.ts api-keys.ts                                       # προσαρμοσμένα
 │  ├─ dsl/        # Workflow DSL (καθαρό TS· το χρησιμοποιούν web, worker, extension)
 │  ├─ engine/     # Playwright step executors, locator resolver, error taxonomy, redaction
-│  ├─ queue/      # BullMQ queues, payload schemas, producers
+│  ├─ queue/      # pg-boss queues, payload schemas, producers
 │  ├─ storage/    # Bunny Storage + signed URLs (+ local driver για dev/tests)
 │  ├─ billing/    # ledger εκτελέσεων, quotas (docs/14)
 │  └─ recorder/   # recorder tokens, compile καταγραφής
-├─ worker/        # BullMQ consumers + browser pool (τρέχει με --conditions=react-server)
+├─ worker/        # pg-boss consumers + browser pool (τρέχει με --conditions=react-server)
 ├─ extension/     # WXT + React (δικό του package.json, εισάγει ../lib/dsl)
 ├─ sandbox/       # δοκιμαστικό «τρίτο σύστημα» (port 4100)
 ├─ prisma/        # schema.prisma + migrations, prisma.config.ts
@@ -83,14 +83,14 @@ dg-complete/
 | Πίνακες | TanStack Table v8 (+ virtual) | το dgsmartbi έχει ήδη `components/data-table` |
 | Οπτικός καμβάς ροών | @xyflow/react v12 + elkjs + zustand | επεξεργασία ροής, live εκτέλεση, heatmap, diff (docs/19) |
 | Code/JSON | Monaco editor | input schema, DSL raw view |
-| Ουρές | **BullMQ** + Valkey 8 | runs, jobs, webhooks, imports |
+| Ουρές | **pg-boss** (Postgres) | runs, jobs, webhooks, imports — χωρίς Redis/Valkey (ADR‑022) |
 | Browser | **Playwright** (Chromium) | trace, screenshots με `mask` |
 | Αρχεία | **Bunny Storage** (Storage API) + **Pull Zone με Token Authentication** (signed URLs) | ιδιωτικά· ποτέ δημόσιο URL |
 | Email | Mailgun | από το dgsmartbi |
 | Εξαγωγές | exceljs | από το dgsmartbi |
 | Extension | WXT + React + Tailwind | Chrome/Edge MV3 |
 | API docs | OpenAPI 3.1 (από zod/JSON Schema) + Scalar | |
-| Tests | Vitest, Playwright Test, Testcontainers (Postgres, Valkey) | storage: local driver |
+| Tests | Vitest, Playwright Test, Testcontainers (Postgres) | storage: local driver |
 | Deploy | Docker + Coolify (Contabo) | βλ. 10 |
 
 ## 4. Κύριες ροές (sequence)
@@ -122,7 +122,7 @@ sequenceDiagram
   participant A as Εφαρμογή
   participant API as /api/v1
   participant DB as Postgres
-  participant Q as BullMQ
+  participant Q as pg-boss
   participant WK as Worker
   participant T as Σύστημα-στόχος
   participant BN as Bunny Storage
@@ -150,7 +150,7 @@ flowchart TD
   U["Upload CSV/XLSX ή POST /jobs"] --> V["Validate items με input schema"]
   V -->|άκυρα| R["Αναφορά γραμμών με σφάλμα (δεν εκτελούνται)"]
   V -->|έγκυρα| J["Job (PENDING) + N Runs (QUEUED)"]
-  J --> F["BullMQ Flow: parent job + N children"]
+  J --> F["pg-boss: parent job + N children (counters στο Job)"]
   F --> W1["Worker 1"] & W2["Worker 2"] & W3["Worker N"]
   W1 & W2 & W3 --> AGG["Job counters (succeeded/failed)"]
   AGG --> DONE["Job COMPLETED / COMPLETED_WITH_ERRORS"]
@@ -183,7 +183,7 @@ stateDiagram-v2
 `DRAFT → PENDING_APPROVAL → PUBLISHED → DEPRECATED → ARCHIVED`. Ο Designer υποβάλλει για έγκριση· ο **TENANT_ADMIN** εγκρίνει (ή απορρίπτει με σχόλιο → πίσω σε DRAFT). Όταν ο ίδιος ο Admin είναι ο συντάκτης, η δημοσίευση γίνεται απευθείας και καταγράφεται στο audit. Μια PUBLISHED έκδοση είναι **αμετάβλητη** (checksum SHA‑256 του canonical JSON). Αλλαγή = νέα έκδοση.
 
 ## 6. Επικοινωνία real‑time
-- Worker → Web: Redis pub/sub κανάλι `run:{runId}` και `tenant:{tenantId}:runs`.
+- Worker → Web: Postgres `pg_notify` στα κανάλια `run_events` / `tenant_events` (payload `{ runId, tenantId, … }`) πάνω στην απευθείας σύνδεση `QUEUE_DATABASE_URL` (ADR‑022).
 - Web → Browser: **Server‑Sent Events** route handler (`/api/stream/runs/[id]`) — απλούστερο από WebSockets, δουλεύει πίσω από Coolify/Traefik.
 
 ## 7. Next.js 16.4 conventions

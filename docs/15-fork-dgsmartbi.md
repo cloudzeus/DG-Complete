@@ -58,8 +58,8 @@
 | Πακέτα | `Plan` + `runsMonthly`, `overagePricePerRun`, `maxConcurrentRuns`, `artifactRetentionDays`, `logRetentionDays` (docs/14) |
 | Χρεώσεις | `Payment` = χρέωση (+ `kind`, `periodFrom/To`, `runs`, `s1OpenAmount`)· `postPaymentToSoftOne` → `postChargeToSoftOne`· νέο sync job ανοιχτών υπολοίπων από SoftOne· **αφαιρείται η online πληρωμή Viva** |
 | Ledger | νέο `RunCreditLedger` + `RunCreditRequest` στο ίδιο pattern με το `AiTokenLedger` |
-| API keys | prefix `dgc_`, **scopes** και περιορισμός ανά συλλογή, rate limit σε **Valkey** (όχι in‑process, γιατί έχουμε πολλά replicas + worker) |
-| Scheduler | κρατάμε τον in‑process scheduler (`instrumentation.ts` → `lib/scheduler.ts` → `/api/internal/cron/run`) και προσθέτουμε **μητρώο εργασιών στον κώδικα** `lib/jobs/registry.ts` + πίνακα `ScheduledTask` για κλείδωμα· βαριές εργασίες γίνονται enqueue στο BullMQ. **Τίποτα στα Scheduled Tasks του Coolify** (docs/10 §4β) |
+| API keys | prefix `dgc_`, **scopes** και περιορισμός ανά συλλογή, rate limit στον **Postgres** (`RateLimitBucket`, όχι in‑process, γιατί έχουμε πολλά replicas + worker· ADR‑022) |
+| Scheduler | κρατάμε τον in‑process scheduler (`instrumentation.ts` → `lib/scheduler.ts` → `/api/internal/cron/run`) και προσθέτουμε **μητρώο εργασιών στον κώδικα** `lib/jobs/registry.ts` + πίνακα `ScheduledTask` για κλείδωμα· βαριές εργασίες γίνονται enqueue στο pg-boss. **Τίποτα στα Scheduled Tasks του Coolify** (docs/10 §4β) |
 | Αρχεία | νέο `lib/storage/bunny.ts` (Bunny Storage API + signed CDN URLs) |
 | Icons | lucide όπως το dgsmartbi (αποδεκτή εναλλακτική του DG για Fluent) |
 | Vengeance UI | προσθήκη registry `@vengeance` στο `components.json` |
@@ -77,7 +77,7 @@ dg-complete/
 │  ├─ dsl/                 # Workflow DSL — καθαρό TS, χωρίς server-only (το χρησιμοποιεί και το extension)
 │  ├─ engine/              # Playwright executors — χωρίς server-only (το τρέχει ο worker)
 │  ├─ queue/  storage/  billing/  recorder/
-├─ worker/                 # Node 24 process: BullMQ consumer + Playwright (imports από lib/)
+├─ worker/                 # Node 24 process: pg-boss consumer + Playwright (imports από lib/)
 ├─ extension/              # WXT Chrome MV3 recorder (δικό του package.json)
 ├─ sandbox/                # δοκιμαστικό «τρίτο σύστημα» για tests
 ├─ prisma/                 # schema + migrations

@@ -5,7 +5,7 @@
 | Επίπεδο | Εργαλείο | Τι καλύπτει |
 |---|---|---|
 | Unit | Vitest | DSL schemas, template engine/filters, expression evaluator, compile‑recording, redaction, crypto, permissions matrix, ΑΦΜ validator |
-| Integration | Vitest + Testcontainers (Postgres, Valkey) · storage: local driver | **Tests απομόνωσης tenants** (tenantDb + RLS), queue producers/consumers, API key auth, idempotency, ledger εκτελέσεων |
+| Integration | Vitest + Testcontainers (Postgres) · storage: local driver | **Tests απομόνωσης tenants** (tenantDb + RLS), queue producers/consumers, API key auth, idempotency, ledger εκτελέσεων |
 | Engine | Playwright Test έναντι `apps/sandbox` | Κάθε step type, locator fallbacks, iframes, dialogs, popups, file upload, error taxonomy, screenshots/masking |
 | E2E | Playwright Test (web + worker + sandbox) | Login → σύστημα → workflow JSON import → method → API call → run viewer με screenshot |
 | Extension | Playwright με `launchPersistentContext` + extension loaded | Καταγραφή στη φόρμα sandbox → events → compile |

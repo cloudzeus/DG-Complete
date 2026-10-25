@@ -8,7 +8,7 @@ Extension που καταγράφει ενέργειες στο σύστημα�
 
 ## Εργασίες
 1. Backend:
-   - Server Action «Νέα καταγραφή» → `Recording` + recorder JWT (2h, `recordingId`, `tenantId`, `userId`) + 8‑ψήφιος κωδικός σύνδεσης (Valkey, 10′).
+   - Server Action «Νέα καταγραφή» → `Recording` + recorder JWT (2h, `recordingId`, `tenantId`, `userId`) + 8‑ψήφιος κωδικός σύνδεσης (γραμμή με `expiresAt` 10′ στη βάση, ADR‑022).
    - `POST /api/recorder/connect`, `POST /api/recorder/[id]/events` (batch, validation με `RecorderEvent`, thumbnails στο storage μέσω `lib/storage`), `POST /api/recorder/[id]/finish` (καλείται από το κουμπί **«Ολοκληρώθηκε»** — η ανάλυση κίνησης, το παράθυρο επιβεβαίωσης και η επανάληψη υλοποιούνται στο P07c· εδώ κράτα ήδη `initialValue` πεδίων και κείμενα headings/κουμπιών/μηνυμάτων στα events).
    - CORS μόνο για `chrome-extension://<ID>`.
 2. `extension/` (WXT + React + Tailwind με τα DG tokens):

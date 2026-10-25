@@ -1,6 +1,6 @@
 # 10 — Deployment (Docker + Coolify)
 
-Ακολουθούμε το deploy του dgsmartbi (`docs/DEPLOY.md` του repo: Coolify, Dockerfile με Next.js standalone και migrations στο start, Postgres μέσω Tailscale), με τρεις προσθήκες: **worker**, **Valkey** και **PgBouncer** μπροστά στον Postgres.
+Ακολουθούμε το deploy του dgsmartbi (`docs/DEPLOY.md` του repo: Coolify, Dockerfile με Next.js standalone και migrations στο start, Postgres μέσω Tailscale), με δύο προσθήκες: **worker** και **PgBouncer** μπροστά στον Postgres. Χωρίς Redis/Valkey: οι ουρές τρέχουν με pg-boss στον ίδιο Postgres (ADR‑022).
 
 ## 1. Τοπολογία παραγωγής
 
@@ -10,8 +10,9 @@ flowchart LR
   TR --> WEB["web ×2\nNext.js standalone\n+ scheduler στον κώδικα (§4β)"]
   WEB --> PGB["PgBouncer\ntransaction pooling :6432"]
   PGB --> PG[("PostgreSQL\nβάση DG_COMPLETE\n(server Tailscale)")]
-  WEB --> VK[("Valkey 8")]
-  WK["worker ×2..N\nPlaywright image\nσε δεύτερο Contabo VPS"] --> PGB & VK
+  WK["worker ×2..N\nPlaywright image\nσε δεύτερο Contabo VPS"] --> PGB
+  WEB & WK -. "pg-boss / LISTEN\nαπευθείας :5432" .-> PG
+  WEB -. "assist WS\n(ιδιωτικό δίκτυο)" .-> WK
   MIG["migrations\n(start του web)"] -. "απευθείας :5432" .-> PG
   WK --> BN[("Bunny Storage zone")]
   WEB -. "signed URLs" .-> CDN["Bunny Pull zone\n(token auth)"]
@@ -23,10 +24,9 @@ flowchart LR
 |---|---|---|
 | web | 2 × (1 vCPU, 1 GB) | `output: "standalone"`, health `/api/health` (υπάρχει στο dgsmartbi). ο scheduler τρέχει σε όλα τα replicas με κλείδωμα ανά εργασία στη βάση (§4β) |
 | worker | 2 × (4 vCPU, 8 GB) σε ξεχωριστό VPS (Coolify multi‑server) | base `mcr.microsoft.com/playwright:v<ίδια έκδοση>-noble`, non‑root, `--shm-size=1g`, σταθερή IP για whitelisting |
-| PostgreSQL | **υπάρχων server του dgsmartbi (`100.70.50.43`)**, ξεχωριστή βάση | νέα βάση `dgcomplete` + χρήστες `dgcomplete_app` (χωρίς ownership πινάκων) και `dgcomplete_migrator` |
+| PostgreSQL | **υπάρχων server του dgsmartbi (`100.70.50.43`)**, ξεχωριστή βάση | νέα βάση `DG_COMPLETE` (schema `public` + `pgboss` για τις ουρές) + χρήστες `dgcomplete_app` (χωρίς ownership πινάκων) και `dgcomplete_migrator` |
 | ClamAV | sidecar του worker (`clamav/clamav`), 1 GB RAM | Έλεγχος ιών στα αρχεία του API (docs/21 §5) |
 | **PgBouncer** | 0.5 vCPU, 256 MB, δίπλα στον Postgres server (ή ως Coolify service) | `pool_mode = transaction`, `max_prepared_statements = 200` (PgBouncer ≥ 1.21), `default_pool_size = 20`, `max_client_conn = 500`, auth με `auth_query` / `userlist.txt` για `dgcomplete_app`· οι migrations **δεν** περνούν από PgBouncer |
-| Valkey | 1 GB, AOF on | Coolify one‑click |
 | Bunny | Storage zone + Pull zone | εκτός Coolify |
 
 ## 2. Dockerfile (επέκταση του dgsmartbi)
@@ -36,7 +36,7 @@ flowchart LR
 - Νέο stage **`worker`**: `FROM mcr.microsoft.com/playwright:v1.xx.x-noble`, αντιγράφει `node_modules`, `lib/`, `worker/`, `lib/generated/prisma`, εντολή `node --conditions=react-server --import tsx worker/index.ts` (ή προ‑compiled με `tsup` → `node --conditions=react-server dist/worker.js`).
 - Coolify: δύο applications από το ίδιο repo με διαφορετικό **Docker target** (`runner` για web, `worker` για worker).
 - CI ελέγχει ότι η έκδοση του `playwright` package == tag του image.
-- `docker-compose.dev.yml` για τοπική ανάπτυξη: postgres, **pgbouncer** (ίδια ρύθμιση με την παραγωγή), valkey, mailpit, sandbox (το storage σε dev είναι ο local driver).
+- `docker-compose.dev.yml` για τοπική ανάπτυξη: postgres, **pgbouncer** (ίδια ρύθμιση με την παραγωγή), mailpit, sandbox (το storage σε dev είναι ο local driver).
 
 ## 3. Environment variables
 
@@ -52,7 +52,10 @@ CRON_SECRET=…                   SCHEDULER=          # off μόνο για debu
 # νέα
 DATABASE_URL_MIGRATOR=postgresql://dgcomplete_migrator:…@100.70.50.43:5432/DG_COMPLETE   # απευθείας, χωρίς PgBouncer
 DB_POOL_MAX=10                  # pool του @prisma/adapter-pg ανά process (web 10, worker 5)
-REDIS_URL=redis://valkey:6379
+QUEUE_DATABASE_URL=postgresql://dgcomplete_app:…@100.70.50.43:5432/DG_COMPLETE   # pg-boss + LISTEN — απευθείας, χωρίς PgBouncer (ADR‑022)
+QUEUE_POOL_MAX=4                # pool του pg-boss ανά process
+WORKER_ASSIST_URL=…             # εσωτερικό WS του worker για live assist (μόνο ιδιωτικό δίκτυο)
+ASSIST_SHARED_SECRET=…
 MICROSOFT_CLIENT_ID=…  MICROSOFT_CLIENT_SECRET=…  MICROSOFT_TENANT_ID=common
 STORAGE_DRIVER=bunny            # bunny | local
 BUNNY_STORAGE_ZONE=dg-complete
@@ -71,7 +74,7 @@ WORKER_CONCURRENCY=8
 1. Project «DG Complete», environments `staging` / `production`.
 2. Νέα βάση `DG_COMPLETE` (με κεφαλαία → σε SQL πάντα με εισαγωγικά: `"DG_COMPLETE"`) στον Postgres server + κανόνες `pg_hba.conf` για τις IPs του Coolify (όπως στο DEPLOY.md του dgsmartbi).
 3. **PgBouncer** για τη βάση `dgcomplete` (port 6432, transaction mode)· κανόνας `pg_hba.conf` ώστε ο `dgcomplete_app` να συνδέεται μόνο από τον PgBouncer και ο `dgcomplete_migrator` από τις IPs του Coolify.
-4. Valkey από one‑click resource.
+4. Δεν χρειάζεται Redis/Valkey· το pg-boss δημιουργεί μόνο του το schema `pgboss` στο πρώτο start (ο `dgcomplete_app` χρειάζεται `CREATE` στη βάση ή το schema δημιουργείται από migration).
 5. Application **web** (Dockerfile target `runner`), domain `complete.dgsmart.gr`, health check `/api/health`, 2 replicas.
 6. Application **worker** (target `worker`) στον δεύτερο server, χωρίς domain.
 7. Migrations: γίνονται στο start του web container (pattern dgsmartbi) με `DATABASE_URL_MIGRATOR`.
@@ -82,7 +85,7 @@ WORKER_CONCURRENCY=8
 Σε **transaction pooling** κάθε transaction μπορεί να πάει σε άλλη σύνδεση του Postgres. Γι' αυτό:
 - **RLS context μόνο τοπικά στο transaction:** το `withTenantTx` κάνει `set_config('app.tenant_id', …, true)` (το `true` = transaction‑local) μέσα στο ίδιο `$transaction`. Ποτέ `SET` σε επίπεδο session.
 - **Όχι session advisory locks** (`pg_advisory_lock`)· ο scheduler κλειδώνει με `lockedUntil` στον πίνακα `ScheduledTask` (§4β).
-- **Όχι `LISTEN/NOTIFY`** — τα live events πάνε από Valkey pub/sub (docs/01 §6).
+- **Όχι `LISTEN/NOTIFY` μέσω PgBouncer** — τα live events (`pg_notify`) και το pg-boss χρησιμοποιούν τη ξεχωριστή απευθείας σύνδεση `QUEUE_DATABASE_URL` (ADR‑022, docs/01 §6).
 - **Prepared statements:** ο `pg` driver του `@prisma/adapter-pg` λειτουργεί με PgBouncer ≥ 1.21 και `max_prepared_statements > 0`. Αν ο PgBouncer είναι παλαιότερος, ρύθμιση adapter χωρίς named statements.
 - **Migrations και `prisma studio`** πάντα με `DATABASE_URL_MIGRATOR` απευθείας στο 5432 (`prisma.config.ts` → `datasource.url = env("DATABASE_URL_MIGRATOR")` για το CLI· το runtime client διαβάζει `DATABASE_URL`).
 - **Μέγεθος pools:** Σ (replicas × `DB_POOL_MAX`) ≤ `max_client_conn`· ο PgBouncer κρατά λίγες πραγματικές συνδέσεις (`default_pool_size`) προς τον Postgres, που μοιράζεται με το dgsmartbi.
@@ -94,7 +97,7 @@ WORKER_CONCURRENCY=8
 
 **Μηχανισμός (επέκταση του scheduler του dgsmartbi):**
 - `instrumentation.ts` → `lib/scheduler.ts` ξεκινά tick κάθε λεπτό μέσα στο web container (όπως σήμερα στο dgsmartbi), που καλεί το `/api/internal/cron/run` με `CRON_SECRET`.
-- **Μητρώο εργασιών `lib/jobs/registry.ts`:** μία λίστα με όλες τις εργασίες: `name`, `schedule` (cron έκφραση, ζώνη `Europe/Athens`), `handler`, `timeoutMs`, `mode` (`inline` για ελαφριές, `enqueue` για βαριές που πάνε στην ουρά `maintenance` του BullMQ και τις εκτελεί ο worker).
+- **Μητρώο εργασιών `lib/jobs/registry.ts`:** μία λίστα με όλες τις εργασίες: `name`, `schedule` (cron έκφραση, ζώνη `Europe/Athens`), `handler`, `timeoutMs`, `mode` (`inline` για ελαφριές, `enqueue` για βαριές που πάνε στην ουρά `maintenance` του pg-boss και τις εκτελεί ο worker).
 - **Κατάσταση και κλείδωμα στη βάση:** πίνακας `ScheduledTask` (`name` unique, `nextRunAt`, `lastRunAt`, `lastStatus`, `lastError`, `lockedUntil`, `lockedBy`). Ένα replica παίρνει την εργασία με `UPDATE … SET "lockedUntil" = now() + timeout WHERE name = $1 AND ("lockedUntil" IS NULL OR "lockedUntil" < now()) RETURNING` — λειτουργεί πίσω από PgBouncer (ένα statement, χωρίς session lock) και με πολλά replicas, οπότε το `SCHEDULER=off` δεν είναι πια υποχρεωτικό.
 - Οι συγχρονισμοί SoftOne του dgsmartbi (`SyncJob`, `runDueJobs`) μένουν όπως είναι και καλούνται από το ίδιο tick.
 - Η σελίδα `/admin/settings/scheduler` δείχνει όλες τις εργασίες του μητρώου, τελευταία/επόμενη εκτέλεση, σφάλματα και κουμπί «Εκτέλεση τώρα» (audit `scheduler.run_now`). Αλλαγή ωραρίου = αλλαγή στον κώδικα.
@@ -125,7 +128,7 @@ WORKER_CONCURRENCY=8
 
 ## 5. CI (GitHub Actions)
 
-`lint → typecheck → unit (vitest) → integration (testcontainers: postgres, valkey) → e2e (sandbox + worker + web, local storage driver) → build images (web, worker) → push GHCR → Coolify webhook (staging) → έγκριση → production`. Το extension χτίζεται και γίνεται zip σε κάθε tag.
+`lint → typecheck → unit (vitest) → integration (testcontainers: postgres) → e2e (sandbox + worker + web, local storage driver) → build images (web, worker) → push GHCR → Coolify webhook (staging) → έγκριση → production`. Το extension χτίζεται και γίνεται zip σε κάθε tag.
 
 ## 6. Extension
 

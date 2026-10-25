@@ -64,4 +64,4 @@ claude
 
 ## Stack (σύνοψη)
 
-Next.js **16.4+** (App Router, Cache Components, `proxy.ts`, React 19.3) · **Prisma ORM 7** (`prisma-client` generator + `@prisma/adapter-pg`) με PostgreSQL · **Better Auth** · shadcn/ui + Vengeance UI · Tailwind v4 · GSAP (διακριτικό motion) · DG Design System · Playwright · BullMQ + Valkey · **Bunny Storage + CDN** · WXT (Chrome MV3 extension) · npm · Coolify (Contabo).
+Next.js **16.4+** (App Router, Cache Components, `proxy.ts`, React 19.3) · **Prisma ORM 7** (`prisma-client` generator + `@prisma/adapter-pg`) με PostgreSQL · **Better Auth** · shadcn/ui + Vengeance UI · Tailwind v4 · GSAP (διακριτικό motion) · DG Design System · Playwright · pg-boss (ουρές στον Postgres) · **Bunny Storage + CDN** · WXT (Chrome MV3 extension) · npm · Coolify (Contabo).
