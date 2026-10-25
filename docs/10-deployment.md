@@ -80,6 +80,10 @@ WORKER_CONCURRENCY=8
 7. Migrations: γίνονται στο start του web container (pattern dgsmartbi) με `DATABASE_URL_MIGRATOR`.
 8. Bunny: δημιουργία storage zone + pull zone, ενεργοποίηση Token Authentication, CORS για το domain της εφαρμογής, αντιγραφή κλειδιών στα env.
 
+## 4. Ρόλοι βάσης (P02)
+
+`scripts/db-roles.sql` (μία φορά, ως superuser): `dgcomplete_migrator` είναι owner της βάσης και των πινάκων (τρέχει τα migrations), `dgcomplete_app` (`NOBYPASSRLS`) έχει μόνο `SELECT/INSERT/UPDATE/DELETE` μέσω default privileges και δικό του schema `pgboss`. Επειδή ο app **δεν** είναι owner, η RLS των ευαίσθητων πινάκων ισχύει πάντα (και με `FORCE ROW LEVEL SECURITY` για ασφάλεια). Στο dev το ίδιο κάνει το `scripts/dev-db-init.sql` του docker compose.
+
 ## 4α. PgBouncer — κανόνες για τον κώδικα
 
 Σε **transaction pooling** κάθε transaction μπορεί να πάει σε άλλη σύνδεση του Postgres. Γι' αυτό:

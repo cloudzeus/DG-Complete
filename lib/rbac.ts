@@ -10,7 +10,7 @@ import type { PlatformRole, TenantRole } from "@/lib/generated/prisma/enums";
 // Platform roles act on every tenant; tenant roles only inside their own tenant.
 // The matrix is editable (Ρυθμίσεις → Πρόσβαση) and stored in role_permission; these are the defaults.
 
-export const ROLES = ["SUPER_ADMIN", "ADMIN", "TENANT_ADMIN", "TENANT_USER"] as const;
+export const ROLES = ["SUPER_ADMIN", "ADMIN", "TENANT_ADMIN", "TENANT_DESIGNER", "TENANT_OPERATOR", "TENANT_USER"] as const;
 export type Role = (typeof ROLES)[number];
 
 export const PERMISSION_DEFS = {
@@ -20,33 +20,61 @@ export const PERMISSION_DEFS = {
   "tenants.read": { label: "Προβολή tenants, χρηστών, πληρωμών", group: "Tenants" },
   "tenants.manage": { label: "Δημιουργία & διαχείριση tenants", group: "Tenants" },
   "connections.tenant.manage": { label: "Πηγές δεδομένων πελατών", group: "Δεδομένα" },
-  "tenant.users.manage": { label: "Χρήστες του tenant", group: "Εντός tenant" },
-  "tenant.billing.manage": { label: "Πληρωμές & συνδρομή", group: "Εντός tenant" },
-  "tenant.apikeys.manage": { label: "API keys (webservices)", group: "Εντός tenant" },
   "tenant.dashboards.view": { label: "Πρόσβαση στην περιοχή πελάτη", group: "Εντός tenant" },
+  // DG Complete (docs/02 §3)
+  "tenant.users.manage": { label: "Μέλη & ρόλοι", group: "Εντός tenant" },
+  "tenant.billing.manage": { label: "Πακέτο & αγορές εκτελέσεων", group: "Εντός tenant" },
+  "tenant.apikeys.manage": { label: "Κλειδιά API", group: "Εντός tenant" },
+  "tenant.webhooks.manage": { label: "Webhooks", group: "Εντός tenant" },
+  "tenant.settings.manage": { label: "Ρυθμίσεις οργανισμού", group: "Εντός tenant" },
+  "tenant.targets.manage": { label: "Συστήματα‑στόχοι", group: "Σχεδιασμός" },
+  "tenant.credentials.manage": { label: "Διαπιστευτήρια", group: "Σχεδιασμός" },
+  "tenant.credentials.reveal": { label: "Εμφάνιση διαπιστευτηρίων", group: "Σχεδιασμός" },
+  "tenant.recordings.create": { label: "Καταγραφές", group: "Σχεδιασμός" },
+  "tenant.workflows.edit": { label: "Επεξεργασία ροών", group: "Σχεδιασμός" },
+  "tenant.workflows.submit": { label: "Υποβολή ροών για έγκριση", group: "Σχεδιασμός" },
+  "tenant.workflows.approve": { label: "Έγκριση & δημοσίευση ροών", group: "Σχεδιασμός" },
+  "tenant.methods.manage": { label: "Συλλογές & μέθοδοι", group: "Εκτέλεση" },
+  "tenant.runs.execute": { label: "Εκτελέσεις (UI, Excel)", group: "Εκτέλεση" },
+  "tenant.runs.retry": { label: "Επανάληψη / ακύρωση εκτελέσεων", group: "Εκτέλεση" },
+  "tenant.runs.view": { label: "Προβολή εκτελέσεων", group: "Εκτέλεση" },
+  "tenant.artifacts.view": { label: "Προβολή στιγμιοτύπων", group: "Εκτέλεση" },
+  "tenant.audit.view": { label: "Αρχείο ενεργειών", group: "Εντός tenant" },
 } as const;
 
 export type Permission = keyof typeof PERMISSION_DEFS;
 export const ALL_PERMISSIONS = Object.keys(PERMISSION_DEFS) as Permission[];
 
+const VIEW: Permission[] = ["tenant.dashboards.view", "tenant.runs.view", "tenant.artifacts.view"];
+const OPERATE: Permission[] = [...VIEW, "tenant.runs.execute", "tenant.runs.retry"];
+const DESIGN: Permission[] = [
+  ...OPERATE,
+  "tenant.targets.manage",
+  "tenant.credentials.manage",
+  "tenant.recordings.create",
+  "tenant.workflows.edit",
+  "tenant.workflows.submit",
+  "tenant.methods.manage",
+];
+const TENANT_ADMIN: Permission[] = [
+  ...DESIGN,
+  "tenant.users.manage",
+  "tenant.billing.manage",
+  "tenant.apikeys.manage",
+  "tenant.webhooks.manage",
+  "tenant.settings.manage",
+  "tenant.credentials.reveal",
+  "tenant.workflows.approve",
+  "tenant.audit.view",
+];
+
 export const DEFAULT_GRANTS: Record<Role, readonly Permission[]> = {
   SUPER_ADMIN: ALL_PERMISSIONS,
-  ADMIN: [
-    "tenants.read",
-    "tenants.manage",
-    "connections.tenant.manage",
-    "tenant.users.manage",
-    "tenant.billing.manage",
-    "tenant.apikeys.manage",
-    "tenant.dashboards.view",
-  ],
-  TENANT_ADMIN: [
-    "tenant.users.manage",
-    "tenant.billing.manage",
-    "tenant.apikeys.manage",
-    "tenant.dashboards.view",
-  ],
-  TENANT_USER: ["tenant.dashboards.view"],
+  ADMIN: ["tenants.read", "tenants.manage", "connections.tenant.manage", ...TENANT_ADMIN],
+  TENANT_ADMIN,
+  TENANT_DESIGNER: DESIGN,
+  TENANT_OPERATOR: OPERATE,
+  TENANT_USER: VIEW,
 };
 
 export type Grants = Record<Role, Permission[]>;
@@ -55,15 +83,14 @@ export type Grants = Record<Role, Permission[]>;
 export const getGrants = cache(async (): Promise<Grants> => {
   const rows = await prisma.rolePermission.findMany();
   const grants = Object.fromEntries(ROLES.map((r) => [r, [] as Permission[]])) as Grants;
-  if (rows.length === 0) {
-    for (const r of ROLES) grants[r] = [...DEFAULT_GRANTS[r]];
-  } else {
-    for (const row of rows) {
-      if ((ROLES as readonly string[]).includes(row.role) && row.permission in PERMISSION_DEFS) {
-        grants[row.role as Role].push(row.permission as Permission);
-      }
+  for (const row of rows) {
+    if ((ROLES as readonly string[]).includes(row.role) && row.permission in PERMISSION_DEFS) {
+      grants[row.role as Role].push(row.permission as Permission);
     }
   }
+  // A role never edited in the matrix (e.g. a role added later) keeps its defaults.
+  const edited = new Set(rows.map((r) => r.role));
+  for (const r of ROLES) if (!edited.has(r)) grants[r] = [...DEFAULT_GRANTS[r]];
   grants.SUPER_ADMIN = [...ALL_PERMISSIONS];
   return grants;
 });

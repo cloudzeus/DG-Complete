@@ -18,7 +18,7 @@ const schema = z.object({
   name: z.string().trim().min(2, "Δώστε ονοματεπώνυμο").max(120),
   email: z.email("Μη έγκυρο email").transform((e) => e.toLowerCase().trim()),
   password: z.string().max(200),
-  role: z.enum(["TENANT_ADMIN", "TENANT_USER"]),
+  role: z.enum(["TENANT_ADMIN", "TENANT_DESIGNER", "TENANT_OPERATOR", "TENANT_USER"]),
   active: z.boolean(),
 });
 type Field = keyof z.input<typeof schema>;

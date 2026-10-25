@@ -960,3 +960,30 @@ model ExtractSnapshot {
   @@unique([destinationId, scopeKey, rowKey])
   @@map("extract_snapshot")
 }
+
+// ---------------------------------------------------------------------
+// ADR-022 (χωρίς Redis): συντονισμός στον Postgres
+// ---------------------------------------------------------------------
+model RateLimitBucket {
+  key         String
+  windowStart DateTime
+  count       Int      @default(0)
+  expiresAt   DateTime
+
+  @@id([key, windowStart])
+  @@index([expiresAt])
+  @@map("rate_limit_bucket")
+}
+
+model ConcurrencyLease {
+  id        String   @id @default(cuid())
+  scope     String // tenant | target | credential
+  key       String
+  runId     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([scope, key, runId])
+  @@index([scope, key, expiresAt])
+  @@map("concurrency_lease")
+}

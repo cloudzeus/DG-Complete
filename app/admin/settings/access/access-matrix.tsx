@@ -25,7 +25,9 @@ const ROLE_HEAD: Record<string, { label: string; hint: string; className: string
   SUPER_ADMIN: { label: "Super admin", hint: "Πλατφόρμα", className: "text-sisyphus-600" },
   ADMIN: { label: "Admin", hint: "DGsoft", className: "text-sisyphus-700" },
   TENANT_ADMIN: { label: "Tenant admin", hint: "Πελάτης", className: "text-sisyphus-700" },
-  TENANT_USER: { label: "Tenant user", hint: "Πελάτης", className: "text-muted-foreground" },
+  TENANT_DESIGNER: { label: "Σχεδιαστής", hint: "Πελάτης", className: "text-sisyphus-700" },
+  TENANT_OPERATOR: { label: "Χειριστής", hint: "Πελάτης", className: "text-sisyphus-700" },
+  TENANT_USER: { label: "Προβολή", hint: "Πελάτης", className: "text-muted-foreground" },
 };
 
 export function AccessMatrix({

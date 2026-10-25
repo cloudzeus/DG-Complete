@@ -6,6 +6,20 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   // Override default ignores of eslint-config-next.
+  // Tenant isolation (docs/02 §1.1): tenant pages, the public API and the pure engine/DSL never use
+  // the raw Prisma client — only tenantDb() / withTenantTx() from lib/tenant-db.
+  {
+    files: ["app/t/**", "app/api/v1/**", "lib/engine/**", "lib/dsl/**"],
+    rules: {
+      "no-restricted-imports": ["error", { paths: [{ name: "@/lib/prisma", message: "Χρησιμοποιήστε tenantDb() / withTenantTx() από @/lib/tenant-db." }] }],
+    },
+  },
+  {
+    files: ["lib/engine/**", "lib/dsl/**"],
+    rules: {
+      "no-restricted-imports": ["error", { paths: [{ name: "server-only", message: "lib/dsl και lib/engine τρέχουν και εκτός Next (worker, extension)." }, { name: "@/lib/prisma", message: "Όχι Prisma στο lib/dsl / lib/engine." }] }],
+    },
+  },
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",

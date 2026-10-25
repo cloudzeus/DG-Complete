@@ -28,14 +28,14 @@ export type TenantUserRow = {
   id: string;
   name: string;
   email: string;
-  role: "TENANT_ADMIN" | "TENANT_USER";
+  role: "TENANT_ADMIN" | "TENANT_DESIGNER" | "TENANT_OPERATOR" | "TENANT_USER";
   active: boolean;
   /** Belongs to other tenants too (shared account). */
   otherTenants: number;
   lastLogin: string | null;
 };
 
-const ROLE: Record<TenantUserRow["role"], string> = { TENANT_ADMIN: "Διαχειριστής", TENANT_USER: "Χρήστης" };
+const ROLE: Record<TenantUserRow["role"], string> = { TENANT_ADMIN: "Διαχειριστής", TENANT_DESIGNER: "Σχεδιαστής", TENANT_OPERATOR: "Χειριστής", TENANT_USER: "Προβολή" };
 
 function newPassword() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
@@ -76,7 +76,7 @@ export function TenantUsers({ tenantId, users, canManage, currentUserId }: { ten
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="truncate font-medium">{u.name}</span>
                 {!u.active && <StatusPill tone="slate">Ανενεργός</StatusPill>}
-                {u.role === "TENANT_ADMIN" && <StatusPill tone="violet">Διαχειριστής</StatusPill>}
+                {u.role !== "TENANT_USER" && <StatusPill tone="blue">{ROLE[u.role]}</StatusPill>}
               </div>
               <div className="truncate text-xs text-muted-foreground">{u.email}</div>
               <div className="text-2xs text-muted-foreground">
@@ -222,8 +222,10 @@ function UserForm({ tenantId, user, onDone }: { tenantId: string; user: TenantUs
         <div className="space-y-1.5">
           <Label htmlFor="tu-role">Ρόλος</Label>
           <select id="tu-role" name="role" defaultValue={user?.role ?? "TENANT_USER"} className="h-10 w-full rounded-md border bg-background px-3 text-sm">
-            <option value="TENANT_USER">{ROLE.TENANT_USER} — βλέπει τα dashboards</option>
-            <option value="TENANT_ADMIN">{ROLE.TENANT_ADMIN} — και χρήστες, παραγγελίες</option>
+            <option value="TENANT_USER">{ROLE.TENANT_USER} — μόνο ανάγνωση</option>
+            <option value="TENANT_OPERATOR">{ROLE.TENANT_OPERATOR} — εκτελέσεις, μαζικές εργασίες</option>
+            <option value="TENANT_DESIGNER">{ROLE.TENANT_DESIGNER} — καταγραφές, ροές, συστήματα</option>
+            <option value="TENANT_ADMIN">{ROLE.TENANT_ADMIN} — όλα, μαζί με μέλη και εγκρίσεις</option>
           </select>
         </div>
         <div className="flex items-center gap-2">
