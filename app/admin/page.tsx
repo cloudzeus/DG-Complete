@@ -55,7 +55,7 @@ export default async function AdminHome() {
         title={`Καλώς ήρθατε, ${user.name.split(" ")[0]}`}
         description="Η εικόνα της πλατφόρμας DG Complete με μια ματιά."
         icon={LayoutDashboard}
-        tone="red"
+        tone="blue"
       />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -114,7 +114,7 @@ export default async function AdminHome() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>
-              <SectionTitle icon={Activity} tone="red">
+              <SectionTitle icon={Activity} tone="blue">
                 Κατάσταση συστήματος
               </SectionTitle>
             </CardTitle>
@@ -127,7 +127,7 @@ export default async function AdminHome() {
                 href={s.href}
                 className="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted/70"
               >
-                <s.icon className="size-4 text-dg-red-500" />
+                <s.icon className="size-4 text-sisyphus-500" />
                 <span className="min-w-0 flex-1">
                   <span className="block font-medium">{s.label}</span>
                   <span className="block truncate text-xs text-muted-foreground">{s.detail}</span>

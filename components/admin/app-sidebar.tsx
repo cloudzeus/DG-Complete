@@ -85,17 +85,16 @@ const SETTINGS: Item[] = [
 
 const ROLE_LABEL: Record<string, string> = { SUPER_ADMIN: "Super admin", ADMIN: "Admin", USER: "Χρήστης" };
 
-// White sidebar, DG Red icons; active item = soft red pill + red bar.
+// Mica sidebar, Sisyphus blue active item (DG product interior — docs/09 §1).
 const ITEM = cn(
-  "relative h-8 text-sm text-sidebar-foreground [&>svg]:text-dg-red-500",
-  "hover:bg-dg-red-50/70 hover:text-dg-red-700 active:bg-dg-red-50 dark:hover:bg-white/5 dark:hover:text-white",
-  "data-active:bg-dg-red-50 data-active:font-semibold data-active:text-dg-red-700 dark:data-active:bg-dg-red-900/40 dark:data-active:text-dg-red-200",
-  "data-active:before:absolute data-active:before:inset-y-1.5 data-active:before:-left-2 data-active:before:w-1 data-active:before:rounded-r-full data-active:before:bg-dg-red-500",
+  "relative h-8 text-sm text-sidebar-foreground [&>svg]:text-muted-foreground data-active:[&>svg]:text-sisyphus-600",
+  "hover:bg-sisyphus-50/70 hover:text-sisyphus-700 active:bg-sisyphus-50 dark:hover:bg-white/5 dark:hover:text-white",
+  "data-active:bg-sisyphus-50 data-active:font-semibold data-active:text-sisyphus-700 dark:data-active:bg-sisyphus-900/40 dark:data-active:text-sisyphus-200",
 );
 const SUB_ITEM = cn(
-  "h-7 text-sidebar-foreground [&>svg]:text-dg-red-400!",
-  "hover:bg-dg-red-50/70 hover:text-dg-red-700 dark:hover:bg-white/5",
-  "data-active:bg-dg-red-50 data-active:font-semibold data-active:text-dg-red-700 data-active:[&>svg]:text-dg-red-500! dark:data-active:bg-dg-red-900/40 dark:data-active:text-dg-red-200",
+  "h-7 text-sidebar-foreground [&>svg]:text-muted-foreground!",
+  "hover:bg-sisyphus-50/70 hover:text-sisyphus-700 dark:hover:bg-white/5",
+  "data-active:bg-sisyphus-50 data-active:font-semibold data-active:text-sisyphus-700 data-active:[&>svg]:text-sisyphus-500! dark:data-active:bg-sisyphus-900/40 dark:data-active:text-sisyphus-200",
 );
 const GROUP_LABEL = "text-2xs font-semibold tracking-wider text-muted-foreground/80 uppercase";
 
@@ -176,7 +175,7 @@ export function AppSidebar({ user }: { user: { name: string; email: string; plat
                     <CollapsibleTrigger asChild>
                       <SidebarMenuButton
                         tooltip="Ρυθμίσεις"
-                        className={cn(ITEM, settingsActive && "font-semibold text-dg-red-700")}
+                        className={cn(ITEM, settingsActive && "font-semibold text-sisyphus-700")}
                       >
                         <Settings />
                         <span>Ρυθμίσεις</span>
@@ -184,7 +183,7 @@ export function AppSidebar({ user }: { user: { name: string; email: string; plat
                       </SidebarMenuButton>
                     </CollapsibleTrigger>
                     <CollapsibleContent>
-                      <SidebarMenuSub className="mr-0 border-dg-red-100 pr-0 dark:border-white/10">
+                      <SidebarMenuSub className="mr-0 border-sisyphus-100 pr-0 dark:border-white/10">
                         {settingsItems.map((item) => (
                           <SidebarMenuSubItem key={item.href}>
                             <SidebarMenuSubButton
@@ -213,9 +212,9 @@ export function AppSidebar({ user }: { user: { name: string; email: string; plat
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <SidebarMenuButton size="lg" className="hover:bg-dg-red-50/70 data-[state=open]:bg-dg-red-50 dark:hover:bg-white/5">
+                <SidebarMenuButton size="lg" className="hover:bg-sisyphus-50/70 data-[state=open]:bg-sisyphus-50 dark:hover:bg-white/5">
                   <Avatar className="size-8 rounded-lg">
-                    <AvatarFallback className="rounded-lg bg-linear-to-br from-dg-red-500 to-dg-red-700 text-xs font-semibold text-white">
+                    <AvatarFallback className="rounded-lg bg-sisyphus-500 text-xs font-semibold text-white">
                       {initials(user.name)}
                     </AvatarFallback>
                   </Avatar>

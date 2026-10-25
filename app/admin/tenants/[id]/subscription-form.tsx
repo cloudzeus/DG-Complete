@@ -95,7 +95,7 @@ export function SubscriptionForm({
         </div>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className={daysLeft !== null && daysLeft <= 14 ? "text-sm font-medium text-amber-700" : "text-sm text-muted-foreground"}>
+        <p className={daysLeft !== null && daysLeft <= 14 ? "text-sm font-medium text-warning-500" : "text-sm text-muted-foreground"}>
           {daysLeft === null ? "Χωρίς ημερομηνία λήξης — δεν στέλνονται υπενθυμίσεις." : daysLeft >= 0 ? `Λήγει σε ${daysLeft} ημέρες.` : `Έληξε πριν από ${-daysLeft} ημέρες.`}
         </p>
         {canManage && (

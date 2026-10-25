@@ -55,7 +55,7 @@ export function SeedButton({
           <ul className="divide-y divide-border/60 rounded-md border">
             {report?.map((r) => (
               <li key={r.name} className="flex items-start gap-2 px-3 py-2">
-                {r.status === "created" && <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />}
+                {r.status === "created" && <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success-500" />}
                 {r.status === "exists" && <CircleSlash className="mt-0.5 size-4 shrink-0 text-muted-foreground" />}
                 {r.status === "failed" && <XCircle className="mt-0.5 size-4 shrink-0 text-destructive" />}
                 {r.status === "skipped" && <CircleSlash className="mt-0.5 size-4 shrink-0 text-muted-foreground" />}

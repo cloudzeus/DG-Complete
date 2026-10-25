@@ -64,7 +64,7 @@ export default async function PlansPage() {
                     </span>
                   ))}
                   {p.aiTokensMonthly > 0 && (
-                    <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs text-violet-700">
+                    <span className="rounded-full bg-sisyphus-50 px-2 py-0.5 text-xs text-sisyphus-700">
                       {p.aiTokensMonthly.toLocaleString("el-GR")} AI tokens / μήνα
                     </span>
                   )}

@@ -163,7 +163,7 @@ function JobForm({ job, onDone }: { job?: JobValues; onDone: () => void }) {
 
       {testState.test && (
         <Alert variant={testState.test.ok ? "default" : "destructive"}>
-          {testState.test.ok ? <CheckCircle2 className="text-emerald-600" /> : <XCircle />}
+          {testState.test.ok ? <CheckCircle2 className="text-success-500" /> : <XCircle />}
           <AlertDescription className="break-all">{testState.test.message}</AlertDescription>
         </Alert>
       )}

@@ -124,7 +124,7 @@ export function PaymentsTable({
           return (
             <span className="flex min-w-0 flex-col gap-0.5" title={p.s1Error ?? undefined}>
               <StatusPill tone="green">{p.s1Fincode ?? "Καταχωρήθηκε"}</StatusPill>
-              {p.s1Error && <span className="truncate text-xs text-amber-700">{p.s1Error}</span>}
+              {p.s1Error && <span className="truncate text-xs text-warning-500">{p.s1Error}</span>}
             </span>
           );
         if (p.s1Status === "POSTING") return <StatusPill tone="blue">Αποστολή…</StatusPill>;

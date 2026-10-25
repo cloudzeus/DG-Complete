@@ -141,7 +141,7 @@ export function AiForm({ values, models }: { values: AiValues; models: ModelInfo
 
       {test && (
         <Alert variant={test.ok ? "default" : "destructive"}>
-          {test.ok ? <CheckCircle2 className="text-emerald-600" /> : <XCircle />}
+          {test.ok ? <CheckCircle2 className="text-success-500" /> : <XCircle />}
           <AlertDescription>
             {test.ok ? (
               <>

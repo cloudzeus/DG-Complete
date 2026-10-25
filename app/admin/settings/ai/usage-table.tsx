@@ -50,7 +50,7 @@ const columns: ColumnDef<TenantUsageRow, unknown>[] = [
     header: "Περιθώριο",
     size: 110,
     meta: { label: "Περιθώριο", align: "right" },
-    cell: ({ getValue }) => <span className="text-emerald-700">{usd(getValue() as number)}</span>,
+    cell: ({ getValue }) => <span className="text-success-500">{usd(getValue() as number)}</span>,
   },
 ];
 

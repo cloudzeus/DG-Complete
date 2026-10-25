@@ -24,7 +24,7 @@ export async function TenantAiTokens({ tenantId }: { tenantId: string }) {
       <div className="flex flex-wrap items-end gap-6">
         <div>
           <div className="text-2xs text-muted-foreground">Υπόλοιπο</div>
-          <div className={cn("text-2xl font-semibold tabular-nums", t.aiTokenBalance <= 0 && !t.isDemo && "text-red-600")}>{tok(t.aiTokenBalance)}</div>
+          <div className={cn("text-2xl font-semibold tabular-nums", t.aiTokenBalance <= 0 && !t.isDemo && "text-danger-500")}>{tok(t.aiTokenBalance)}</div>
         </div>
         <div>
           <div className="text-2xs text-muted-foreground">Πακέτο</div>
@@ -61,7 +61,7 @@ export async function TenantAiTokens({ tenantId }: { tenantId: string }) {
                 <td className="py-1.5 pr-2 whitespace-nowrap text-muted-foreground tabular-nums">{l.createdAt.toLocaleDateString("el-GR")}</td>
                 <td className="py-1.5 pr-2">{KIND[l.kind] ?? l.kind}</td>
                 <td className="py-1.5 pr-2 text-muted-foreground">{l.note}</td>
-                <td className={cn("py-1.5 pr-2 text-right tabular-nums", l.delta > 0 ? "text-emerald-700" : "text-red-600")}>
+                <td className={cn("py-1.5 pr-2 text-right tabular-nums", l.delta > 0 ? "text-success-500" : "text-danger-500")}>
                   {l.delta > 0 ? "+" : ""}
                   {tok(l.delta)}
                 </td>

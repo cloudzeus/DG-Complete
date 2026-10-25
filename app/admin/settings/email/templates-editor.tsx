@@ -54,7 +54,7 @@ export function TemplatesEditor({ templates }: { templates: StoredTemplate[] }) 
               onClick={() => setActive(t.key)}
               className={cn(
                 "min-h-11 shrink-0 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-muted",
-                active === t.key && "bg-dg-red-50/70 font-medium text-dg-red-700 dark:bg-white/5",
+                active === t.key && "bg-sisyphus-50/70 font-medium text-sisyphus-700 dark:bg-white/5",
               )}
             >
               {d.name}

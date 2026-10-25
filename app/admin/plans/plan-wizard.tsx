@@ -81,13 +81,13 @@ export function PlanWizard({ initial, tenants }: { initial: PlanValues; tenants:
               onClick={() => (i < step || !problem ? setStep(i) : null)}
               className={cn(
                 "flex min-h-11 w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors",
-                i === step ? "border-dg-red-300 bg-dg-red-50/60 font-medium text-dg-red-700" : i < step ? "bg-muted/40" : "text-muted-foreground",
+                i === step ? "border-sisyphus-300 bg-sisyphus-50/60 font-medium text-sisyphus-700" : i < step ? "bg-muted/40" : "text-muted-foreground",
               )}
             >
               <span
                 className={cn(
                   "grid size-6 shrink-0 place-items-center rounded-full text-xs font-semibold",
-                  i < step ? "bg-emerald-600 text-white" : i === step ? "bg-dg-red-500 text-white" : "bg-muted",
+                  i < step ? "bg-success-500 text-white" : i === step ? "bg-sisyphus-500 text-white" : "bg-muted",
                 )}
               >
                 {i < step ? <Check className="size-3.5" /> : i + 1}
@@ -103,7 +103,7 @@ export function PlanWizard({ initial, tenants }: { initial: PlanValues; tenants:
           <div className="max-w-xl space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="p-name">Όνομα πακέτου</Label>
-              <Input id="p-name" value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="π.χ. BI Pro" autoFocus />
+              <Input id="p-name" value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="π.χ. Business" autoFocus />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="p-desc">Περιγραφή</Label>
@@ -130,10 +130,10 @@ export function PlanWizard({ initial, tenants }: { initial: PlanValues; tenants:
                   onClick={() => !forced && toggle(s.key)}
                   className={cn(
                     "flex min-h-24 items-start gap-3 rounded-lg border p-4 text-left transition-colors",
-                    chosen ? "border-dg-red-300 bg-dg-red-50/50" : "hover:bg-muted/50",
+                    chosen ? "border-sisyphus-300 bg-sisyphus-50/50" : "hover:bg-muted/50",
                   )}
                 >
-                  <span className={cn("mt-0.5 grid size-5 shrink-0 place-items-center rounded border", chosen ? "border-dg-red-500 bg-dg-red-500 text-white" : "bg-background")}>
+                  <span className={cn("mt-0.5 grid size-5 shrink-0 place-items-center rounded border", chosen ? "border-sisyphus-500 bg-sisyphus-500 text-white" : "bg-background")}>
                     {chosen && (forced ? <Lock className="size-3" /> : <Check className="size-3.5" />)}
                   </span>
                   <span className="space-y-1">
@@ -142,7 +142,7 @@ export function PlanWizard({ initial, tenants }: { initial: PlanValues; tenants:
                     {s.requires && (
                       <span className="block text-2xs text-muted-foreground">Απαιτεί: {s.requires.map((r) => serviceDef(r)?.name).join(", ")}</span>
                     )}
-                    {forced && <span className="block text-2xs font-medium text-dg-red-700">Περιλαμβάνεται γιατί το απαιτεί άλλη υπηρεσία.</span>}
+                    {forced && <span className="block text-2xs font-medium text-sisyphus-700">Περιλαμβάνεται γιατί το απαιτεί άλλη υπηρεσία.</span>}
                   </span>
                 </button>
               );
@@ -160,7 +160,7 @@ export function PlanWizard({ initial, tenants }: { initial: PlanValues; tenants:
                     key={p}
                     type="button"
                     onClick={() => setV({ ...v, period: p })}
-                    className={cn("min-h-11 rounded-lg border px-3 py-2 text-sm", v.period === p ? "border-dg-red-300 bg-dg-red-50/60 font-medium text-dg-red-700" : "hover:bg-muted/50")}
+                    className={cn("min-h-11 rounded-lg border px-3 py-2 text-sm", v.period === p ? "border-sisyphus-300 bg-sisyphus-50/60 font-medium text-sisyphus-700" : "hover:bg-muted/50")}
                   >
                     {p === "MONTHLY" ? "Μηνιαία" : "Ετήσια"}
                   </button>
@@ -211,7 +211,7 @@ export function PlanWizard({ initial, tenants }: { initial: PlanValues; tenants:
             <ul className="space-y-1.5">
               {services.map((k) => (
                 <li key={k} className="flex items-start gap-2">
-                  <Check className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+                  <Check className="mt-0.5 size-4 shrink-0 text-success-500" />
                   <span>
                     <span className="font-medium">{serviceDef(k)?.name}</span>
                     <span className="block text-xs text-muted-foreground">{serviceDef(k)?.description}</span>
@@ -220,7 +220,7 @@ export function PlanWizard({ initial, tenants }: { initial: PlanValues; tenants:
               ))}
             </ul>
             {v.id && tenants > 0 && (
-              <p className="rounded-md bg-amber-50 px-3 py-2 text-amber-900">
+              <p className="rounded-md bg-warning-50 px-3 py-2 text-warning-500">
                 Το πακέτο έχουν {tenants} πελάτες: οι αλλαγές στις υπηρεσίες ισχύουν αμέσως γι’ αυτούς· η τιμή αλλάζει στην επόμενη ανάθεση.
               </p>
             )}

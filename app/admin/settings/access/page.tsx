@@ -18,12 +18,12 @@ export default async function AccessPage() {
         title="Διαχείριση πρόσβασης"
         description="Ποιος ρόλος μπορεί να κάνει τι. Οι αλλαγές ισχύουν αμέσως για όλους τους χρήστες."
         icon={ShieldCheck}
-        tone="red"
+        tone="blue"
       />
       <Card>
         <CardHeader>
           <CardTitle>
-            <SectionTitle icon={ShieldCheck} tone="red">
+            <SectionTitle icon={ShieldCheck} tone="blue">
               Ρόλοι & δικαιώματα
             </SectionTitle>
           </CardTitle>

@@ -22,10 +22,10 @@ import { resetGrants, saveGrants } from "./actions";
 type Def = { key: string; label: string; group: string };
 
 const ROLE_HEAD: Record<string, { label: string; hint: string; className: string }> = {
-  SUPER_ADMIN: { label: "Super admin", hint: "Πλατφόρμα", className: "text-dg-red-600" },
+  SUPER_ADMIN: { label: "Super admin", hint: "Πλατφόρμα", className: "text-sisyphus-600" },
   ADMIN: { label: "Admin", hint: "DGsoft", className: "text-sisyphus-700" },
-  TENANT_ADMIN: { label: "Tenant admin", hint: "Πελάτης", className: "text-violet-700" },
-  TENANT_USER: { label: "Tenant user", hint: "Πελάτης", className: "text-slate-600" },
+  TENANT_ADMIN: { label: "Tenant admin", hint: "Πελάτης", className: "text-sisyphus-700" },
+  TENANT_USER: { label: "Tenant user", hint: "Πελάτης", className: "text-muted-foreground" },
 };
 
 export function AccessMatrix({
@@ -176,7 +176,7 @@ function GroupRows({
                   checked={locked || grants[r].has(p.key)}
                   disabled={locked || disabled}
                   onCheckedChange={(v) => onToggle(r, p.key, v === true)}
-                  className="data-[state=checked]:border-dg-red-500 data-[state=checked]:bg-dg-red-500"
+                  className="data-[state=checked]:border-sisyphus-500 data-[state=checked]:bg-sisyphus-500"
                 />
               </td>
             );
