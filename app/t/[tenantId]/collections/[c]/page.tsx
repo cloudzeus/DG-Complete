@@ -12,8 +12,10 @@ import { PageHeader } from "@/components/dg/page-header";
 import { Section } from "@/components/dg/section";
 import { StatusBadge, Tag } from "@/components/dg/status-badge";
 import { Button } from "@/components/ui/button";
-import { mockSubmit } from "@/lib/mock/actions";
-import { apiKeys, byId, collections, methods, workflows } from "@/lib/mock/data";
+import { newMethodAction } from "@/lib/actions/tenant";
+import { getCollection, listApiKeys, listMethods, publishedWorkflowOptions } from "@/lib/data/tenant";
+import { EmptyState } from "@/components/dg/empty-state";
+import { Boxes } from "lucide-react";
 import { requireTenant } from "@/lib/tenant";
 
 export const metadata: Metadata = { title: "Συλλογή" };
@@ -24,11 +26,11 @@ export default async function CollectionPage({ params, searchParams }: PageProps
   const { tenantId, c } = await params;
   const { tab = "methods" } = await searchParams;
   await requireTenant(tenantId);
-  const col = byId(collections, c);
+  const col = await getCollection(tenantId, c);
   if (!col) notFound();
   const base = `/t/${tenantId}/collections/${col.id}`;
-  const list = methods.filter((m) => m.collectionId === col.id);
-  const keys = apiKeys.filter((k) => k.collections.includes(col.id));
+  const [list, allKeys, versions] = await Promise.all([listMethods(tenantId, col.id), listApiKeys(tenantId), publishedWorkflowOptions(tenantId)]);
+  const keys = allKeys.filter((k) => !k.collections.length || k.collections.includes(col.id));
 
   return (
     <>
@@ -37,10 +39,10 @@ export default async function CollectionPage({ params, searchParams }: PageProps
         title={col.name}
         description={col.description}
         actions={
-          <FormDialog title="Νέα μέθοδος" action={mockSubmit.bind(null, tenantId, "newMethod")} submitLabel="Δημιουργία" trigger={<Button size="sm"><Plus aria-hidden /> Νέα μέθοδος</Button>}>
+          <FormDialog title="Νέα μέθοδος" action={newMethodAction.bind(null, tenantId, col.id)} submitLabel="Δημιουργία" trigger={<Button size="sm"><Plus aria-hidden /> Νέα μέθοδος</Button>}>
             <TextField name="name" label="Όνομα" required />
             <TextField name="key" label="Κλειδί API" required placeholder="π.χ. createCustomer" hint="POST /api/v1/collections/{συλλογή}/methods/{κλειδί}/runs" />
-            <SelectField name="workflowId" label="Ροή" required placeholder="Επιλέξτε…" options={workflows.filter((w) => w.status === "PUBLISHED").map((w) => ({ value: w.id, label: `${w.name} (v${w.version})` }))} hint="Μόνο δημοσιευμένες ροές." />
+            <SelectField name="workflowId" label="Ροή" required placeholder="Επιλέξτε…" options={versions} hint="Μόνο δημοσιευμένες εκδόσεις ροών." />
             <RadioCards name="mode" label="Τρόπος" defaultValue="async" options={[{ value: "async", label: "Ασύγχρονα", hint: "202 + webhook / polling" }, { value: "sync", label: "Σύγχρονα", hint: "Περιμένει έως 120″" }]} />
           </FormDialog>
         }
@@ -52,6 +54,7 @@ export default async function CollectionPage({ params, searchParams }: PageProps
           <DataTable
             rows={list}
             rowKey={(m) => m.id}
+            empty={<EmptyState icon={Boxes} title="Καμία μέθοδος" description="Εκθέστε μια δημοσιευμένη ροή ως μέθοδο API." />}
             columns={[
               { key: "n", header: "Μέθοδος", cell: (m) => <Link href={`${base}/methods/${m.id}`} className="group block"><span className="block font-medium group-hover:text-primary group-hover:underline">{m.name}</span><code className="font-mono text-2xs text-muted-foreground">{m.key}</code></Link> },
               { key: "s", header: "Κατάσταση", cell: (m) => <StatusBadge status={m.status} map={METHOD_STATUS} /> },
@@ -68,7 +71,7 @@ export default async function CollectionPage({ params, searchParams }: PageProps
         <Section title="OpenAPI 3.1" description="Η πλήρης τεκμηρίωση (Scalar) φορτώνει από /api/v1/openapi.json με το κλειδί σας.">
           <CodeBlock
             title="curl"
-            code={`curl -X POST https://complete.dgsmart.gr/api/v1/collections/${col.id}/methods/${list[0]?.key ?? "method"}/runs \\
+            code={`curl -X POST https://complete.dgsmart.gr/api/v1/collections/${col.slug}/methods/${list[0]?.key ?? "method"}/runs \\
   -H "Authorization: Bearer dgc_…" \\
   -H "Idempotency-Key: 7f1c…" \\
   -H "Content-Type: application/json" \\

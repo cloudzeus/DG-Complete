@@ -2,7 +2,7 @@
 
 export type RunStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "RETRY_SCHEDULED" | "NEEDS_ATTENTION" | "CANCELLED" | "HELD";
 export type VersionStatus = "DRAFT" | "PENDING_APPROVAL" | "PUBLISHED" | "DEPRECATED" | "ARCHIVED";
-export type JobStatus = "DRAFT" | "VALIDATING" | "RUNNING" | "COMPLETED" | "COMPLETED_WITH_ERRORS" | "CANCELLED";
+export type JobStatus = "PENDING" | "RUNNING" | "COMPLETED" | "COMPLETED_WITH_ERRORS" | "CANCELLED" | "FAILED";
 export type TenantRoleKey = "TENANT_ADMIN" | "TENANT_DESIGNER" | "TENANT_OPERATOR" | "TENANT_USER";
 
 /** Visual tone of a status badge (docs/09 §5). */
@@ -28,12 +28,29 @@ export const VERSION_STATUS: Record<VersionStatus, { label: string; tone: Status
 };
 
 export const JOB_STATUS: Record<JobStatus, { label: string; tone: StatusTone }> = {
-  DRAFT: { label: "Πρόχειρο", tone: "neutral" },
-  VALIDATING: { label: "Έλεγχος", tone: "info" },
+  PENDING: { label: "Σε αναμονή", tone: "neutral" },
   RUNNING: { label: "Εκτελείται", tone: "info" },
   COMPLETED: { label: "Ολοκληρώθηκε", tone: "success" },
   COMPLETED_WITH_ERRORS: { label: "Με σφάλματα", tone: "warning" },
   CANCELLED: { label: "Ακυρώθηκε", tone: "muted" },
+  FAILED: { label: "Απέτυχε", tone: "danger" },
+};
+
+export const RECORDING_STATUS: Record<string, { label: string; tone: StatusTone }> = {
+  RECORDING: { label: "Σε εξέλιξη", tone: "info" },
+  FINISHED: { label: "Ολοκληρώθηκε", tone: "success" },
+  VERIFIED: { label: "Επαληθεύτηκε", tone: "success" },
+  COMPILED: { label: "Έγινε ροή", tone: "muted" },
+  DISCARDED: { label: "Απορρίφθηκε", tone: "muted" },
+};
+
+export const RUN_TRIGGER: Record<string, string> = { API: "API", UI_TEST: "Δοκιμή", UI_MANUAL: "Χειροκίνητη", JOB: "Μαζική", RETRY: "Επανάληψη", HEALTH: "Έλεγχος υγείας" };
+
+export const TARGET_HEALTH: Record<string, { label: string; tone: StatusTone }> = {
+  ok: { label: "Σε λειτουργία", tone: "success" },
+  degraded: { label: "Με προβλήματα", tone: "warning" },
+  down: { label: "Εκτός λειτουργίας", tone: "danger" },
+  unknown: { label: "Χωρίς εκτελέσεις", tone: "neutral" },
 };
 
 export const TENANT_ROLES: Record<TenantRoleKey, { label: string; description: string }> = {

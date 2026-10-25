@@ -9,8 +9,8 @@ import { Section } from "@/components/dg/section";
 import { Tag } from "@/components/dg/status-badge";
 import { Button } from "@/components/ui/button";
 import { WEBHOOK_EVENTS } from "@/lib/labels";
-import { mockSubmit } from "@/lib/mock/actions";
-import { deliveries, webhooks } from "@/lib/mock/data";
+import { createWebhookAction, redeliverAction } from "@/lib/actions/tenant";
+import { listWebhooks } from "@/lib/data/tenant";
 import { requireTenantAdmin } from "@/lib/tenant";
 
 export const metadata: Metadata = { title: "Webhooks" };
@@ -18,7 +18,7 @@ export const metadata: Metadata = { title: "Webhooks" };
 export default async function WebhooksPage({ params }: PageProps<"/t/[tenantId]/settings/webhooks">) {
   const { tenantId } = await params;
   await requireTenantAdmin(tenantId);
-  const act = (f: Parameters<typeof mockSubmit>[1]) => mockSubmit.bind(null, tenantId, f);
+  const { endpoints: webhooks, deliveries } = await listWebhooks(tenantId);
   return (
     <>
       <PageHeader
@@ -26,7 +26,7 @@ export default async function WebhooksPage({ params }: PageProps<"/t/[tenantId]/
         title="Webhooks"
         description="Υπογεγραμμένα με HMAC‑SHA256 (header DGC-Signature). Επαναποστολή με αυξανόμενη αναμονή έως 24 ώρες."
         actions={
-          <FormDialog title="Νέο webhook" action={act("createWebhook")} submitLabel="Δημιουργία" trigger={<Button size="sm"><Plus aria-hidden /> Νέο webhook</Button>}>
+          <FormDialog title="Νέο webhook" action={createWebhookAction.bind(null, tenantId)} submitLabel="Δημιουργία" trigger={<Button size="sm"><Plus aria-hidden /> Νέο webhook</Button>}>
             <TextField name="url" label="Διεύθυνση" required type="url" placeholder="https://" hint="Μόνο HTTPS· ιδιωτικές διευθύνσεις απορρίπτονται." />
             <CheckboxGroup name="events" label="Γεγονότα" required options={WEBHOOK_EVENTS.map((e) => ({ value: e.key, label: e.label, hint: e.key }))} />
           </FormDialog>
@@ -36,6 +36,7 @@ export default async function WebhooksPage({ params }: PageProps<"/t/[tenantId]/
         <DataTable
           rows={webhooks}
           rowKey={(w) => w.id}
+          empty={<p className="text-sm text-muted-foreground">Κανένα endpoint.</p>}
           columns={[
             { key: "u", header: "Διεύθυνση", cell: (w) => <code className="font-mono text-xs break-all">{w.url}</code> },
             { key: "e", header: "Γεγονότα", cell: (w) => <span className="flex flex-wrap gap-1">{w.events.map((e) => <Tag key={e}>{e}</Tag>)}</span> },
@@ -47,12 +48,13 @@ export default async function WebhooksPage({ params }: PageProps<"/t/[tenantId]/
         <DataTable
           rows={deliveries}
           rowKey={(d) => d.id}
+          empty={<p className="text-sm text-muted-foreground">Καμία αποστολή ακόμα.</p>}
           columns={[
             { key: "e", header: "Γεγονός", cell: (d) => <code className="font-mono text-xs">{d.event}</code> },
-            { key: "s", header: "HTTP", cell: (d) => <Tag tone={d.status < 300 ? "success" : "danger"}>{d.status}</Tag> },
+            { key: "s", header: "HTTP", cell: (d) => (d.status ? <Tag tone={d.status < 300 ? "success" : "danger"}>{d.status}</Tag> : <Tag>{d.state}</Tag>) },
             { key: "a", header: "Προσπάθειες", align: "right", cell: (d) => d.attempts },
             { key: "t", header: "Ώρα", align: "right", cell: (d) => fmtDateTime(d.at) },
-            { key: "x", header: "", align: "right", cell: (d) => (d.status >= 300 ? <FormDialog title="Επαναποστολή" description={`Το ${d.event} θα σταλεί ξανά.`} action={act("redeliver")} submitLabel="Επαναποστολή" size="sm" trigger={<Button size="sm" variant="outline"><Send aria-hidden /> Ξανά</Button>} /> : null) },
+            { key: "x", header: "", align: "right", cell: (d) => (d.state === "FAILED" || d.state === "GAVE_UP" ? <FormDialog title="Επαναποστολή" description={`Το ${d.event} θα σταλεί ξανά.`} action={redeliverAction.bind(null, tenantId, d.id)} submitLabel="Επαναποστολή" size="sm" trigger={<Button size="sm" variant="outline"><Send aria-hidden /> Ξανά</Button>} /> : null) },
           ]}
         />
       </Section>

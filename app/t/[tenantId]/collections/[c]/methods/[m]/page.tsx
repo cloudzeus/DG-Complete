@@ -10,22 +10,24 @@ import { PageHeader } from "@/components/dg/page-header";
 import { Grid, Section } from "@/components/dg/section";
 import { Tag } from "@/components/dg/status-badge";
 import { Button } from "@/components/ui/button";
-import { mockSubmit } from "@/lib/mock/actions";
-import { byId, collections, methods, workflows } from "@/lib/mock/data";
+import { manualRunAction, methodSettingsAction, upgradeMethodAction } from "@/lib/actions/tenant";
+import { getCollection, getWorkflow, listMethods } from "@/lib/data/tenant";
+import { can } from "@/lib/rbac";
 import { requireTenant } from "@/lib/tenant";
 
 export const metadata: Metadata = { title: "Μέθοδος" };
 
 export default async function MethodPage({ params }: PageProps<"/t/[tenantId]/collections/[c]/methods/[m]">) {
   const { tenantId, c, m } = await params;
-  await requireTenant(tenantId);
-  const col = byId(collections, c);
-  const method = byId(methods, m);
+  const { user } = await requireTenant(tenantId);
+  const [col, methods] = await Promise.all([getCollection(tenantId, c), listMethods(tenantId, c)]);
+  const method = methods.find((x) => x.id === m);
   if (!col || !method) notFound();
-  const wf = byId(workflows, method.workflowId);
-  const act = (f: Parameters<typeof mockSubmit>[1]) => mockSubmit.bind(null, tenantId, f);
-  const url = `https://complete.dgsmart.gr/api/v1/collections/${col.id}/methods/${method.key}/runs`;
-  const input = Object.fromEntries((wf?.inputs ?? []).map((i) => [i.key, i.type === "number" ? 0 : i.type === "array" ? [] : "…"]));
+  const wf = await getWorkflow(tenantId, method.workflowId);
+  const inputs = wf?.inputs ?? [];
+  const url = `https://complete.dgsmart.gr/api/v1/collections/${col.slug}/methods/${method.key}/runs`;
+  const input = Object.fromEntries(inputs.map((i) => [i.key, i.type === "number" ? 0 : i.type === "array" ? [] : "…"]));
+  const manage = can(user, "tenant.methods.manage", tenantId);
 
   return (
     <>
@@ -36,12 +38,14 @@ export default async function MethodPage({ params }: PageProps<"/t/[tenantId]/co
         actions={
           <>
             {method.status === "PAUSED" && <Tag tone="warning">Σε παύση — νέες κλήσεις γίνονται HELD</Tag>}
-            <FormDialog title="Χειροκίνητη εκτέλεση" description="Φόρμα από το σχήμα εισόδου της ροής." action={act("manualRun")} submitLabel="Εκτέλεση" trigger={<Button size="sm"><Play aria-hidden /> Εκτέλεση</Button>}>
-              {(wf?.inputs ?? []).map((i) => (
-                <TextField key={i.key} name={i.key} label={i.label} required={i.required} type={i.type === "number" ? "number" : "text"} hint={`${i.key} · ${i.type}`} />
-              ))}
-              <TextField name="externalRef" label="externalRef" hint="Δικός σας κωδικός για συσχέτιση." />
-            </FormDialog>
+            {can(user, "tenant.runs.execute", tenantId) && (
+              <FormDialog title="Χειροκίνητη εκτέλεση" description="Φόρμα από το σχήμα εισόδου της ροής." action={manualRunAction.bind(null, tenantId, method.id)} submitLabel="Εκτέλεση" trigger={<Button size="sm"><Play aria-hidden /> Εκτέλεση</Button>}>
+                {inputs.map((i) => (
+                  <TextField key={i.key} name={i.key} label={i.label} required={i.required} type={i.type === "number" ? "number" : "text"} hint={`${i.key} · ${i.type}`} />
+                ))}
+                <TextField name="externalRef" label="externalRef" hint="Δικός σας κωδικός για συσχέτιση." />
+              </FormDialog>
+            )}
           </>
         }
       />
@@ -55,30 +59,32 @@ export default async function MethodPage({ params }: PageProps<"/t/[tenantId]/co
         <Section
           title="Ρυθμίσεις"
           actions={
-            <>
-              {method.latestVersion > method.pinnedVersion && (
-                <FormDialog title={`Αναβάθμιση σε v${method.latestVersion}`} description="Οι νέες κλήσεις θα εκτελούν τη νέα έκδοση. Οι κλήσεις σε εξέλιξη τελειώνουν με την παλιά." action={act("upgradeMethod")} submitLabel="Αναβάθμιση" size="sm" trigger={<Button size="sm" variant="outline"><ArrowUpCircle aria-hidden /> Αναβάθμιση</Button>} />
-              )}
-              <FormDialog title="Ρυθμίσεις μεθόδου" action={act("methodSettings")} trigger={<Button size="sm" variant="outline"><Settings2 aria-hidden /> Επεξεργασία</Button>}>
-                <RadioCards name="mode" label="Τρόπος" defaultValue={method.mode} options={[{ value: "async", label: "Ασύγχρονα" }, { value: "sync", label: "Σύγχρονα" }]} />
-                <FormRow>
-                  <TextField name="syncTimeoutSec" label="Αναμονή sync (″)" type="number" defaultValue={60} />
-                  <TextField name="retries" label="Επαναλήψεις" type="number" defaultValue={2} />
-                </FormRow>
-                <SwitchField name="screenshotsAlways" label="Στιγμιότυπα σε κάθε βήμα" hint="Αλλιώς μόνο στο σφάλμα." />
-              </FormDialog>
-            </>
+            manage && (
+              <>
+                {method.latestVersion > method.pinnedVersion && (
+                  <FormDialog title={`Αναβάθμιση σε v${method.latestVersion}`} description="Οι νέες κλήσεις θα εκτελούν τη νέα έκδοση. Οι κλήσεις σε εξέλιξη τελειώνουν με την παλιά." action={upgradeMethodAction.bind(null, tenantId, method.id)} submitLabel="Αναβάθμιση" size="sm" trigger={<Button size="sm" variant="outline"><ArrowUpCircle aria-hidden /> Αναβάθμιση</Button>} />
+                )}
+                <FormDialog title="Ρυθμίσεις μεθόδου" action={methodSettingsAction.bind(null, tenantId, method.id)} trigger={<Button size="sm" variant="outline"><Settings2 aria-hidden /> Επεξεργασία</Button>}>
+                  <RadioCards name="mode" label="Τρόπος" defaultValue={method.mode} options={[{ value: "async", label: "Ασύγχρονα" }, { value: "sync", label: "Σύγχρονα" }]} />
+                  <FormRow>
+                    <TextField name="syncTimeoutSec" label="Αναμονή sync (″)" type="number" defaultValue={method.syncTimeoutSec} />
+                    <TextField name="retries" label="Επαναλήψεις" type="number" defaultValue={Math.max(method.maxAttempts - 1, 0)} />
+                  </FormRow>
+                  <SwitchField name="screenshotsAlways" label="Στιγμιότυπα σε κάθε βήμα" hint="Αλλιώς μόνο στο σφάλμα." defaultChecked={method.screenshotPolicy === "ALWAYS"} />
+                </FormDialog>
+              </>
+            )
           }
         >
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
             <dt className="text-muted-foreground">Ροή</dt>
-            <dd>{wf?.name}</dd>
+            <dd>{method.workflowName}</dd>
             <dt className="text-muted-foreground">Timeout εκτέλεσης</dt>
-            <dd>5′</dd>
-            <dt className="text-muted-foreground">Επαναλήψεις</dt>
-            <dd>2 (εκθετική αναμονή)</dd>
+            <dd>{Math.round(method.runTimeoutSec / 60)}′</dd>
+            <dt className="text-muted-foreground">Προσπάθειες</dt>
+            <dd>{method.maxAttempts}</dd>
             <dt className="text-muted-foreground">Στιγμιότυπα</dt>
-            <dd>Μόνο στο σφάλμα</dd>
+            <dd>{method.screenshotPolicy === "ALWAYS" ? "Σε κάθε βήμα" : "Μόνο στο σφάλμα"}</dd>
           </dl>
         </Section>
         <div className="space-y-4">

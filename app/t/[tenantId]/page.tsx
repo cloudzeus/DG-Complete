@@ -11,7 +11,7 @@ import { Grid, Section } from "@/components/dg/section";
 import { StatusBadge } from "@/components/dg/status-badge";
 import { Button } from "@/components/ui/button";
 import { RUN_STATUS } from "@/lib/labels";
-import { dashboard, methodOf, methods, runs } from "@/lib/mock/data";
+import { dashboardStats, listMethods, listRuns } from "@/lib/data/tenant";
 import { requireTenant } from "@/lib/tenant";
 
 export const metadata: Metadata = { title: "Πίνακας ελέγχου" };
@@ -20,8 +20,13 @@ export default async function TenantDashboard({ params }: PageProps<"/t/[tenantI
   const { tenantId } = await params;
   const { tenant, access } = await requireTenant(tenantId);
   const base = `/t/${tenant.id}`;
-  const failures = runs.filter((r) => r.status === "FAILED").slice(0, 3);
-  const worst = [...methods].sort((a, b) => b.errorRate - a.errorRate).slice(0, 4);
+  const [dashboard, methods, runs, failed] = await Promise.all([
+    dashboardStats(tenant.id),
+    listMethods(tenant.id),
+    listRuns(tenant.id, { take: 6 }),
+    listRuns(tenant.id, { status: "FAILED", take: 3 }),
+  ]);
+  const worst = methods.filter((m) => m.calls7d > 0).sort((a, b) => b.errorRate - a.errorRate).slice(0, 4);
 
   return (
     <>
@@ -36,9 +41,9 @@ export default async function TenantDashboard({ params }: PageProps<"/t/[tenantI
         }
       />
       <Grid cols={4}>
-        <KpiTile label="Εκτελέσεις σήμερα" value={fmtNum(dashboard.today)} hint="από 00:00" icon={Activity} trend={{ value: "+8%", good: true }} />
-        <KpiTile label="Ποσοστό επιτυχίας" value={`${fmtNum(dashboard.successRate, 1)}%`} hint="τελευταίες 24 ώρες" icon={CircleCheck} />
-        <KpiTile label="Μέσος χρόνος" value={`${fmtNum(dashboard.avgSeconds, 1)}″`} hint="ανά εκτέλεση" icon={Timer} />
+        <KpiTile label="Εκτελέσεις σήμερα" value={fmtNum(dashboard.today)} hint="από 00:00" icon={Activity} />
+        <KpiTile label="Ποσοστό επιτυχίας" value={dashboard.successRate === null ? "—" : `${fmtNum(dashboard.successRate, 1)}%`} hint="τελευταίες 24 ώρες" icon={CircleCheck} />
+        <KpiTile label="Μέσος χρόνος" value={dashboard.avgSeconds === null ? "—" : `${fmtNum(dashboard.avgSeconds, 1)}″`} hint="ανά εκτέλεση" icon={Timer} />
         <KpiTile label="Σε ουρά" value={fmtNum(dashboard.queued)} hint="περιμένουν worker" icon={Hourglass} />
       </Grid>
 
@@ -47,6 +52,7 @@ export default async function TenantDashboard({ params }: PageProps<"/t/[tenantI
           <StackedBars label="Εκτελέσεις ανά ημέρα, τελευταίες 14 ημέρες" data={dashboard.series.map((d) => ({ label: d.day, succeeded: d.succeeded, failed: d.failed }))} />
         </Section>
         <Section title="Μέθοδοι με τα περισσότερα σφάλματα" description="Τελευταίες 7 ημέρες">
+          {worst.length === 0 && <p className="text-sm text-muted-foreground">Καμία εκτέλεση μεθόδου τις τελευταίες 7 ημέρες.</p>}
           <ul className="divide-y divide-border/60">
             {worst.map((m) => (
               <li key={m.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
@@ -62,12 +68,13 @@ export default async function TenantDashboard({ params }: PageProps<"/t/[tenantI
       </div>
 
       <Section title="Πρόσφατες αποτυχίες" className="mt-4">
+        {failed.length === 0 && <p className="text-sm text-muted-foreground">Καμία αποτυχία πρόσφατα.</p>}
         <div className="grid gap-4 *:min-w-0 md:grid-cols-3">
-          {failures.map((r) => (
+          {failed.map((r) => (
             <Link key={r.id} href={`${base}/runs/${r.id}`} className="group space-y-2 rounded-lg border border-border/70 p-3 transition-shadow duration-150 hover:shadow-fluent-4">
-              <Screenshot alt={`Στιγμιότυπο σφάλματος στο βήμα ${r.error?.step} — ${methodOf(r.methodId)?.name}`} />
+              <Screenshot alt={`Στιγμιότυπο σφάλματος — ${r.methodName}`} />
               <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-sm font-medium group-hover:text-primary">{methodOf(r.methodId)?.name}</span>
+                <span className="truncate text-sm font-medium group-hover:text-primary">{r.methodName}</span>
                 <StatusBadge status={r.status} map={RUN_STATUS} />
               </div>
               <p className="line-clamp-2 text-xs text-muted-foreground">{r.error?.message}</p>
@@ -80,10 +87,10 @@ export default async function TenantDashboard({ params }: PageProps<"/t/[tenantI
       <Section title="Τελευταίες εκτελέσεις" className="mt-4">
         <DataTable
           caption="Τελευταίες εκτελέσεις"
-          rows={runs.slice(0, 6)}
+          rows={runs}
           rowKey={(r) => r.id}
           columns={[
-            { key: "m", header: "Μέθοδος", cell: (r) => <Link className="font-medium hover:text-primary hover:underline" href={`${base}/runs/${r.id}`}>{methodOf(r.methodId)?.name}</Link> },
+            { key: "m", header: "Μέθοδος", cell: (r) => <Link className="font-medium hover:text-primary hover:underline" href={`${base}/runs/${r.id}`}>{r.methodName}</Link> },
             { key: "s", header: "Κατάσταση", cell: (r) => <StatusBadge status={r.status} map={RUN_STATUS} /> },
             { key: "ref", header: "externalRef", cell: (r) => <span className="font-mono text-xs">{r.externalRef ?? "—"}</span> },
             { key: "t", header: "Ώρα", align: "right", cell: (r) => fmtDateTime(r.createdAt) },

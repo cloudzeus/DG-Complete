@@ -1,35 +1,37 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { KeyRound, Pencil, Plus, Trash2 } from "lucide-react";
+import { KeyRound, MonitorCog, Pencil, Plus, Trash2 } from "lucide-react";
 import { DataTable } from "@/components/dg/data-table";
+import { EmptyState } from "@/components/dg/empty-state";
 import { fmtDateTime, fmtNum } from "@/components/dg/format";
 import { FormDialog } from "@/components/dg/form-dialog";
-import { FormRow, TextField } from "@/components/dg/fields";
+import { FormRow, TextareaField, TextField } from "@/components/dg/fields";
 import { KpiTile } from "@/components/dg/kpi-tile";
 import { LinkTabs } from "@/components/dg/link-tabs";
 import { PageHeader } from "@/components/dg/page-header";
 import { Grid, Section } from "@/components/dg/section";
 import { StatusBadge, Tag } from "@/components/dg/status-badge";
 import { Button } from "@/components/ui/button";
-import { VERSION_STATUS } from "@/lib/labels";
-import { mockSubmit } from "@/lib/mock/actions";
-import { byId, credentials, targets, workflows } from "@/lib/mock/data";
+import { addCredentialAction, deleteCredentialAction, updateTargetAction } from "@/lib/actions/tenant";
+import { getTarget, listCredentials, listWorkflows } from "@/lib/data/tenant";
+import { TARGET_HEALTH, VERSION_STATUS } from "@/lib/labels";
+import { can } from "@/lib/rbac";
 import { requireTenant } from "@/lib/tenant";
-import { HEALTH } from "../shared";
 
 export const metadata: Metadata = { title: "Σύστημα‑στόχος" };
 
 export default async function TargetPage({ params, searchParams }: PageProps<"/t/[tenantId]/targets/[id]">) {
   const { tenantId, id } = await params;
   const { tab = "general" } = await searchParams;
-  await requireTenant(tenantId);
-  const t = byId(targets, id);
+  const { user } = await requireTenant(tenantId);
+  const t = await getTarget(tenantId, id);
   if (!t) notFound();
   const base = `/t/${tenantId}`;
-  const creds = credentials.filter((c) => c.targetId === t.id);
-  const wfs = workflows.filter((w) => w.targetId === t.id);
-  const act = (f: Parameters<typeof mockSubmit>[1]) => mockSubmit.bind(null, tenantId, f);
+  const [creds, wfs] = await Promise.all([listCredentials(tenantId, t.id), listWorkflows(tenantId)]);
+  const workflows = wfs.filter((w) => w.targetId === t.id);
+  const canTargets = can(user, "tenant.targets.manage", tenantId);
+  const canCreds = can(user, "tenant.credentials.manage", tenantId);
 
   return (
     <>
@@ -39,20 +41,15 @@ export default async function TargetPage({ params, searchParams }: PageProps<"/t
         description={<span className="font-mono text-xs">{t.baseUrl}</span>}
         actions={
           <>
-            <StatusBadge status={t.health} map={HEALTH} />
-            <FormDialog
-              title="Επεξεργασία συστήματος"
-              action={act("editTarget")}
-              trigger={
-                <Button variant="outline" size="sm">
-                  <Pencil aria-hidden /> Επεξεργασία
-                </Button>
-              }
-            >
-              <TextField name="name" label="Όνομα" required defaultValue={t.name} />
-              <TextField name="baseUrl" label="Διεύθυνση" required type="url" defaultValue={t.baseUrl} />
-              <TextField name="maxConcurrency" label="Ταυτόχρονες εκτελέσεις" required type="number" defaultValue={t.maxConcurrency} />
-            </FormDialog>
+            <StatusBadge status={t.health} map={TARGET_HEALTH} />
+            {canTargets && (
+              <FormDialog title="Επεξεργασία συστήματος" action={updateTargetAction.bind(null, tenantId, t.id)} trigger={<Button variant="outline" size="sm"><Pencil aria-hidden /> Επεξεργασία</Button>}>
+                <TextField name="name" label="Όνομα" required defaultValue={t.name} />
+                <TextField name="baseUrl" label="Διεύθυνση" required type="url" defaultValue={t.baseUrl} />
+                <TextareaField name="origins" label="Επιτρεπτά origins" rows={3} mono defaultValue={t.origins.join("\n")} />
+                <TextField name="maxConcurrency" label="Ταυτόχρονες εκτελέσεις" required type="number" defaultValue={t.maxConcurrency} />
+              </FormDialog>
+            )}
           </>
         }
       />
@@ -62,7 +59,7 @@ export default async function TargetPage({ params, searchParams }: PageProps<"/t
         tabs={[
           { key: "general", label: "Γενικά" },
           { key: "credentials", label: "Διαπιστευτήρια", count: creds.length },
-          { key: "workflows", label: "Ροές", count: wfs.length },
+          { key: "workflows", label: "Ροές", count: workflows.length },
           { key: "health", label: "Υγεία" },
         ]}
       />
@@ -86,14 +83,18 @@ export default async function TargetPage({ params, searchParams }: PageProps<"/t
             </dl>
           </Section>
           <Section title="Ανίχνευση σφαλμάτων" description="Τι θεωρείται μήνυμα σφάλματος του συστήματος μετά από κάθε υποβολή">
-            <ul className="space-y-2 text-sm">
-              {[".alert-danger", "[role=alert]", 'text "Μη έγκυρ"'].map((d) => (
-                <li key={d} className="flex items-center justify-between rounded-sm border border-border/70 px-3 py-2">
-                  <code className="font-mono text-xs">{d}</code>
-                  <Tag tone="danger">σφάλμα δεδομένων</Tag>
-                </li>
-              ))}
-            </ul>
+            {t.errorDetectors.length ? (
+              <ul className="space-y-2 text-sm">
+                {t.errorDetectors.map((d, i) => (
+                  <li key={i} className="flex items-center justify-between gap-2 rounded-sm border border-border/70 px-3 py-2">
+                    <code className="min-w-0 font-mono text-xs break-all">{d.css}</code>
+                    <Tag tone={d.kind === "success" ? "success" : "danger"}>{d.name ?? d.kind}</Tag>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">Δεν έχουν οριστεί· γίνεται μόνο ο έλεγχος των βημάτων.</p>
+            )}
           </Section>
         </Grid>
       )}
@@ -103,28 +104,22 @@ export default async function TargetPage({ params, searchParams }: PageProps<"/t
           title="Διαπιστευτήρια"
           description="Αποθηκεύονται κρυπτογραφημένα· αποκρυπτογραφούνται μόνο από τον worker. Οι κωδικοί δεν εμφανίζονται ποτέ."
           actions={
-            <FormDialog
-              title="Νέο διαπιστευτήριο"
-              description={`Για το σύστημα ${t.name}`}
-              action={act("addCredential")}
-              trigger={
-                <Button size="sm">
-                  <Plus aria-hidden /> Προσθήκη
-                </Button>
-              }
-            >
-              <TextField name="label" label="Περιγραφή" required placeholder="π.χ. Λογιστήριο — κύριος" />
-              <FormRow>
-                <TextField name="username" label="Όνομα χρήστη" required autoComplete="off" />
-                <TextField name="password" label="Κωδικός" required type="password" autoComplete="new-password" />
-              </FormRow>
-              <TextField name="totpSecret" label="Μυστικό TOTP (προαιρετικό)" type="password" autoComplete="off" hint="Για συστήματα με κωδικό μίας χρήσης από εφαρμογή." />
-            </FormDialog>
+            canCreds && (
+              <FormDialog title="Νέο διαπιστευτήριο" description={`Για το σύστημα ${t.name}`} action={addCredentialAction.bind(null, tenantId, t.id)} trigger={<Button size="sm"><Plus aria-hidden /> Προσθήκη</Button>}>
+                <TextField name="label" label="Περιγραφή" required placeholder="π.χ. Λογιστήριο — κύριος" />
+                <FormRow>
+                  <TextField name="username" label="Όνομα χρήστη" required autoComplete="off" />
+                  <TextField name="password" label="Κωδικός" required type="password" autoComplete="new-password" />
+                </FormRow>
+                <TextField name="totpSecret" label="Μυστικό TOTP (προαιρετικό)" type="password" autoComplete="off" hint="Για συστήματα με κωδικό μίας χρήσης από εφαρμογή." />
+              </FormDialog>
+            )
           }
         >
           <DataTable
             rows={creds}
             rowKey={(c) => c.id}
+            empty={<EmptyState icon={KeyRound} title="Κανένα διαπιστευτήριο" description="Οι ροές που απαιτούν σύνδεση χρειάζονται τουλάχιστον ένα." />}
             columns={[
               { key: "l", header: "Περιγραφή", cell: (c) => <span className="inline-flex items-center gap-2 font-medium"><KeyRound aria-hidden className="size-4 text-muted-foreground" />{c.label}</span> },
               { key: "u", header: "Χρήστης", cell: (c) => <span className="font-mono text-xs">{c.username}</span> },
@@ -134,21 +129,10 @@ export default async function TargetPage({ params, searchParams }: PageProps<"/t
                 key: "x",
                 header: "",
                 align: "right",
-                cell: (c) => (
-                  <FormDialog
-                    title="Διαγραφή διαπιστευτηρίου"
-                    description={`Το «${c.label}» θα διαγραφεί. Οι ροές που το χρησιμοποιούν θα αποτυγχάνουν μέχρι να οριστεί άλλο.`}
-                    action={act("cancel")}
-                    destructive
-                    submitLabel="Διαγραφή"
-                    size="sm"
-                    trigger={
-                      <Button variant="ghost" size="icon" className="size-8 text-danger-500" aria-label={`Διαγραφή ${c.label}`}>
-                        <Trash2 aria-hidden />
-                      </Button>
-                    }
-                  />
-                ),
+                cell: (c) =>
+                  canCreds && (
+                    <FormDialog title="Διαγραφή διαπιστευτηρίου" description={`Το «${c.label}» θα διαγραφεί. Οι ροές που το χρησιμοποιούν θα αποτυγχάνουν μέχρι να οριστεί άλλο.`} action={deleteCredentialAction.bind(null, tenantId, c.id)} destructive submitLabel="Διαγραφή" size="sm" trigger={<Button variant="ghost" size="icon" className="size-8 text-danger-500" aria-label={`Διαγραφή ${c.label}`}><Trash2 aria-hidden /></Button>} />
+                  ),
               },
             ]}
           />
@@ -158,8 +142,9 @@ export default async function TargetPage({ params, searchParams }: PageProps<"/t
       {tab === "workflows" && (
         <Section title="Ροές του συστήματος">
           <DataTable
-            rows={wfs}
+            rows={workflows}
             rowKey={(w) => w.id}
+            empty={<EmptyState icon={MonitorCog} title="Καμία ροή" description="Δημιουργήστε ροή από μια καταγραφή." />}
             columns={[
               { key: "n", header: "Ροή", cell: (w) => <Link className="font-medium hover:text-primary hover:underline" href={`${base}/workflows/${w.id}`}>{w.name}</Link> },
               { key: "v", header: "Έκδοση", cell: (w) => `v${w.version}` },
@@ -172,9 +157,9 @@ export default async function TargetPage({ params, searchParams }: PageProps<"/t
 
       {tab === "health" && (
         <Grid cols={3}>
-          <KpiTile label="Επιτυχία 7 ημ." value={`${fmtNum(t.successRate, 1)}%`} />
-          <KpiTile label="Εναλλακτικοί επιλογείς" value="3,1%" hint="των βημάτων χρησιμοποίησαν fallback" />
-          <KpiTile label="Μέσος χρόνος απόκρισης" value="1,4″" hint="ανά πλοήγηση" />
+          <KpiTile label="Επιτυχία 7 ημ." value={t.successRate === null ? "—" : `${fmtNum(t.successRate, 1)}%`} />
+          <KpiTile label="Ροές" value={fmtNum(t.workflows)} />
+          <KpiTile label="Διαπιστευτήρια" value={fmtNum(t.credentials)} />
         </Grid>
       )}
     </>

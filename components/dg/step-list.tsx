@@ -1,6 +1,19 @@
 import { CircleCheck, CircleDashed, CircleMinus, CircleX, GripVertical } from "lucide-react";
 import { STEP_TYPES } from "@/lib/labels";
-import type { RunStep, Step } from "@/lib/mock/data";
+import type { StepDef } from "@/lib/data/tenant";
+
+export type Step = { id: string; no: string; type: string; label: string; locator?: string; value?: string; optional?: boolean; children?: Step[] };
+export type RunStep = { no: string; label: string; status: "ok" | "failed" | "skipped" | "pending"; durationMs: number; fallback?: boolean };
+
+const show = (v: unknown) => (v === undefined || v === null ? undefined : typeof v === "string" ? v : JSON.stringify(v));
+
+/** DSL steps → numbered display steps (01, 02, 05a …). */
+export function numberSteps(steps: StepDef[] = [], prefix = ""): Step[] {
+  return steps.map((s, i) => {
+    const no = prefix ? `${prefix}${String.fromCharCode(97 + i)}` : String(i + 1).padStart(2, "0");
+    return { id: s.id, no, type: s.type, label: s.label ?? s.type, locator: show(s.locator), value: show(s.value ?? s.url), optional: s.optional, children: s.steps ? numberSteps(s.steps, no) : undefined };
+  });
+}
 import { cn } from "@/lib/utils";
 
 // Workflow steps (editor «Λίστα») and run timeline — both server-rendered.

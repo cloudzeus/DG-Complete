@@ -8,8 +8,8 @@ import { PageHeader } from "@/components/dg/page-header";
 import { Section } from "@/components/dg/section";
 import { Tag } from "@/components/dg/status-badge";
 import { Button } from "@/components/ui/button";
-import { mockSubmit } from "@/lib/mock/actions";
-import { byId, methods, workflows } from "@/lib/mock/data";
+import { newJobAction } from "@/lib/actions/tenant";
+import { getWorkflow, listMethods } from "@/lib/data/tenant";
 import { requireTenant } from "@/lib/tenant";
 import { cn } from "@/lib/utils";
 
@@ -29,9 +29,20 @@ export default async function NewJobPage({ params, searchParams }: PageProps<"/t
   await requireTenant(tenantId);
   const base = `/t/${tenantId}/jobs/new`;
   const step = Math.min(Math.max(Number(sp.step ?? 1) || 1, 1), 4);
+  const methods = (await listMethods(tenantId)).filter((m) => m.status === "ACTIVE");
+  if (!methods.length) {
+    return (
+      <>
+        <PageHeader crumbs={[{ href: `/t/${tenantId}/jobs`, label: "Μαζικές εργασίες" }]} title="Νέα μαζική εργασία" />
+        <Section>
+          <p className="text-sm text-muted-foreground">Χρειάζεται πρώτα μια ενεργή μέθοδος σε κάποια συλλογή.</p>
+        </Section>
+      </>
+    );
+  }
   const methodId = typeof sp.method === "string" ? sp.method : methods[0].id;
-  const method = byId(methods, methodId) ?? methods[0];
-  const wf = byId(workflows, method.workflowId);
+  const method = methods.find((m) => m.id === methodId) ?? methods[0];
+  const wf = await getWorkflow(tenantId, method.workflowId);
   const at = (s: number) => `${base}?${new URLSearchParams({ step: String(s), method: method.id })}`;
 
   return (
@@ -127,7 +138,7 @@ export default async function NewJobPage({ params, searchParams }: PageProps<"/t
           title="Προεπισκόπηση & έλεγχος"
           description="1.200 γραμμές · 1.188 έγκυρες · 12 με σφάλματα (δεν θα εκτελεστούν)."
           actions={
-            <FormDialog title="Εκκίνηση μαζικής εργασίας" description={`${method.name} για 1.188 γραμμές. Θα χρεωθούν έως 1.188 εκτελέσεις.`} action={mockSubmit.bind(null, tenantId, "newJob")} submitLabel="Εκκίνηση" trigger={<Button size="sm">Εκκίνηση</Button>}>
+            <FormDialog title="Εκκίνηση μαζικής εργασίας" description={`${method.name} για 1.188 γραμμές. Θα χρεωθούν έως 1.188 εκτελέσεις.`} action={newJobAction.bind(null, tenantId)} submitLabel="Εκκίνηση" trigger={<Button size="sm">Εκκίνηση</Button>}>
               <Hidden name="methodId" value={method.id} />
               <TextField name="name" label="Όνομα εργασίας" required defaultValue="Πελάτες Οκτωβρίου" />
               <SwitchField name="stopOnErrorRate" label="Διακοπή αν τα σφάλματα ξεπεράσουν το 20%" defaultChecked />

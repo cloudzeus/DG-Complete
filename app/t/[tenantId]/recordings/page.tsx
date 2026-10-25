@@ -9,22 +9,19 @@ import { PageHeader } from "@/components/dg/page-header";
 import { Section } from "@/components/dg/section";
 import { StatusBadge } from "@/components/dg/status-badge";
 import { Button } from "@/components/ui/button";
-import { mockSubmit } from "@/lib/mock/actions";
-import { recordings, targetName, targets } from "@/lib/mock/data";
+import { newRecordingAction } from "@/lib/actions/tenant";
+import { listRecordings, targetOptions } from "@/lib/data/tenant";
+import { RECORDING_STATUS } from "@/lib/labels";
+import { EmptyState } from "@/components/dg/empty-state";
 import { requireTenant } from "@/lib/tenant";
 
 export const metadata: Metadata = { title: "Καταγραφές" };
-
-const STATUS = {
-  RECORDING: { label: "Σε εξέλιξη", tone: "info" as const },
-  COMPLETED: { label: "Ολοκληρώθηκε", tone: "success" as const },
-  CONVERTED: { label: "Έγινε ροή", tone: "muted" as const },
-};
 
 export default async function RecordingsPage({ params }: PageProps<"/t/[tenantId]/recordings">) {
   const { tenantId } = await params;
   await requireTenant(tenantId);
   const base = `/t/${tenantId}`;
+  const [recordings, targets] = await Promise.all([listRecordings(tenantId), targetOptions(tenantId)]);
 
   return (
     <>
@@ -36,7 +33,7 @@ export default async function RecordingsPage({ params }: PageProps<"/t/[tenantId
           <FormDialog
             title="Νέα καταγραφή"
             description="Δημιουργεί κωδικό σύνδεσης για το extension. Η καταγραφή γίνεται στον δικό σας browser."
-            action={mockSubmit.bind(null, tenantId, "newRecording")}
+            action={newRecordingAction.bind(null, tenantId)}
             submitLabel="Δημιουργία κωδικού"
             trigger={
               <Button size="sm">
@@ -45,7 +42,7 @@ export default async function RecordingsPage({ params }: PageProps<"/t/[tenantId
             }
           >
             <TextField name="name" label="Όνομα" required placeholder="π.χ. Καταχώριση πελάτη" />
-            <SelectField name="targetId" label="Σύστημα‑στόχος" required placeholder="Επιλέξτε…" options={targets.map((t) => ({ value: t.id, label: t.name }))} />
+            <SelectField name="targetId" label="Σύστημα‑στόχος" required placeholder="Επιλέξτε…" options={targets} />
             <ol className="list-decimal space-y-1 rounded-lg bg-muted/50 p-3 pl-7 text-sm text-muted-foreground">
               <li>Εγκαταστήστε το extension «DG Complete Recorder» (Chrome / Edge).</li>
               <li>Ανοίξτε το και πληκτρολογήστε τον κωδικό σύνδεσης που θα εμφανιστεί.</li>
@@ -65,10 +62,11 @@ export default async function RecordingsPage({ params }: PageProps<"/t/[tenantId
           caption="Καταγραφές"
           rows={recordings}
           rowKey={(r) => r.id}
+          empty={<EmptyState icon={Disc3} title="Καμία καταγραφή" description="Ξεκινήστε μια καταγραφή και κάντε την καταχώριση κανονικά στον browser σας." />}
           columns={[
             { key: "n", header: "Καταγραφή", cell: (r) => <span className="inline-flex items-center gap-2 font-medium"><Disc3 aria-hidden className="size-4 text-muted-foreground" />{r.name}</span> },
-            { key: "t", header: "Σύστημα", cell: (r) => targetName(r.targetId) },
-            { key: "s", header: "Κατάσταση", cell: (r) => <StatusBadge status={r.status} map={STATUS} /> },
+            { key: "t", header: "Σύστημα", cell: (r) => r.target },
+            { key: "s", header: "Κατάσταση", cell: (r) => <StatusBadge status={r.status} map={RECORDING_STATUS} /> },
             { key: "st", header: "Βήματα", align: "right", cell: (r) => r.steps },
             { key: "by", header: "Από", cell: (r) => r.createdBy },
             { key: "at", header: "Ημερομηνία", align: "right", cell: (r) => fmtDateTime(r.createdAt) },
@@ -77,9 +75,13 @@ export default async function RecordingsPage({ params }: PageProps<"/t/[tenantId
               header: "",
               align: "right",
               cell: (r) =>
-                r.status === "COMPLETED" ? (
+                r.workflowId ? (
+                  <Button asChild size="sm" variant="ghost">
+                    <Link href={`${base}/workflows/${r.workflowId}`}>Άνοιγμα ροής</Link>
+                  </Button>
+                ) : r.status === "FINISHED" || r.status === "VERIFIED" ? (
                   <Button asChild size="sm" variant="outline">
-                    <Link href={`${base}/workflows/wf_customer`}>Μετατροπή σε ροή</Link>
+                    <Link href={`${base}/workflows?from=${r.id}`}>Μετατροπή σε ροή</Link>
                   </Button>
                 ) : null,
             },

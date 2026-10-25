@@ -7,8 +7,9 @@ import { TextareaField, TextField } from "@/components/dg/fields";
 import { PageHeader } from "@/components/dg/page-header";
 import { Grid } from "@/components/dg/section";
 import { Button } from "@/components/ui/button";
-import { mockSubmit } from "@/lib/mock/actions";
-import { collections } from "@/lib/mock/data";
+import { newCollectionAction } from "@/lib/actions/tenant";
+import { listCollections } from "@/lib/data/tenant";
+import { EmptyState } from "@/components/dg/empty-state";
 import { requireTenant } from "@/lib/tenant";
 
 export const metadata: Metadata = { title: "Συλλογές μεθόδων" };
@@ -17,6 +18,7 @@ export default async function CollectionsPage({ params }: PageProps<"/t/[tenantI
   const { tenantId } = await params;
   await requireTenant(tenantId);
   const base = `/t/${tenantId}/collections`;
+  const collections = await listCollections(tenantId);
   return (
     <>
       <PageHeader
@@ -24,12 +26,13 @@ export default async function CollectionsPage({ params }: PageProps<"/t/[tenantI
         title="Συλλογές μεθόδων"
         description="Οι ροές εκτίθενται ως μέθοδοι API, οργανωμένες σε συλλογές με δική τους τεκμηρίωση."
         actions={
-          <FormDialog title="Νέα συλλογή" action={mockSubmit.bind(null, tenantId, "newCollection")} submitLabel="Δημιουργία" trigger={<Button size="sm"><Plus aria-hidden /> Νέα συλλογή</Button>}>
+          <FormDialog title="Νέα συλλογή" action={newCollectionAction.bind(null, tenantId)} submitLabel="Δημιουργία" trigger={<Button size="sm"><Plus aria-hidden /> Νέα συλλογή</Button>}>
             <TextField name="name" label="Όνομα" required />
             <TextareaField name="description" label="Περιγραφή" rows={3} />
           </FormDialog>
         }
       />
+      {collections.length === 0 && <EmptyState icon={Boxes} title="Καμία συλλογή" description="Οι συλλογές ομαδοποιούν μεθόδους API με κοινή τεκμηρίωση και κλειδιά." />}
       <Grid cols={3}>
         {collections.map((c) => (
           <Link key={c.id} href={`${base}/${c.id}`} className="group rounded-lg border border-border/70 bg-card p-4 shadow-fluent-2 transition-shadow duration-150 hover:shadow-fluent-8">

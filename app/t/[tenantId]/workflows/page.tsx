@@ -11,8 +11,10 @@ import { Section } from "@/components/dg/section";
 import { StatusBadge } from "@/components/dg/status-badge";
 import { Button } from "@/components/ui/button";
 import { VERSION_STATUS, type VersionStatus } from "@/lib/labels";
-import { mockSubmit } from "@/lib/mock/actions";
-import { recordings, targetName, targets, workflows } from "@/lib/mock/data";
+import { newWorkflowAction } from "@/lib/actions/tenant";
+import { listRecordings, listWorkflows, targetOptions } from "@/lib/data/tenant";
+import { EmptyState } from "@/components/dg/empty-state";
+import { Waypoints } from "lucide-react";
 import { requireTenant } from "@/lib/tenant";
 
 export const metadata: Metadata = { title: "Ροές" };
@@ -24,7 +26,9 @@ export default async function WorkflowsPage({ params, searchParams }: PageProps<
   const base = `/t/${tenantId}`;
   const q = typeof sp.q === "string" ? sp.q : "";
   const status = typeof sp.status === "string" ? sp.status : "";
-  const rows = workflows.filter((w) => (!q || w.name.toLowerCase().includes(q.toLowerCase())) && (!status || w.status === status));
+  const from = typeof sp.from === "string" ? sp.from : undefined;
+  const [rows, targets, recordings] = await Promise.all([listWorkflows(tenantId, { q, status }), targetOptions(tenantId), listRecordings(tenantId)]);
+  const convertible = recordings.filter((r) => !r.workflowId && r.status !== "RECORDING" && r.status !== "DISCARDED");
 
   return (
     <>
@@ -35,7 +39,7 @@ export default async function WorkflowsPage({ params, searchParams }: PageProps<
         actions={
           <FormDialog
             title="Νέα ροή"
-            action={mockSubmit.bind(null, tenantId, "newWorkflow")}
+            action={newWorkflowAction.bind(null, tenantId)}
             submitLabel="Δημιουργία"
             trigger={
               <Button size="sm">
@@ -44,8 +48,8 @@ export default async function WorkflowsPage({ params, searchParams }: PageProps<
             }
           >
             <TextField name="name" label="Όνομα" required />
-            <SelectField name="targetId" label="Σύστημα‑στόχος" required placeholder="Επιλέξτε…" options={targets.map((t) => ({ value: t.id, label: t.name }))} />
-            <SelectField name="recordingId" label="Από καταγραφή (προαιρετικό)" placeholder="Κενή ροή" options={recordings.filter((r) => r.status !== "RECORDING").map((r) => ({ value: r.id, label: r.name }))} />
+            <SelectField name="targetId" label="Σύστημα‑στόχος" required placeholder="Επιλέξτε…" options={targets} />
+            <SelectField name="recordingId" label="Από καταγραφή (προαιρετικό)" placeholder="Κενή ροή" defaultValue={from} options={convertible.map((r) => ({ value: r.id, label: `${r.name} · ${r.target}` }))} />
           </FormDialog>
         }
       />
@@ -59,6 +63,7 @@ export default async function WorkflowsPage({ params, searchParams }: PageProps<
           caption="Ροές"
           rows={rows}
           rowKey={(w) => w.id}
+          empty={<EmptyState icon={Waypoints} title="Καμία ροή" description="Δημιουργήστε ροή από μια καταγραφή ή κενή." />}
           columns={[
             {
               key: "n",
@@ -66,7 +71,7 @@ export default async function WorkflowsPage({ params, searchParams }: PageProps<
               cell: (w) => (
                 <Link href={`${base}/workflows/${w.id}`} className="group block">
                   <span className="block font-medium group-hover:text-primary group-hover:underline">{w.name}</span>
-                  <span className="block text-2xs text-muted-foreground">{targetName(w.targetId)}</span>
+                  <span className="block text-2xs text-muted-foreground">{w.target}</span>
                 </Link>
               ),
             },

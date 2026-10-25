@@ -5,7 +5,7 @@ import { TenantSwitcher, UserMenu } from "@/components/tenant/topbar-menus";
 import { NAV } from "@/components/tenant/nav";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { notifications, runs, workflows } from "@/lib/mock/data";
+import { countAttention, countPendingApprovals, unreadNotifications } from "@/lib/data/tenant";
 import { requireTenant, tenantsOf } from "@/lib/tenant";
 
 // Tenant area shell (docs/09 §2): mica sidebar, acrylic topbar, white cards on the canvas.
@@ -17,11 +17,13 @@ export default async function TenantLayout({ children, params }: LayoutProps<"/t
     label: g.label,
     items: g.items.filter((i) => (!i.adminOnly || isAdmin) && (!i.service || tenant.isDemo || access.services.has(i.service as never))),
   })).filter((g) => g.items.length);
-  const badges = {
-    attention: runs.filter((r) => r.status === "NEEDS_ATTENTION").length,
-    approvals: isAdmin ? workflows.filter((w) => w.status === "PENDING_APPROVAL").length : 0,
-  };
-  const tenants = await tenantsOf(user);
+  const [attention, approvals, unread, tenants] = await Promise.all([
+    countAttention(tenant.id),
+    isAdmin ? countPendingApprovals(tenant.id) : 0,
+    unreadNotifications(tenant.id, user.id),
+    tenantsOf(user),
+  ]);
+  const badges = { attention, approvals };
   const base = `/t/${tenant.id}`;
 
   return (
@@ -48,10 +50,10 @@ export default async function TenantLayout({ children, params }: LayoutProps<"/t
             <Link
               href={`${base}/notifications`}
               className="relative grid size-8 place-items-center rounded-sm text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
-              aria-label={`Ειδοποιήσεις (${notifications.length} νέες)`}
+              aria-label={`Ειδοποιήσεις (${unread} νέες)`}
             >
               <Bell aria-hidden className="size-4" />
-              {notifications.length > 0 && <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-dg-red-500 ring-2 ring-card" />}
+              {unread > 0 && <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-dg-red-500 ring-2 ring-card" />}
             </Link>
             <UserMenu name={user.name} email={user.email} staff={staff} />
           </div>

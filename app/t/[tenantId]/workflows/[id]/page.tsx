@@ -10,30 +10,49 @@ import { PageHeader } from "@/components/dg/page-header";
 import { Screenshot } from "@/components/dg/screenshot";
 import { Section } from "@/components/dg/section";
 import { StatusBadge, Tag } from "@/components/dg/status-badge";
-import { StepList } from "@/components/dg/step-list";
+import { numberSteps, StepList, type Step } from "@/components/dg/step-list";
 import { Button } from "@/components/ui/button";
 import { STEP_TYPES, VERSION_STATUS } from "@/lib/labels";
-import { mockSubmit, type MockForm } from "@/lib/mock/actions";
-import { byId, targetName, workflows, type Step } from "@/lib/mock/data";
+import { addInputAction, addStepAction, editStepAction, publishVersionAction, submitVersionAction, testRunAction } from "@/lib/actions/tenant";
+import { getWorkflow } from "@/lib/data/tenant";
+import { can } from "@/lib/rbac";
 import { requireTenant } from "@/lib/tenant";
+import type { StepDef } from "@/lib/data/tenant";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Editor ροής" };
 
 const flat = (steps: Step[]): Step[] => steps.flatMap((s) => [s, ...flat(s.children ?? [])]);
+const flatDefs = (steps: StepDef[]): StepDef[] => steps.flatMap((s) => [s, ...flatDefs(s.steps ?? [])]);
+
+/** Light publish checks (full validateForPublish comes with lib/dsl, P05). */
+function lint(steps: StepDef[], inputs: { key: string }[]) {
+  const out: string[] = [];
+  const all = flatDefs(steps);
+  if (!all.length) out.push("Η ροή δεν έχει βήματα.");
+  for (const [i, s] of all.entries()) {
+    if (["fill", "click", "select", "check", "extract", "assert"].includes(s.type) && !s.locator) out.push(`Το βήμα «${s.label ?? i + 1}» δεν έχει στοιχείο.`);
+    for (const m of JSON.stringify(s.value ?? "").matchAll(/\{\{\s*input\.(\w+)/g)) if (!inputs.some((x) => x.key === m[1])) out.push(`Το βήμα «${s.label ?? i + 1}» χρησιμοποιεί άγνωστη είσοδο «${m[1]}».`);
+  }
+  return out;
+}
 const STEP_OPTIONS = Object.entries(STEP_TYPES).map(([value, label]) => ({ value, label }));
 
 export default async function WorkflowEditor({ params, searchParams }: PageProps<"/t/[tenantId]/workflows/[id]">) {
   const { tenantId, id } = await params;
   const sp = await searchParams;
-  await requireTenant(tenantId);
-  const wf = byId(workflows, id);
-  if (!wf) notFound();
+  const { user } = await requireTenant(tenantId);
+  const wf = await getWorkflow(tenantId, id);
+  if (!wf || !wf.latest) notFound();
+  const latest = wf.latest;
+  const steps = numberSteps(latest.definition.steps);
+  const canEdit = can(user, "tenant.workflows.edit", tenantId);
+  const canApprove = can(user, "tenant.workflows.approve", tenantId);
   const base = `/t/${tenantId}/workflows/${wf.id}`;
   const view = sp.view === "canvas" || sp.view === "json" ? sp.view : "list";
-  const all = flat(wf.steps);
+  const all = flat(steps);
   const selected = all.find((s) => s.id === sp.step) ?? all[1] ?? all[0];
-  const act = (f: MockForm) => mockSubmit.bind(null, tenantId, f);
+  const warnings = lint(latest.definition.steps ?? [], wf.inputs);
   const href = (q: Record<string, string>) => `${base}?${new URLSearchParams({ view, ...(selected ? { step: selected.id } : {}), ...q })}`;
 
   return (
@@ -43,9 +62,9 @@ export default async function WorkflowEditor({ params, searchParams }: PageProps
         title={wf.name}
         description={
           <span className="inline-flex flex-wrap items-center gap-2">
-            <span className="tabular-nums">v{wf.version}</span>
-            <StatusBadge status={wf.status} map={VERSION_STATUS} />
-            <span>· {targetName(wf.targetId)} · αποθηκεύτηκε {fmtDateTime(wf.updatedAt)}</span>
+            <span className="tabular-nums">v{latest.versionNo}</span>
+            <StatusBadge status={latest.status} map={VERSION_STATUS} />
+            <span>· {wf.target.name} · αποθηκεύτηκε {fmtDateTime(latest.updatedAt)}</span>
           </span>
         }
         actions={
@@ -67,21 +86,23 @@ export default async function WorkflowEditor({ params, searchParams }: PageProps
                 <History aria-hidden /> Εκδόσεις
               </Link>
             </Button>
-            <FormDialog title="Δοκιμαστική εκτέλεση" description="Εκτελείται στο σύστημα‑στόχο με δείγμα εισόδου· δεν χρεώνεται." action={act("manualRun")} submitLabel="Εκτέλεση" trigger={<Button variant="outline" size="sm"><FlaskConical aria-hidden /> Δοκιμή</Button>}>
+            <FormDialog title="Δοκιμαστική εκτέλεση" description="Εκτελείται στο σύστημα‑στόχο με δείγμα εισόδου· δεν χρεώνεται." action={testRunAction.bind(null, tenantId, latest.id)} submitLabel="Εκτέλεση" trigger={<Button variant="outline" size="sm"><FlaskConical aria-hidden /> Δοκιμή</Button>}>
               {wf.inputs.map((i) => (
                 <TextField key={i.key} name={i.key} label={i.label} required={i.required} hint={i.type} />
               ))}
             </FormDialog>
-            <FormDialog title="Υποβολή για έγκριση" description="Ο διαχειριστής θα δει το diff και την τελευταία δοκιμή." action={act("submitApproval")} submitLabel="Υποβολή" trigger={<Button size="sm"><Send aria-hidden /> Για έγκριση</Button>}>
-              <TextareaField name="note" label="Σημείωση για τον εγκρίνοντα" rows={3} />
-            </FormDialog>
+            {latest.status === "DRAFT" && canEdit && (
+              <FormDialog title="Υποβολή για έγκριση" description="Ο διαχειριστής θα δει το diff και την τελευταία δοκιμή." action={submitVersionAction.bind(null, tenantId, latest.id)} submitLabel="Υποβολή" trigger={<Button size="sm"><Send aria-hidden /> Για έγκριση</Button>}>
+                <TextareaField name="note" label="Σημείωση για τον εγκρίνοντα" rows={3} />
+              </FormDialog>
+            )}
           </>
         }
       />
 
       {view === "json" ? (
         <Section title="DSL (μόνο ανάγνωση)">
-          <JsonViewer value={{ version: wf.version, inputs: wf.inputs, outputs: wf.outputs, steps: wf.steps }} />
+          <JsonViewer value={latest.definition} />
         </Section>
       ) : (
         <div className="grid gap-4 *:min-w-0 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] xl:grid-cols-[minmax(0,17rem)_minmax(0,1fr)_minmax(0,16rem)]">
@@ -89,7 +110,7 @@ export default async function WorkflowEditor({ params, searchParams }: PageProps
             title="Βήματα"
             bodyClassName="p-2 sm:p-3"
             actions={
-              <FormDialog title="Νέο βήμα" action={act("addStep")} submitLabel="Προσθήκη" size="sm" trigger={<Button size="icon" variant="ghost" className="size-8" aria-label="Νέο βήμα"><Plus aria-hidden /></Button>}>
+              canEdit && <FormDialog title="Νέο βήμα" description={latest.status === "DRAFT" ? undefined : "Οι αλλαγές γίνονται σε νέα πρόχειρη έκδοση."} action={addStepAction.bind(null, tenantId, wf.id)} submitLabel="Προσθήκη" size="sm" trigger={<Button size="icon" variant="ghost" className="size-8" aria-label="Νέο βήμα"><Plus aria-hidden /></Button>}>
                 <SelectField name="type" label="Τύπος" required options={STEP_OPTIONS} />
                 <TextField name="label" label="Περιγραφή" required />
               </FormDialog>
@@ -118,7 +139,8 @@ export default async function WorkflowEditor({ params, searchParams }: PageProps
               </ol>
             ) : (
               <nav aria-label="Επιλογή βήματος">
-                <StepList steps={wf.steps} selected={selected?.id} />
+                {steps.length === 0 && <p className="px-2 py-3 text-sm text-muted-foreground">Κανένα βήμα ακόμα.</p>}
+                <StepList steps={steps} selected={selected?.id} />
                 <ul className="sr-only">
                   {all.map((s) => (
                     <li key={s.id}>
@@ -142,7 +164,7 @@ export default async function WorkflowEditor({ params, searchParams }: PageProps
               title={`Βήμα ${selected.no} · ${STEP_TYPES[selected.type]}`}
               description={selected.label}
               actions={
-                <FormDialog title={`Επεξεργασία βήματος ${selected.no}`} action={act("addStep")} trigger={<Button variant="outline" size="sm"><Pencil aria-hidden /> Επεξεργασία</Button>}>
+                canEdit && <FormDialog title={`Επεξεργασία βήματος ${selected.no}`} description={latest.status === "DRAFT" ? undefined : "Η αλλαγή δημιουργεί νέα πρόχειρη έκδοση."} action={editStepAction.bind(null, tenantId, wf.id, selected.id)} trigger={<Button variant="outline" size="sm"><Pencil aria-hidden /> Επεξεργασία</Button>}>
                   <FormRow>
                     <SelectField name="type" label="Τύπος" required defaultValue={selected.type} options={STEP_OPTIONS} />
                     <TextField name="timeout" label="Timeout (″)" type="number" defaultValue={15} />
@@ -159,14 +181,14 @@ export default async function WorkflowEditor({ params, searchParams }: PageProps
                 <dt className="text-muted-foreground">Στοιχείο</dt>
                 <dd className="min-w-0">
                   <code className="font-mono text-xs break-all">{selected.locator ?? "—"}</code>
-                  {selected.locator && <span className="mt-1 block text-xs text-muted-foreground">εναλλακτικά: css input[name=afm]</span>}
+
                 </dd>
                 <dt className="text-muted-foreground">Τιμή</dt>
                 <dd>
                   <code className="font-mono text-xs break-all">{selected.value ?? "—"}</code>
                 </dd>
                 <dt className="text-muted-foreground">Timeout</dt>
-                <dd>15″</dd>
+                <dd>{flatDefs(latest.definition.steps ?? []).find((d) => d.id === selected.id)?.timeoutMs ? `${(flatDefs(latest.definition.steps ?? []).find((d) => d.id === selected.id)!.timeoutMs ?? 0) / 1000}″` : "Προεπιλογή"}</dd>
                 <dt className="text-muted-foreground">Επιλογές</dt>
                 <dd className="flex flex-wrap gap-1">
                   {selected.optional ? <Tag tone="info">Προαιρετικό</Tag> : <Tag>Υποχρεωτικό</Tag>}
@@ -186,7 +208,7 @@ export default async function WorkflowEditor({ params, searchParams }: PageProps
               title="Είσοδοι"
               bodyClassName="p-3"
               actions={
-                <FormDialog title="Νέα είσοδος" action={act("addInput")} submitLabel="Προσθήκη" size="sm" trigger={<Button size="icon" variant="ghost" className="size-8" aria-label="Νέα είσοδος"><Plus aria-hidden /></Button>}>
+                canEdit && <FormDialog title="Νέα είσοδος" action={addInputAction.bind(null, tenantId, wf.id)} submitLabel="Προσθήκη" size="sm" trigger={<Button size="icon" variant="ghost" className="size-8" aria-label="Νέα είσοδος"><Plus aria-hidden /></Button>}>
                   <TextField name="key" label="Κλειδί" required placeholder="π.χ. afm" />
                   <TextField name="label" label="Ετικέτα" required placeholder="π.χ. ΑΦΜ" />
                   <SelectField name="type" label="Τύπος" required options={["string", "number", "boolean", "date", "array", "file"].map((v) => ({ value: v, label: v }))} />
@@ -194,6 +216,7 @@ export default async function WorkflowEditor({ params, searchParams }: PageProps
                 </FormDialog>
               }
             >
+              {wf.inputs.length === 0 && <p className="text-sm text-muted-foreground">Καμία είσοδος.</p>}
               <ul className="space-y-1.5 text-sm">
                 {wf.inputs.map((i) => (
                   <li key={i.key} className="flex items-center gap-2">
@@ -210,32 +233,39 @@ export default async function WorkflowEditor({ params, searchParams }: PageProps
               </ul>
             </Section>
             <Section title="Έλεγχος" bodyClassName="p-3">
-              <p className="flex items-start gap-2 text-sm text-warning-500">
-                <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
-                <span>1 προειδοποίηση: το βήμα 04 δεν έχει εναλλακτικό επιλογέα.</span>
-              </p>
+              {warnings.length === 0 ? (
+                <p className="text-sm text-success-500">Χωρίς προειδοποιήσεις.</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {warnings.map((w) => (
+                    <li key={w} className="flex items-start gap-2 text-sm text-warning-500">
+                      <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
+                      <span>{w}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </Section>
           </div>
         </div>
       )}
 
       <Section className="mt-4" bodyClassName="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="eyebrow">Δοκιμή</span>
-          {all.slice(0, 5).map((s, i) => (
-            <span key={s.id} className={cn("rounded-xs px-1.5 font-mono text-xs", i < 3 ? "bg-success-50 text-success-500" : i === 3 ? "bg-muted text-muted-foreground" : "bg-sisyphus-50 text-sisyphus-700")}>
-              {s.no} {i < 3 ? "✓" : i === 3 ? "–" : "…"}
-            </span>
-          ))}
-        </div>
-        <div className="flex gap-2">
-          <FormDialog title="Δημοσίευση" description="Η δημοσιευμένη έκδοση είναι αμετάβλητη· αλλαγές = νέα έκδοση." action={act("publish")} submitLabel="Δημοσίευση" trigger={<Button size="sm" variant="outline"><Upload aria-hidden /> Δημοσίευση</Button>}>
+        <p className="text-sm">
+          <span className="eyebrow mr-2">Δοκιμή</span>
+          {latest.lastTestRunId ? (
+            <Link href={`/t/${tenantId}/runs/${latest.lastTestRunId}`} className="text-primary hover:underline">
+              Τελευταία δοκιμαστική εκτέλεση
+            </Link>
+          ) : (
+            <span className="text-muted-foreground">Καμία δοκιμή για αυτή την έκδοση — απαιτείται πριν τη δημοσίευση.</span>
+          )}
+        </p>
+        {canApprove && latest.status !== "PUBLISHED" && (
+          <FormDialog title="Δημοσίευση" description="Η δημοσιευμένη έκδοση είναι αμετάβλητη· αλλαγές = νέα έκδοση. Απαιτείται επιτυχημένη δοκιμή." action={publishVersionAction.bind(null, tenantId, latest.id)} submitLabel="Δημοσίευση" trigger={<Button size="sm" variant="outline"><Upload aria-hidden /> Δημοσίευση</Button>}>
             <TextareaField name="note" label="Σημείωση έκδοσης" rows={3} />
           </FormDialog>
-          <Button asChild size="sm" variant="ghost">
-            <Link href={`/t/${tenantId}/runs`}>Άνοιγμα εκτέλεσης</Link>
-          </Button>
-        </div>
+        )}
       </Section>
     </>
   );

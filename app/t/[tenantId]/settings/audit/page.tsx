@@ -4,7 +4,7 @@ import { FilterBar } from "@/components/dg/filter-bar";
 import { fmtDateTime } from "@/components/dg/format";
 import { PageHeader } from "@/components/dg/page-header";
 import { Section } from "@/components/dg/section";
-import { auditLog } from "@/lib/mock/data";
+import { listAudit } from "@/lib/data/tenant";
 import { requireTenantAdmin } from "@/lib/tenant";
 
 export const metadata: Metadata = { title: "Αρχείο ενεργειών" };
@@ -13,8 +13,7 @@ export default async function AuditPage({ params, searchParams }: PageProps<"/t/
   const { tenantId } = await params;
   const { q } = await searchParams;
   await requireTenantAdmin(tenantId);
-  const query = typeof q === "string" ? q.toLowerCase() : "";
-  const rows = auditLog.filter((a) => !query || `${a.actor} ${a.action} ${a.entity}`.toLowerCase().includes(query));
+  const rows = await listAudit(tenantId, typeof q === "string" && q ? q : undefined);
   return (
     <>
       <PageHeader eyebrow="Διαχείριση" title="Αρχείο ενεργειών" description="Ποιος έκανε τι και πότε. Δεν τροποποιείται." />
@@ -23,10 +22,11 @@ export default async function AuditPage({ params, searchParams }: PageProps<"/t/
         <DataTable
           rows={rows}
           rowKey={(a) => a.id}
+          empty={<p className="text-sm text-muted-foreground">Καμία ενέργεια.</p>}
           columns={[
             { key: "t", header: "Ώρα", cell: (a) => <span className="tabular-nums">{fmtDateTime(a.at)}</span> },
             { key: "u", header: "Χρήστης", cell: (a) => a.actor },
-            { key: "a", header: "Ενέργεια", cell: (a) => <span className="font-medium">{a.action}</span> },
+            { key: "a", header: "Ενέργεια", cell: (a) => <code className="font-mono text-xs">{a.action}</code> },
             { key: "e", header: "Αντικείμενο", cell: (a) => a.entity },
           ]}
         />
