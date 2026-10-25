@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { FieldError } from "./form-dialog";
+import { FieldError } from "./form-errors";
 
 // Form fields — plain HTML controls, styled with DG tokens, server-rendered (ADR-023).
 // Error messages come from the Server Action through <FieldError>.
@@ -37,8 +37,9 @@ export function TextField({
   defaultValue,
   autoComplete,
   inputMode,
+  large,
   ...base
-}: Base & { type?: string; placeholder?: string; defaultValue?: string | number; autoComplete?: string; inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"] }) {
+}: Base & { type?: string; placeholder?: string; defaultValue?: string | number; autoComplete?: string; inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"]; large?: boolean }) {
   return (
     <Field {...base}>
       <input
@@ -51,7 +52,7 @@ export function TextField({
         inputMode={inputMode}
         required={base.required}
         aria-describedby={`${base.name}-hint ${base.name}-error`}
-        className={cn(CONTROL, "h-9")}
+        className={cn(CONTROL, large ? "h-11 text-base" : "h-9")}
       />
     </Field>
   );
@@ -162,5 +163,5 @@ export function Hidden({ name, value }: { name: string; value: string }) {
 }
 
 export function FormRow({ children }: { children: React.ReactNode }) {
-  return <div className="grid gap-4 sm:grid-cols-2">{children}</div>;
+  return <div className="grid gap-4 *:min-w-0 sm:grid-cols-2">{children}</div>;
 }

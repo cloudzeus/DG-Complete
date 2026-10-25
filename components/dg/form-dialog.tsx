@@ -1,28 +1,20 @@
 "use client";
 
-import { createContext, useActionState, useContext, useEffect, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { INITIAL_FORM_STATE, type FormState } from "@/lib/forms";
+import { keepValues } from "@/components/dg/keep-values";
 import { cn } from "@/lib/utils";
 import { CopyButton } from "./copy-button";
+import { ErrorsProvider } from "./form-errors";
+
+export { FieldError } from "./form-errors";
 
 // Every form opens in a modal (ADR-023). This is the only client part: open state, pending state and
 // field errors returned by the Server Action. The fields themselves are server-rendered children.
-
-const ErrorsContext = createContext<Record<string, string>>({});
-
-export function FieldError({ name }: { name: string }) {
-  const msg = useContext(ErrorsContext)[name];
-  if (!msg) return null;
-  return (
-    <p id={`${name}-error`} role="alert" className="text-xs font-medium text-danger-500">
-      {msg}
-    </p>
-  );
-}
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -129,8 +121,8 @@ function FormBody({
   }
 
   return (
-    <ErrorsContext.Provider value={state.errors ?? {}}>
-      <form action={formAction} noValidate className="flex flex-col">
+    <ErrorsProvider errors={state.errors}>
+      <form action={formAction} onSubmit={keepValues(formAction)} noValidate className="flex flex-col">
         <DialogHeader className="border-b border-border/60 p-5 sm:p-6">
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
@@ -151,6 +143,6 @@ function FormBody({
           </Button>
         </DialogFooter>
       </form>
-    </ErrorsContext.Provider>
+    </ErrorsProvider>
   );
 }

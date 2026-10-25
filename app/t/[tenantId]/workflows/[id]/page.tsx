@@ -84,7 +84,7 @@ export default async function WorkflowEditor({ params, searchParams }: PageProps
           <JsonViewer value={{ version: wf.version, inputs: wf.inputs, outputs: wf.outputs, steps: wf.steps }} />
         </Section>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] xl:grid-cols-[minmax(0,17rem)_minmax(0,1fr)_minmax(0,16rem)]">
+        <div className="grid gap-4 *:min-w-0 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] xl:grid-cols-[minmax(0,17rem)_minmax(0,1fr)_minmax(0,16rem)]">
           <Section
             title="Βήματα"
             bodyClassName="p-2 sm:p-3"

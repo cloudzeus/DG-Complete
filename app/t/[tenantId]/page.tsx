@@ -42,7 +42,7 @@ export default async function TenantDashboard({ params }: PageProps<"/t/[tenantI
         <KpiTile label="Σε ουρά" value={fmtNum(dashboard.queued)} hint="περιμένουν worker" icon={Hourglass} />
       </Grid>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-3">
+      <div className="mt-4 grid gap-4 *:min-w-0 xl:grid-cols-3">
         <Section title="Εκτελέσεις 14 ημερών" description="Επιτυχίες και αποτυχίες ανά ημέρα" className="xl:col-span-2">
           <StackedBars label="Εκτελέσεις ανά ημέρα, τελευταίες 14 ημέρες" data={dashboard.series.map((d) => ({ label: d.day, succeeded: d.succeeded, failed: d.failed }))} />
         </Section>
@@ -62,7 +62,7 @@ export default async function TenantDashboard({ params }: PageProps<"/t/[tenantI
       </div>
 
       <Section title="Πρόσφατες αποτυχίες" className="mt-4">
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 *:min-w-0 md:grid-cols-3">
           {failures.map((r) => (
             <Link key={r.id} href={`${base}/runs/${r.id}`} className="group space-y-2 rounded-lg border border-border/70 p-3 transition-shadow duration-150 hover:shadow-fluent-4">
               <Screenshot alt={`Στιγμιότυπο σφάλματος στο βήμα ${r.error?.step} — ${methodOf(r.methodId)?.name}`} />

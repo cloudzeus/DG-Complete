@@ -35,5 +35,5 @@ export function Section({
 /** Responsive grid helper: 1 → 2 → N columns. */
 export function Grid({ cols = 3, children, className }: { cols?: 2 | 3 | 4; children: React.ReactNode; className?: string }) {
   const c = { 2: "md:grid-cols-2", 3: "md:grid-cols-2 xl:grid-cols-3", 4: "sm:grid-cols-2 xl:grid-cols-4" }[cols];
-  return <div className={cn("grid gap-4", c, className)}>{children}</div>;
+  return <div className={cn("grid gap-4 *:min-w-0", c, className)}>{children}</div>;
 }

@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Building2, Check, ChevronsUpDown, LogOut, Shield, UserRound } from "lucide-react";
-import { authClient } from "@/lib/auth-client";
+import { signOutAction } from "@/lib/auth-actions";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -35,7 +34,6 @@ export function TenantSwitcher({ current, tenants }: { current: { id: string; na
 }
 
 export function UserMenu({ name, email, staff }: { name: string; email: string; staff: boolean }) {
-  const router = useRouter();
   const initials = name.split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase();
   return (
     <DropdownMenu>
@@ -63,15 +61,13 @@ export function UserMenu({ name, email, staff }: { name: string; email: string; 
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onSelect={async () => {
-            await authClient.signOut();
-            router.replace("/login");
-            router.refresh();
-          }}
-        >
-          <LogOut aria-hidden /> Αποσύνδεση
-        </DropdownMenuItem>
+        <form action={signOutAction}>
+          <DropdownMenuItem asChild>
+            <button type="submit" className="w-full">
+              <LogOut aria-hidden /> Αποσύνδεση
+            </button>
+          </DropdownMenuItem>
+        </form>
       </DropdownMenuContent>
     </DropdownMenu>
   );
