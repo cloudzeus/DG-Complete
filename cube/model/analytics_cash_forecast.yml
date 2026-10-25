@@ -1,0 +1,33 @@
+# Generated from the analytics model — one cube per file.
+cubes:
+  # ───────────────────────── Ταμειακά ─────────────────────────
+  - name: cash_forecast
+    title: Πρόβλεψη ταμειακών ροών (13 εβδομάδες)
+    description: >
+      Αναμενόμενες εισπράξεις (ανοιχτά πελατών) και πληρωμές (ανοιχτά προμηθευτών) ανά εβδομάδα, με βάση
+      τον ρυθμό πληρωμής κάθε συναλλασσόμενου. Εβδομάδα 0 = τρέχουσα και εκπρόθεσμα.
+    sql_table: m_cash_forecast
+    measures:
+      - name: inflow
+        title: Αναμενόμενες εισπράξεις
+        type: sum
+        sql: inflow
+      - name: outflow
+        title: Αναμενόμενες πληρωμές
+        type: sum
+        sql: outflow
+      - name: net
+        title: Καθαρή ταμειακή ροή
+        type: sum
+        sql: net
+    dimensions:
+      - name: week
+        title: Εβδομάδα
+        type: number
+        sql: week
+        primary_key: true
+        public: true
+      - name: week_start
+        title: Αρχή εβδομάδας
+        type: time
+        sql: week_start

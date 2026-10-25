@@ -1,0 +1,550 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import {
+  ArrowLeft,
+  Building2,
+  CalendarClock,
+  Cable,
+  ClipboardList,
+  CreditCard,
+  DatabaseZap,
+  Download,
+  Factory,
+  ListChecks,
+  Sparkles,
+  MapPinned,
+  Plug,
+  Scale,
+  ChartNoAxesCombined,
+  Users,
+} from "lucide-react";
+import { PageHeader, SectionTitle } from "@/components/admin/page-header";
+import { StatusPill, type Tone } from "@/components/admin/tone";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { prisma } from "@/lib/prisma";
+import { can, requirePermission } from "@/lib/rbac";
+import { roleName, schemaName } from "@/lib/warehouse";
+import { PaymentsTable } from "@/components/admin/payments-table";
+import { PaymentDialog } from "@/app/admin/payments/payment-dialog";
+import { S1Link } from "./s1-link";
+import { StatusSelect } from "./status-select";
+import { DemoToggle } from "./demo-toggle";
+import { SourcesPanel } from "./sources-panel";
+import { ImportsPanel } from "./imports-panel";
+import { createTenantJobs } from "./sources-actions";
+import { countRows } from "@/lib/warehouse-writer";
+import { openSoftOneCredentials } from "@/lib/softone";
+import type { Capabilities } from "@/lib/softone-detect";
+import { WarehousePanel } from "./warehouse-panel";
+import { OrderSettings } from "./order-settings";
+import { TenantUsers } from "./tenant-users";
+import { SubscriptionForm } from "./subscription-form";
+import { GeoPanel } from "./geo-panel";
+import { IndustryPanel } from "./industry-panel";
+import { SeriesPanel } from "./series-panel";
+import { TenantAiTokens } from "@/app/admin/ai-tokens/tenant-panel";
+import { hasService } from "@/lib/tenant-services";
+
+export async function generateMetadata({
+  params,
+}: PageProps<"/admin/tenants/[id]">): Promise<Metadata> {
+  const { id } = await params;
+  const tenant = await prisma.tenant.findUnique({
+    where: { id },
+    select: { name: true },
+  });
+  return { title: tenant?.name ?? "Πελάτης" };
+}
+
+const WAREHOUSE: Record<string, { label: string; tone: Tone }> = {
+  NONE: { label: "Χωρίς provisioning", tone: "slate" },
+  READY: { label: "Έτοιμο", tone: "green" },
+  DISABLED: { label: "Απενεργοποιημένο", tone: "amber" },
+  ERROR: { label: "Σφάλμα", tone: "red" },
+};
+
+export default async function TenantPage({
+  params,
+}: PageProps<"/admin/tenants/[id]">) {
+  const user = await requirePermission("tenants.read");
+  const { id } = await params;
+  const [tenant, deployment, payments] = await Promise.all([
+    prisma.tenant.findUnique({
+      where: { id },
+      include: {
+        memberships: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                active: true,
+                platformRole: true,
+                _count: { select: { memberships: true } },
+                sessions: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } },
+              },
+            },
+          },
+        },
+        connections: {
+          select: {
+            id: true,
+            name: true,
+            engine: true,
+            database: true,
+            lastTestStatus: true,
+          },
+        },
+      },
+    }),
+    prisma.cubeDeployment.findUnique({
+      where: { id: "default" },
+      select: {
+        apiUrl: true,
+        warehouseConnection: { select: { database: true, host: true } },
+      },
+    }),
+    prisma.payment.findMany({
+      where: { tenantId: id },
+      orderBy: { paidAt: "desc" },
+      take: 50,
+    }),
+  ]);
+  if (!tenant) notFound();
+  const s1Customer = tenant.s1Trdr
+    ? await prisma.s1Customer.findFirst({
+        where: { trdr: tenant.s1Trdr, connection: { scope: "DGSOFT" } },
+      })
+    : null;
+  const canBill = can(user, "tenant.billing.manage", tenant.id);
+  const canSources = can(user, "connections.tenant.manage", tenant.id);
+  const plans = await prisma.plan.findMany({ orderBy: [{ active: "desc" }, { price: "asc" }] });
+  const tenantSoftOne = await prisma.softOneConnection.findFirst({
+    where: { scope: "TENANT", tenantId: tenant.id },
+  });
+  const importJobs = tenantSoftOne
+    ? await prisma.syncJob.findMany({ where: { connectionId: tenantSoftOne.id }, orderBy: { name: "asc" } })
+    : [];
+  const importCounts = await countRows(
+    tenant.id,
+    importJobs.map((j) => j.targetTable).filter((t): t is string => !!t),
+  );
+  const manage = can(user, "tenants.manage");
+  const wh = WAREHOUSE[tenant.warehouseStatus];
+
+  return (
+    <>
+      <Link
+        href="/admin/tenants"
+        className="mb-3 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="size-4" /> Πελάτες
+      </Link>
+      <PageHeader
+        title={tenant.name}
+        eyebrow={tenant.isDemo ? "Tenant · Demo (χωρίς συνδρομή)" : "Tenant"}
+        description={
+          [tenant.afm && `ΑΦΜ ${tenant.afm}`, tenant.email]
+            .filter(Boolean)
+            .join(" · ") || undefined
+        }
+        icon={Building2}
+        tone="blue"
+        actions={
+          <>
+            <Button size="sm" asChild>
+              <Link href={`/dashboards/${tenant.id}/pnl`}>
+                <ChartNoAxesCombined />
+                Dashboards
+              </Link>
+            </Button>
+            <Button size="sm" variant="outline" asChild>
+              <Link href={`/admin/tenants/${tenant.id}/pnl`}>
+                <Scale />
+                Αποτελέσματα χρήσης
+              </Link>
+            </Button>
+            <DemoToggle
+              tenantId={tenant.id}
+              isDemo={tenant.isDemo}
+              disabled={!manage}
+            />
+            <StatusSelect
+              tenantId={tenant.id}
+              status={tenant.status}
+              disabled={!manage}
+            />
+          </>
+        }
+      />
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                <SectionTitle icon={Cable} tone="violet">
+                  Πηγές δεδομένων
+                </SectionTitle>
+              </CardTitle>
+              <CardDescription>
+                Από πού αντλούνται τα δεδομένα του πελάτη για το BI (SoftOne
+                πελάτη, βάσεις δεδομένων).
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <SourcesPanel
+                tenantId={tenant.id}
+                canManage={canSources}
+                databases={tenant.connections}
+                softone={
+                  tenantSoftOne
+                    ? {
+                        id: tenantSoftOne.id,
+                        baseUrl: tenantSoftOne.baseUrl,
+                        appId: tenantSoftOne.appId,
+                        username: openSoftOneCredentials(
+                          tenantSoftOne.id,
+                          tenantSoftOne.credentialsEnc,
+                        ).username,
+                        company: tenantSoftOne.company,
+                        branch: tenantSoftOne.branch,
+                        module: tenantSoftOne.module,
+                        refId: tenantSoftOne.refId,
+                        host: URL.canParse(tenantSoftOne.baseUrl) ? new URL(tenantSoftOne.baseUrl).host : tenantSoftOne.baseUrl,
+                        lastTestStatus: tenantSoftOne.lastTestStatus,
+                        capabilities:
+                          (tenantSoftOne.capabilities as Capabilities | null) ??
+                          null,
+                        detectedAt:
+                          tenantSoftOne.detectedAt?.toISOString() ?? null,
+                      }
+                    : null
+                }
+              />
+            </CardContent>
+          </Card>
+          {user.platformRole === "SUPER_ADMIN" && (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <SectionTitle icon={Sparkles} tone="violet">
+                    AI tokens
+                  </SectionTitle>
+                </CardTitle>
+                <CardDescription>Το υπόλοιπο για Κίμωνα, κλαδική ανάλυση και εναλλακτικά είδη, η κατανάλωση και οι κινήσεις.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <TenantAiTokens tenantId={tenant.id} />
+              </CardContent>
+            </Card>
+          )}
+          {tenantSoftOne && canSources && (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <SectionTitle icon={ListChecks} tone="blue">
+                    Σειρές παραστατικών
+                  </SectionTitle>
+                </CardTitle>
+                <CardDescription>
+                  Ποιες σειρές μετρούν ως πωλήσεις / αγορές (τιμολόγια +, πιστωτικά −, παραγγελίες και δελτία εκτός). Ελέγχεται αυτόματα σε κάθε
+                  ενημέρωση· διορθώστε όπου η αυτόματη κατάταξη κάνει λάθος.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <SeriesPanel tenantId={tenant.id} />
+              </CardContent>
+            </Card>
+          )}
+          {tenantSoftOne && canSources && (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <SectionTitle icon={MapPinned} tone="teal">
+                    Γεωγραφική ανάλυση
+                  </SectionTitle>
+                </CardTitle>
+                <CardDescription>Geocoding των διευθύνσεων των ενεργών πελατών (Mapbox) για τους χάρτες πωλήσεων.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <GeoPanel tenantId={tenant.id} hasService={await hasService(tenant.id, "geo")} />
+              </CardContent>
+            </Card>
+          )}
+          {tenantSoftOne && canSources && (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <SectionTitle icon={Factory} tone="violet">
+                    Κλαδική ανάλυση
+                  </SectionTitle>
+                </CardTitle>
+                <CardDescription>ΚΑΔ των πελατών από το μητρώο ΑΦΜ και κατηγοριοποίηση σε κλάδους-στόχους με AI.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <IndustryPanel tenantId={tenant.id} hasService={await hasService(tenant.id, "industry")} />
+              </CardContent>
+            </Card>
+          )}
+          {tenantSoftOne && canSources && (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <SectionTitle icon={ClipboardList} tone="amber">
+                    Παραγγελίες αγορών
+                  </SectionTitle>
+                </CardTitle>
+                <CardDescription>Πού γράφονται στο SoftOne οι παραγγελίες που δημιουργούν οι χρήστες από τις προτάσεις παραγγελίας.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <OrderSettings tenantId={tenant.id} />
+              </CardContent>
+            </Card>
+          )}
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                <SectionTitle icon={Download} tone="blue">
+                  Άντληση δεδομένων
+                </SectionTitle>
+              </CardTitle>
+              <CardDescription>
+                Τι αντλείται από το SoftOne του πελάτη στην αποθήκη του (τρέχουσα + 2 προηγούμενες χρήσεις). Τρέχουν
+                αυτόματα από τον scheduler.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {tenantSoftOne ? (
+                <ImportsPanel
+                  tenantId={tenant.id}
+                  canManage={canSources}
+                  seed={canSources ? createTenantJobs.bind(null, tenant.id, tenantSoftOne.id) : null}
+                  jobs={importJobs.map((j) => ({
+                    id: j.id,
+                    name: j.name,
+                    type: j.type,
+                    table: j.table,
+                    fields: j.fields,
+                    keyField: j.keyField,
+                    updField: j.updField,
+                    filter: j.filter,
+                    intervalMinutes: j.intervalMinutes,
+                    enabled: j.enabled,
+                    locked: true,
+                    lastRunAt: j.lastRunAt?.toISOString() ?? null,
+                    lastStatus: j.lastStatus,
+                    nextRunAt: j.nextRunAt?.toISOString() ?? null,
+                    records: importCounts[j.targetTable ?? ""] ?? 0,
+                  }))}
+                />
+              ) : (
+                <p className="text-muted-foreground">
+                  Ορίστε πρώτα τη σύνδεση με το SoftOne του πελάτη (Πηγές δεδομένων).
+                </p>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <SectionTitle
+                  icon={DatabaseZap}
+                  tone="teal"
+                  extra={<StatusPill tone={wh.tone}>{wh.label}</StatusPill>}
+                >
+                  Αποθήκη δεδομένων Cube
+                </SectionTitle>
+              </CardTitle>
+              <CardDescription>
+                {deployment?.warehouseConnection ? (
+                  <>
+                    Schema{" "}
+                    <code className="font-mono">{schemaName(tenant.id)}</code>{" "}
+                    και ρόλος μόνο-ανάγνωσης{" "}
+                    <code className="font-mono">{roleName(tenant.id)}</code> στη{" "}
+                    <code className="font-mono">
+                      {deployment.warehouseConnection.database}
+                    </code>
+                    . Με αυτόν τον ρόλο συνδέεται το Cube για τον συγκεκριμένο
+                    πελάτη.
+                  </>
+                ) : (
+                  <>Ρυθμίστε πρώτα τον Cube server (Admin → Cube server).</>
+                )}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <WarehousePanel
+                tenantId={tenant.id}
+                status={tenant.warehouseStatus}
+                error={tenant.warehouseError}
+                provisionedAt={
+                  tenant.warehouseProvisionedAt?.toISOString() ?? null
+                }
+                cubeConfigured={!!deployment?.warehouseConnection}
+                canManage={manage}
+              />
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                <SectionTitle icon={Plug} tone="violet">
+                  Πελάτης SoftOne
+                </SectionTitle>
+              </CardTitle>
+              <CardDescription>
+                Η καρτέλα πελάτη στο SoftOne της DGsoft (πηγή στοιχείων και
+                τιμολόγησης).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {tenant.s1Trdr ? (
+                <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+                  <dt className="text-muted-foreground">Κωδικός</dt>
+                  <dd className="font-mono">
+                    {s1Customer?.code ?? tenant.s1Code ?? "—"}
+                  </dd>
+                  {s1Customer && (
+                    <>
+                      <dt className="text-muted-foreground">Επωνυμία</dt>
+                      <dd>{s1Customer.name}</dd>
+                      <dt className="text-muted-foreground">Συγχρ.</dt>
+                      <dd className="text-xs">
+                        {s1Customer.syncedAt.toLocaleString("el-GR", {
+                          dateStyle: "short",
+                          timeStyle: "short",
+                        })}
+                        {!s1Customer.isActive && (
+                          <span className="ml-1 text-warning-500">
+                            · ανενεργός στο SoftOne
+                          </span>
+                        )}
+                      </dd>
+                    </>
+                  )}
+                </dl>
+              ) : (
+                <p className="text-muted-foreground">
+                  Δεν είναι αντιστοιχισμένος.
+                </p>
+              )}
+              <S1Link
+                tenantId={tenant.id}
+                linked={
+                  tenant.s1Trdr
+                    ? { trdr: tenant.s1Trdr, code: tenant.s1Code }
+                    : null
+                }
+                canManage={manage}
+              />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                <SectionTitle icon={Users} tone="amber">
+                  Χρήστες
+                </SectionTitle>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TenantUsers
+                tenantId={tenant.id}
+                currentUserId={user.id}
+                canManage={can(user, "tenant.users.manage", tenant.id)}
+                users={tenant.memberships
+                  .filter((m) => m.user.platformRole === "USER")
+                  .map((m) => ({
+                    id: m.user.id,
+                    name: m.user.name,
+                    email: m.user.email,
+                    role: m.role,
+                    active: m.user.active,
+                    otherTenants: m.user._count.memberships - 1,
+                    lastLogin: m.user.sessions[0]?.createdAt.toISOString() ?? null,
+                  }))}
+              />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>
+            <SectionTitle icon={CalendarClock} tone="amber">
+              Συνδρομή
+            </SectionTitle>
+          </CardTitle>
+          <CardDescription>
+            Περίοδος, ποσό και λήξη. Κάθε καταχωρημένη πληρωμή την παρατείνει κατά μία περίοδο· οι υπενθυμίσεις ανανέωσης και πληρωμής
+            στέλνονται αυτόματα (Ρυθμίσεις → Email).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <SubscriptionForm
+            tenantId={tenant.id}
+            canManage={canBill}
+            today={new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens" }).format(new Date())}
+            plans={plans.map((p) => ({ id: p.id, name: p.name, period: p.period, price: p.price.toString(), services: p.services, active: p.active }))}
+            values={{
+              planId: tenant.planId ?? "",
+              period: tenant.subscriptionPeriod ?? "",
+              amount: tenant.subscriptionAmount ? tenant.subscriptionAmount.toString() : "",
+              endsAt: tenant.subscriptionEndsAt
+                ? new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens" }).format(tenant.subscriptionEndsAt)
+                : "",
+              email: tenant.email ?? "",
+            }}
+          />
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <div className="space-y-1.5">
+            <CardTitle>
+              <SectionTitle icon={CreditCard} tone="green">
+                Πληρωμές
+              </SectionTitle>
+            </CardTitle>
+            <CardDescription>
+              Πληρωμές συνδρομής και καταχώρισή τους ως παραστατικά στο SoftOne.
+            </CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <PaymentsTable
+            storageKey="tenant-payments"
+            canPost={canBill}
+            payments={payments.map((p) => ({
+              ...p,
+              paidAt: p.paidAt.toISOString(),
+              amount: p.amount.toString(),
+            }))}
+            toolbar={
+              canBill ? (
+                <PaymentDialog tenantId={tenant.id} linked={!!tenant.s1Trdr} />
+              ) : null
+            }
+          />
+        </CardContent>
+      </Card>
+    </>
+  );
+}

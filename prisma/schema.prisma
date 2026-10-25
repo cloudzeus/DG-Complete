@@ -1,0 +1,984 @@
+// DGsmart BI — control plane database (dgsmartbi)
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────── Auth (Better Auth) ─────────────────────────
+
+enum PlatformRole {
+  SUPER_ADMIN
+  ADMIN
+  USER
+}
+
+model User {
+  id            String       @id @default(cuid())
+  name          String
+  email         String       @unique
+  emailVerified Boolean      @default(false)
+  image         String?
+  platformRole  PlatformRole @default(USER)
+  active        Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  sessions           Session[]
+  accounts           Account[]
+  memberships        Membership[]
+  createdConnections DataConnection[]
+  payments           Payment[]
+  kimonChats         KimonChat[]
+  auditLogs          AuditLog[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ───────────────────────── Tenants & RBAC ─────────────────────────
+
+enum TenantStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  CANCELED
+}
+
+enum WarehouseStatus {
+  NONE // not provisioned
+  READY // schema t_<id> + role r_<id> exist, login enabled
+  DISABLED // role exists but NOLOGIN (suspended)
+  ERROR
+}
+
+enum TenantRole {
+  TENANT_ADMIN
+  TENANT_USER
+}
+
+model Tenant {
+  // cuid → lowercase alphanumeric: reused as warehouse schema t_<id> / role r_<id>
+  id     String       @id @default(cuid())
+  name   String
+  afm    String?
+  s1Trdr Int?         @unique // TRDR του πελάτη στο SoftOne της DGsoft
+  s1Code String?
+  email  String?
+  status TenantStatus @default(PENDING)
+  // Demo tenant: always has access, never needs a subscription (for building/testing BI models)
+  isDemo Boolean      @default(false)
+
+  // Cube warehouse (cubebiproduction): schema t_<id>, read-only role r_<id>
+  warehouseStatus        WarehouseStatus @default(NONE)
+  warehouseProvisionedAt DateTime?
+  warehouseError         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships        Membership[]
+  connections        DataConnection[]
+  softoneConnections SoftOneConnection[]
+  payments           Payment[]
+  // Subscription: period + amount, valid until `subscriptionEndsAt`. A payment extends it by one period.
+  subscriptionPeriod SubscriptionPeriod?
+  subscriptionAmount Decimal?            @db.Decimal(12, 2)
+  subscriptionEndsAt DateTime?
+  planId             String?
+  plan               Plan?               @relation(fields: [planId], references: [id], onDelete: SetNull)
+  emailLogs          EmailLog[]
+  emailSuppressions  EmailSuppression[]
+  docSeriesOverrides DocSeriesOverride[]
+  itemSubstitutes    ItemSubstitute[]
+  // AI tokens left (all AI features draw from it); demo tenants are not charged.
+  aiTokenBalance     Int                 @default(0)
+  aiTokenLedger      AiTokenLedger[]
+  aiTokenRequests    AiTokenRequest[]
+  budgetMonths       BudgetMonth[]
+  planningSettings   PlanningSettings?
+  savedReports       SavedReport[]
+  apiKeys            ApiKey[]
+  industry           IndustrySegmentation?
+  /// BI settings, e.g. { mainWarehouses: [1000], receivablePrefixes: ["30"], payablePrefixes: ["50"] }
+  biSettings         Json?
+  biBuiltAt          DateTime?
+  biBuildError       String?
+  pnlConfig          PnlConfig?
+  pnlLines           PnlLine[]
+  aiUsage            AiUsage[]
+  kimonChats         KimonChat[]
+  auditLogs          AuditLog[]
+
+  @@map("tenant")
+}
+
+model Membership {
+  id        String     @id @default(cuid())
+  userId    String
+  tenantId  String
+  role      TenantRole @default(TENANT_USER)
+  // Κίμων's weekly report by email (every Monday morning); opt-in.
+  weeklyReport Boolean   @default(false)
+  createdAt DateTime   @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+  @@map("membership")
+}
+
+// Editable role → permission matrix (Ρυθμίσεις → Πρόσβαση). Empty table = code defaults.
+model RolePermission {
+  role       String // SUPER_ADMIN | ADMIN | TENANT_ADMIN | TENANT_USER
+  permission String
+  createdAt  DateTime @default(now())
+
+  @@id([role, permission])
+  @@map("role_permission")
+}
+
+// ───────────────────────── Data connections ─────────────────────────
+
+enum ConnectionPurpose {
+  CUBE_WAREHOUSE // βάση που διαβάζει το Cube (π.χ. cubebiproduction / cubebidev)
+  TENANT_SOURCE // πηγή δεδομένων πελάτη
+}
+
+enum ConnectionEngine {
+  POSTGRES
+  MYSQL
+  MSSQL
+}
+
+enum ConnectionEnvironment {
+  PRODUCTION
+  DEVELOPMENT
+}
+
+enum ConnectionTestStatus {
+  UNTESTED
+  OK
+  FAILED
+}
+
+model DataConnection {
+  id             String                @id @default(cuid())
+  name           String
+  purpose        ConnectionPurpose
+  engine         ConnectionEngine
+  environment    ConnectionEnvironment @default(PRODUCTION)
+  host           String
+  port           Int
+  database       String
+  ssl            Boolean               @default(false)
+  // AES-256-GCM: { username, password } — never sent to the browser
+  credentialsEnc String
+  tenantId       String?
+  tenant         Tenant?               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lastTestedAt   DateTime?
+  lastTestStatus ConnectionTestStatus  @default(UNTESTED)
+  lastTestError  String?
+  createdById    String?
+  createdBy      User?                 @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  cubeWarehouseFor CubeDeployment[] @relation("CubeWarehouse")
+  cubeDevFor       CubeDeployment[] @relation("CubeDev")
+
+  @@index([tenantId])
+  @@index([purpose])
+  @@map("data_connection")
+}
+
+// ───────────────────────── SoftOne Web Services ─────────────────────────
+
+enum SoftOneScope {
+  DGSOFT // the SoftOne of DGsoft itself: customers → tenants, billing documents
+  TENANT // a customer's own SoftOne (data source) — used from Phase 4
+}
+
+model SoftOneConnection {
+  id             String               @id @default(cuid())
+  scope          SoftOneScope
+  tenantId       String?
+  tenant         Tenant?              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name           String
+  baseUrl        String // https://<serial>.oncloud.gr/s1services
+  appId          String
+  company        String
+  branch         String
+  module         String
+  refId          String
+  // AES-256-GCM: { username, password }
+  credentialsEnc String
+  // AES-256-GCM: permanent clientID of the day (re-auth on -100/-101 or new day)
+  sessionEnc     String?
+  sessionDate    String? // YYYY-MM-DD (Europe/Athens)
+  lastTestedAt   DateTime?
+  lastTestStatus ConnectionTestStatus @default(UNTESTED)
+  lastTestError  String?
+
+  // What this installation contains (TENANT scope): GL / commercial documents / fiscal years
+  capabilities Json?
+  detectedAt   DateTime?
+
+  // Subscription invoicing (DGSOFT scope): SALDOC series, service item, payment method
+  invoiceSeries    Int?
+  serviceMtrl      Int?
+  paymentCode      Int?
+  vatRate          Decimal? @db.Decimal(5, 2) // e.g. 24.00 — used when prices include VAT
+  pricesIncludeVat Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customers S1Customer[]
+  syncRuns  SyncRun[]
+  syncJobs  SyncJob[]
+
+  @@index([scope])
+  @@index([tenantId])
+  @@map("softone_connection")
+}
+
+// Local mirror of SoftOne customers (TRDR, SODTYPE=13) of a SoftOne connection.
+model S1Customer {
+  id           String            @id @default(cuid())
+  connectionId String
+  connection   SoftOneConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  trdr         Int
+  code         String
+  name         String
+  afm          String?
+  email        String?
+  phone        String?
+  address      String?
+  city         String?
+  zip          String?
+  isActive     Boolean           @default(true)
+  s1UpdatedAt  DateTime? // TRDR.UPDDATE
+  syncedAt     DateTime          @default(now())
+
+  @@unique([connectionId, trdr])
+  @@index([afm])
+  @@index([name])
+  @@map("s1_customer")
+}
+
+enum SyncKind {
+  DGSOFT_CUSTOMERS
+  TABLE
+}
+
+enum SyncDestination {
+  APP // app database: s1_customer / s1_record (DGsoft SoftOne)
+  WAREHOUSE // tenant schema t_<id> in the Cube warehouse (typed table per job)
+}
+
+enum SyncJobType {
+  CUSTOMERS // built-in: TRDR customers → s1_customer + linked tenants
+  TABLE // generic: any SoftOne table → s1_record (JSON rows)
+}
+
+// A scheduled SoftOne → app synchronisation ("cron job").
+model SyncJob {
+  id              String            @id @default(cuid())
+  connectionId    String
+  connection      SoftOneConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  name            String
+  type            SyncJobType       @default(TABLE)
+  table           String // SoftOne DB table, e.g. MTRL, TRDR, FINDOC
+  fields          String // comma separated; must include keyField (and updField if set)
+  keyField        String // primary key column, e.g. MTRL
+  updField        String? // incremental watermark column, e.g. UPDDATE
+  filter          String? // extra GetTable FILTER (SQL where), e.g. SODTYPE=13
+  intervalMinutes Int               @default(60)
+  destination     SyncDestination   @default(APP)
+  targetTable     String? // WAREHOUSE: table in t_<tenant>, e.g. gl_lines
+  columns         Json? // WAREHOUSE: { FIELD: "int" | "numeric" | "text" | "timestamp" }
+  dateField       String? // rolling-window column, e.g. TRNDATE
+  windowDays      Int? // INCREMENTAL without updField: re-import the last N days (catches edits + deletes)
+  historyFrom     DateTime? // FULL: import rows with dateField >= historyFrom
+  options         Json? // WAREHOUSE: { parent?: {table,key,filter,dateField,updField}, yearField?, chunkField?, chunkValues? }
+  enabled         Boolean           @default(true)
+  lastRunAt       DateTime?
+  lastStatus      SyncStatus?
+  nextRunAt       DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  runs    SyncRun[]
+  records S1Record[]
+
+  @@unique([connectionId, name])
+  @@index([enabled, nextRunAt])
+  @@map("sync_job")
+}
+
+// Generic mirror rows of TABLE sync jobs.
+model S1Record {
+  id          String    @id @default(cuid())
+  jobId       String
+  job         SyncJob   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  key         String
+  data        Json
+  s1UpdatedAt DateTime?
+  syncedAt    DateTime  @default(now())
+
+  @@unique([jobId, key])
+  @@map("s1_record")
+}
+
+enum SyncMode {
+  FULL
+  INCREMENTAL
+}
+
+enum SyncStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+model SyncRun {
+  id             String            @id @default(cuid())
+  connectionId   String
+  connection     SoftOneConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  kind           SyncKind
+  mode           SyncMode
+  status         SyncStatus        @default(RUNNING)
+  trigger        String // "manual" | "cron"
+  triggeredById  String?
+  watermarkFrom  DateTime?
+  watermarkTo    DateTime?
+  rowsRead       Int               @default(0)
+  rowsUpserted   Int               @default(0)
+  tenantsUpdated Int               @default(0)
+  error          String?
+  startedAt      DateTime          @default(now())
+  finishedAt     DateTime?
+  jobId          String?
+  job            SyncJob?          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([connectionId, kind, startedAt])
+  @@map("sync_run")
+}
+
+// ───────────────────────── P&L mapping (per tenant) ─────────────────────────
+
+enum PnlSource {
+  GL // Γενική Λογιστική: account-code prefixes
+  COMMERCIAL // Εμπορικό: sales / purchase documents
+}
+
+enum PnlSection {
+  REVENUE // Κύκλος εργασιών
+  COGS // Κόστος πωληθέντων / αγορές
+  OTHER_INCOME // Λοιπά έσοδα εκμετάλλευσης
+  OPEX // Λειτουργικά έξοδα
+  DEPRECIATION // Αποσβέσεις & προβλέψεις
+  FINANCIAL // Χρηματοοικονομικά
+  EXTRAORDINARY // Έκτακτα
+  TAX // Φόρος εισοδήματος
+}
+
+model PnlConfig {
+  tenantId   String    @id
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  source     PnlSource @default(GL)
+  template   String // template the lines were created from
+  builtAt    DateTime? // last fin_fact rebuild
+  buildRows  Int?
+  buildError String?
+  updatedAt  DateTime  @updatedAt
+  createdAt  DateTime  @default(now())
+
+  @@map("pnl_config")
+}
+
+model PnlLine {
+  id        String     @id @default(cuid())
+  tenantId  String
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  code      String // stable key used in fin_fact.line_code, e.g. REV_SALES
+  name      String
+  section   PnlSection
+  sortOrder Int
+  rules     PnlRule[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([tenantId, code])
+  @@map("pnl_line")
+}
+
+model PnlRule {
+  id        String   @id @default(cuid())
+  lineId    String
+  line      PnlLine  @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  source    String // GL | SALES | PURCHASES
+  pattern   String // GL: account code prefix (e.g. "70", "20.01"); docs: series id or "*"
+  negate    Boolean  @default(false) // e.g. credit-note series
+  createdAt DateTime @default(now())
+
+  @@index([lineId])
+  @@map("pnl_rule")
+}
+
+// ───────────────────────── AI (OpenRouter) ─────────────────────────
+
+/// Singleton (id "default"): the platform's OpenRouter key + pricing to tenants.
+model AiSettings {
+  id            String    @id @default("default")
+  apiKeyEnc     String? // AES-GCM envelope, AAD = ai_settings:default
+  keyHint       String? // last 4 chars, for display only
+  defaultModel  String    @default("anthropic/claude-sonnet-5.5")
+  markupPercent Decimal   @default(30) @db.Decimal(6, 2) // our margin on top of the OpenRouter cost
+  // Token packs the tenants can request: [{ tokens, priceEur }] (price incl. our markup and VAT).
+  tokenPackages Json      @default("[]")
+  // Off: usage is still deducted (the balance may go negative) but nothing is blocked.
+  enforceTokens Boolean   @default(false)
+  // Email when the central OpenRouter credit falls below this (once a day).
+  alertEmail    String?   @default("gkozyris@dgsmart.gr")
+  alertBelowUsd Decimal   @default(20) @db.Decimal(10, 2)
+  enabled       Boolean   @default(false)
+  lastTestedAt  DateTime?
+  lastTestOk    Boolean?
+  lastTestError String?
+  updatedAt     DateTime  @updatedAt
+
+  @@map("ai_settings")
+}
+
+/// One OpenRouter call, priced at the time it happened (cost + markup snapshot).
+model AiUsage {
+  id               String   @id @default(cuid())
+  tenantId         String?
+  tenant           Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  userId           String?
+  feature          String // e.g. chat, test
+  model            String
+  generationId     String?
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  costUsd          Decimal  @default(0) @db.Decimal(14, 8) // what OpenRouter charged us
+  markupPercent    Decimal  @db.Decimal(6, 2)
+  billedUsd        Decimal  @default(0) @db.Decimal(14, 8) // cost × (1 + markup)
+  latencyMs        Int?
+  ok               Boolean  @default(true)
+  error            String?
+  createdAt        DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([createdAt])
+  @@map("ai_usage")
+}
+
+enum SubscriptionPeriod {
+  MONTHLY
+  YEARLY
+}
+
+// A package of services sold to tenants (Ρυθμίσεις → Πακέτα). Services are keys of lib/plans.ts.
+model Plan {
+  id          String             @id @default(cuid())
+  name        String
+  description String?
+  services    String[]
+  period      SubscriptionPeriod @default(YEARLY)
+  price       Decimal            @db.Decimal(12, 2) // incl. VAT
+  active      Boolean            @default(true)
+  sortOrder   Int                @default(0)
+  // AI tokens included every month (Κίμων, κλαδική ανάλυση, εναλλακτικά είδη …); 0 = none.
+  aiTokensMonthly Int            @default(0)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  tenants     Tenant[]
+
+  @@map("plan")
+}
+
+// Web-services keys of a tenant (dgbi_…); only the SHA-256 of the key is stored.
+model ApiKey {
+  id          String    @id @default(cuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  prefix      String // first characters, to recognise the key in lists
+  hash        String    @unique
+  createdById String?
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([tenantId])
+  @@map("api_key")
+}
+
+// Maps: Mapbox token (geocoding of customer addresses + map tiles). One row, id "default".
+model GeoSettings {
+  id            String    @id @default("default")
+  tokenEnc      String? // AES-256-GCM
+  keyHint       String?
+  enabled       Boolean   @default(false)
+  // Customers geocoded per scheduler run and tenant (cost control).
+  batchSize     Int       @default(300)
+  lastTestAt    DateTime?
+  lastTestOk    Boolean?
+  lastTestError String?
+  updatedAt     DateTime  @updatedAt
+
+  @@map("geo_settings")
+}
+
+// Registry lookups by AFM (activity codes / ΚΑΔ), e.g. vat.wwa.gr/afm2info. One row, id "default".
+model AfmLookupSettings {
+  id            String    @id @default("default")
+  url           String    @default("https://vat.wwa.gr/afm2info")
+  enabled       Boolean   @default(false)
+  // AFMs looked up per scheduler run and tenant.
+  batchSize     Int       @default(1000)
+  lastTestAt    DateTime?
+  lastTestOk    Boolean?
+  lastTestError String?
+  updatedAt     DateTime  @updatedAt
+
+  @@map("afm_lookup_settings")
+}
+
+// Shared cache of the AFM registry for all tenants (public business data): an AFM looked up once
+// serves every tenant that has it as a customer.
+model AfmRegistry {
+  afm          String   @id
+  name         String?
+  title        String?
+  legal        String?
+  active       Boolean?
+  registered   String?
+  mainKad      String?
+  mainKadDescr String?
+  kads         Json?
+  found        Boolean
+  fetchedAt    DateTime @default(now())
+
+  @@map("afm_registry")
+}
+
+// Industry segmentation of a tenant's customers: AI-built segments and main-ΚΑΔ → segment mapping.
+model IndustrySegmentation {
+  tenantId  String    @id
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // [{ key, name, description }]
+  segments  Json
+  // { "<kad code>": "<segment key>" }
+  mapping   Json
+  // { "<segment key>": { text, at } } — AI profiles of each segment, made on demand
+  profiles  Json?
+  model     String?
+  builtAt   DateTime?
+  error     String?
+  updatedAt DateTime  @updatedAt
+
+  @@map("industry_segmentation")
+}
+
+// Outgoing email through Mailgun (EU region by default). One row, id "default".
+model EmailSettings {
+  id            String    @id @default("default")
+  apiKeyEnc     String? // AES-256-GCM
+  keyHint       String?
+  domain        String?
+  region        String    @default("EU") // EU → api.eu.mailgun.net, US → api.mailgun.net
+  fromName      String    @default("DGsmart BI")
+  fromEmail     String?
+  replyTo       String?
+  enabled       Boolean   @default(false)
+  // Days before the subscription end for renewal reminders, and after it for overdue reminders.
+  reminderDays  Int[]     @default([14, 3])
+  overdueDays   Int[]     @default([1, 7])
+  // Copy of every customer email (e.g. accounting@…), optional.
+  bcc           String?
+  lastTestAt    DateTime?
+  lastTestOk    Boolean?
+  lastTestError String?
+  // Mailgun webhooks (opens, deliveries, failures, unsubscribes): HTTP webhook signing key, encrypted.
+  webhookKeyEnc  String?
+  webhookKeyHint String?
+  trackOpens     Boolean   @default(true)
+  updatedAt     DateTime  @updatedAt
+
+  @@map("email_settings")
+}
+
+// Edited copies of the built-in templates (lib/email-templates.ts); no row = the default text.
+model EmailTemplate {
+  key         String   @id
+  subject     String
+  body        String
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("email_template")
+}
+
+model EmailLog {
+  id        String   @id @default(cuid())
+  template  String
+  to        String
+  subject   String
+  ok        Boolean
+  messageId String?
+  error     String?
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  // Reminders are sent once: e.g. renewal:<tenant>:<endsAt>:14
+  dedupeKey String?  @unique
+  createdAt DateTime @default(now())
+  // From Mailgun webhooks (first time each happened; opens are counted).
+  deliveredAt  DateTime?
+  openedAt     DateTime?
+  lastOpenedAt DateTime?
+  openCount    Int          @default(0)
+  failedAt     DateTime?
+  failReason   String?
+  events       EmailEvent[]
+
+  @@index([createdAt])
+  @@index([tenantId, createdAt])
+  @@index([messageId])
+  @@map("email_log")
+}
+
+// One row per Mailgun webhook event (delivered, opened, clicked, failed, unsubscribed, complained).
+model EmailEvent {
+  id        String    @id // Mailgun event id → a re-delivered webhook is stored once
+  logId     String?
+  log       EmailLog? @relation(fields: [logId], references: [id], onDelete: Cascade)
+  event     String
+  severity  String?
+  recipient String
+  at        DateTime
+  client    String? // e.g. «Gmail · mobile · iOS»
+  country   String?
+  city      String?
+  url       String?
+  reason    String?
+  createdAt DateTime  @default(now())
+
+  @@index([logId])
+  @@index([event, at])
+  @@index([recipient])
+  @@map("email_event")
+}
+
+// Addresses that must not receive non-essential emails (reminders): unsubscribed via the link in the
+// email or in Mailgun, spam complaints, or added by an admin. Account / receipt emails still go out.
+model EmailSuppression {
+  email     String   @id
+  reason    String // unsubscribe | complaint | admin
+  source    String // link | mailgun | admin
+  template  String?
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@map("email_suppression")
+}
+
+// Κίμων — the AI business advisor. One conversation per thread, private to its user and tenant.
+model KimonChat {
+  id        String         @id @default(cuid())
+  tenantId  String
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  messages  KimonMessage[]
+
+  @@index([userId, tenantId, updatedAt])
+  @@map("kimon_chat")
+}
+
+model KimonMessage {
+  id        String    @id @default(cuid())
+  chatId    String
+  chat      KimonChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  role      String // user | assistant
+  content   String
+  // Tables / charts / links the answer produced (rendered under the text, exportable).
+  artifacts Json?
+  // Page the user was on when asking (dashboard + period) — context for the answer.
+  context   Json?
+  error     String?
+  createdAt DateTime  @default(now())
+
+  @@index([chatId, createdAt])
+  @@map("kimon_message")
+}
+
+// ───────────────────────── Payments ─────────────────────────
+
+enum PaymentMethod {
+  CARD
+  BANK_TRANSFER
+  CASH
+  VIVA
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum S1PostStatus {
+  NOT_POSTED
+  POSTING // claimed by one request — prevents double posting
+  POSTED
+  FAILED
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  tenantId    String
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  amount      Decimal       @db.Decimal(12, 2) // gross amount charged
+  currency    String        @default("EUR")
+  description String
+  method      PaymentMethod
+  status      PaymentStatus @default(PAID)
+  paidAt      DateTime      @default(now())
+  providerRef String?       @unique // e.g. Viva transaction id
+
+  // Posting to the SoftOne of DGsoft (SALDOC)
+  s1Status   S1PostStatus @default(NOT_POSTED)
+  s1Findoc   Int?
+  s1Fincode  String?
+  s1Error    String?
+  s1PostedAt DateTime?
+
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, paidAt])
+  @@index([s1Status])
+  @@map("payment")
+}
+
+// ───────────────────────── Cube server ─────────────────────────
+
+// Single row (id = "default"): how the Cube server on Coolify is wired to this app.
+model CubeDeployment {
+  id                    String          @id @default("default")
+  apiUrl                String // https://cube.dgsmart.gr
+  devUrl                String? // https://cube-dev.dgsmart.gr
+  controlPlaneUrl       String // public URL of this app, called by the Cube refresh worker
+  warehouseConnectionId String?
+  warehouseConnection   DataConnection? @relation("CubeWarehouse", fields: [warehouseConnectionId], references: [id], onDelete: SetNull)
+  devConnectionId       String?
+  devConnection         DataConnection? @relation("CubeDev", fields: [devConnectionId], references: [id], onDelete: SetNull)
+  // AES-256-GCM: secrets shared by this app and Cube (JWT secret, tenant role secret, internal token, …)
+  secretsEnc            String
+  /// Model files NOT served to Cube (glob, e.g. "analytics_*") — staged roll-out / quick rollback.
+  modelExclude          String[]        @default(["analytics_*"])
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  @@map("cube_deployment")
+}
+
+// ───────────────────────── Audit ─────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  action    String
+  entity    String
+  entityId  String?
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([entity, entityId])
+  @@map("audit_log")
+}
+
+// Admin correction of how a document series counts in sales / purchases (1 invoice, -1 credit,
+// 0 excluded), when the automatic classification by name gets it wrong.
+model DocSeriesOverride {
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  series      Int
+  sign        Int
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+
+  @@id([tenantId, series])
+  @@map("doc_series_override")
+}
+
+// Is item B a real substitute for item A (another brand)? Judged by AI (or by the descriptions when AI
+// is off) once per pair and kept, so the brand order page doesn't pay for it again.
+model ItemSubstitute {
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  mtrl      Int
+  altMtrl   Int
+  match     Int // 0–100
+  reason    String
+  source    String // ai | text
+  createdAt DateTime @default(now())
+
+  @@id([tenantId, mtrl, altMtrl])
+  @@map("item_substitute")
+}
+
+// Every change of a tenant's AI tokens: monthly plan grant, top-up, usage (one row per AI call), adjustment.
+model AiTokenLedger {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  delta        Int
+  balanceAfter Int
+  kind         String // grant | topup | usage | adjust
+  feature      String?
+  note         String?
+  // grant:<tenant>:<YYYY-MM> — each monthly grant once.
+  key          String?  @unique
+  aiUsageId    String?
+  requestId    String?
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@map("ai_token_ledger")
+}
+
+// A tenant's request for a token pack; approved by us (when paid) → tokens added.
+model AiTokenRequest {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tokens        Int
+  priceEur      Decimal   @db.Decimal(12, 2)
+  status        String    @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELED
+  requestedById String?
+  decidedById   String?
+  decidedAt     DateTime?
+  note          String?
+  createdAt     DateTime  @default(now())
+
+  @@index([status, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("ai_token_request")
+}
+
+// Budget (targets) of a tenant per month: sales and gross profit — module «Budget & στόχοι».
+model BudgetMonth {
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  year      Int
+  month     Int // 1–12
+  revenue   Decimal? @db.Decimal(14, 2)
+  margin    Decimal? @db.Decimal(14, 2)
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@id([tenantId, year, month])
+  @@map("budget_month")
+}
+
+// Planning inputs not in the data: monthly fixed costs (when there is no General Ledger).
+model PlanningSettings {
+  tenantId          String   @id
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fixedCostsMonthly Decimal? @db.Decimal(14, 2)
+  minCash           Decimal? @db.Decimal(14, 2) // alert below this cash balance (scenarios)
+  // Assumptions of the analyses (null = defaults): cost to serve a customer, lost demand on empty shelves.
+  costPerDocument   Decimal? @db.Decimal(10, 2)
+  financingRatePct  Decimal? @db.Decimal(5, 2)
+  lostSharePct      Decimal? @db.Decimal(5, 2)
+  updatedAt         DateTime @updatedAt
+
+  @@map("planning_settings")
+}
+
+// Report builder (module «Αναφορές»): a saved report definition (cube, rows / columns / values,
+// filters, period, view), private to its author or shared with the company.
+model SavedReport {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId      String
+  name        String
+  description String?
+  definition  Json
+  shared      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, userId])
+  @@map("saved_report")
+}

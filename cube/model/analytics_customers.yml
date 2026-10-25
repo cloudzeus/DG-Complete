@@ -1,0 +1,172 @@
+# Generated from the analytics model — one cube per file.
+cubes:
+  # ───────────────────────── Πελάτες: RFM, κίνδυνος, πληρωμές ─────────────────────────
+  - name: customers
+    title: Πελάτες — αξιολόγηση & πληρωμές
+    description: >
+      Μία γραμμή ανά πελάτη: τζίρος και κέρδος 12μήνου, ανάπτυξη, συχνότητα αγορών, κατηγορία RFM
+      (Champions, Πιστοί, Σε κίνδυνο, Χαμένοι …), κίνδυνος απώλειας, υπόλοιπο, ληξιπρόθεσμα ανά ηλικία,
+      μέσες ημέρες πληρωμής και βαθμολογία πληρωμών (Α–Δ).
+    sql: >
+      SELECT cs.*, c.code AS customer_code, c.name AS customer_name, c.city AS customer_city, gr.region AS customer_region, gr.periphery AS customer_periphery,
+             pb.balance, pb.open_0_30, pb.open_31_60, pb.open_61_90, pb.open_90_plus, pb.oldest_open,
+             pb.avg_payment_days, pb.paid_12m, pb.invoiced_12m, pb.last_payment, pb.dso_days, pb.payment_score, pb.payment_grade
+      FROM m_customer_stats cs
+      LEFT JOIN customers c ON c.trdr = cs.trdr
+      LEFT JOIN gr_regions gr ON gr.prefix = LEFT(REGEXP_REPLACE(COALESCE(c.zip, ''), '[^0-9]', '', 'g'), 2) AND LENGTH(REGEXP_REPLACE(COALESCE(c.zip, ''), '[^0-9]', '', 'g')) = 5
+      LEFT JOIN m_partner_balances pb ON pb.trdr = cs.trdr AND pb.kind = 'R'
+    measures:
+      - name: count
+        title: Πελάτες
+        type: count
+      - name: revenue_12m
+        title: Τζίρος 12μήνου
+        type: sum
+        sql: revenue_12m
+      - name: revenue_prev_12m
+        title: Τζίρος προηγ. 12μήνου
+        type: sum
+        sql: revenue_prev_12m
+      - name: margin_12m
+        title: Μικτό κέρδος 12μήνου
+        type: sum
+        sql: margin_12m
+      - name: balance
+        title: Υπόλοιπο πελατών
+        type: sum
+        sql: balance
+      - name: overdue_90
+        title: Ανοιχτά > 90 ημερών
+        type: sum
+        sql: open_90_plus
+      - name: overdue_61_90
+        title: Ανοιχτά 61–90 ημερών
+        type: sum
+        sql: open_61_90
+      - name: open_31_60
+        title: Ανοιχτά 31–60 ημερών
+        type: sum
+        sql: open_31_60
+      - name: open_0_30
+        title: Ανοιχτά έως 30 ημέρες
+        type: sum
+        sql: open_0_30
+      - name: invoiced_12m
+        title: Τιμολογήσεις 12μήνου (με ΦΠΑ)
+        type: sum
+        sql: invoiced_12m
+      - name: dso
+        title: Ημέρες είσπραξης (DSO)
+        description: Πόσες ημέρες πωλήσεων είναι ανείσπρακτες — υπόλοιπο πελατών / ημερήσιες τιμολογήσεις.
+        type: number
+        sql: "365.0 * SUM(GREATEST(balance, 0)) / NULLIF(SUM(invoiced_12m), 0)"
+      - name: avg_payment_days
+        title: Μέσες ημέρες πληρωμής (σταθμισμένες με τον τζίρο)
+        type: number
+        sql: "SUM(avg_payment_days * invoiced_12m) / NULLIF(SUM(CASE WHEN avg_payment_days IS NOT NULL THEN invoiced_12m END), 0)"
+      - name: at_risk_revenue
+        title: Τζίρος πελατών σε κίνδυνο
+        type: sum
+        sql: revenue_prev_12m
+        filters:
+          - sql: "churn_risk = 'Υψηλός'"
+    dimensions:
+      - name: trdr
+        sql: trdr
+        type: number
+        primary_key: true
+        public: false
+      - name: customer_code
+        title: Κωδικός πελάτη
+        type: string
+        sql: customer_code
+      - name: customer_name
+        title: Πελάτης
+        type: string
+        sql: COALESCE(customer_name, '—')
+      - name: city
+        title: Πόλη
+        type: string
+        sql: customer_city
+      - name: region
+        title: Νομός
+        description: Νομός / περιφερειακή ενότητα του πελάτη από τον ταχυδρομικό κώδικα (π.χ. Θεσσαλονίκη = ΤΚ 54xxx–57xxx, Αθήνα, Πειραιάς). Αξιόπιστο για φίλτρα «στη Θεσσαλονίκη», σε αντίθεση με την ελεύθερη πόλη.
+        type: string
+        sql: "COALESCE(customer_region, 'Άγνωστος / εξωτερικό')"
+      - name: periphery
+        title: Περιφέρεια
+        description: Περιφέρεια του πελάτη από τον ΤΚ (π.χ. Κεντρική Μακεδονία, Αττική, Κρήτη).
+        type: string
+        sql: "COALESCE(customer_periphery, 'Άγνωστη / εξωτερικό')"
+      - name: segment
+        title: Κατηγορία RFM
+        type: string
+        sql: segment
+      - name: churn_risk
+        title: Κίνδυνος απώλειας
+        type: string
+        sql: churn_risk
+      - name: payment_grade
+        title: Βαθμός πληρωμών (Α–Δ)
+        type: string
+        sql: payment_grade
+      - name: payment_score
+        title: Βαθμολογία πληρωμών (0–100)
+        type: number
+        sql: payment_score
+      - name: payment_days
+        title: Μέσες ημέρες πληρωμής
+        type: number
+        sql: avg_payment_days
+      - name: dso_days
+        title: DSO πελάτη (ημέρες)
+        type: number
+        sql: dso_days
+      - name: open_balance
+        title: Υπόλοιπο (τιμή)
+        type: number
+        sql: balance
+      - name: overdue_90_amount
+        title: Ανοιχτά > 90 ημ. (τιμή)
+        type: number
+        sql: open_90_plus
+      - name: revenue
+        title: Τζίρος 12μ (τιμή)
+        type: number
+        sql: revenue_12m
+      - name: revenue_prev
+        title: Τζίρος προηγ. 12μ (τιμή)
+        type: number
+        sql: revenue_prev_12m
+      - name: growth_percent
+        title: Ανάπτυξη %
+        type: number
+        sql: growth_pct
+      - name: margin_percent
+        title: Περιθώριο %
+        type: number
+        sql: margin_pct
+      - name: recency_days
+        title: Ημέρες από την τελευταία αγορά
+        type: number
+        sql: recency_days
+      - name: invoices_12m
+        title: Παραστατικά 12μ
+        type: number
+        sql: invoices_12m
+      - name: avg_days_between
+        title: Μέσο διάστημα μεταξύ αγορών (ημέρες)
+        type: number
+        sql: avg_days_between_purchases
+      - name: last_purchase
+        title: Τελευταία αγορά
+        type: time
+        sql: last_purchase
+      - name: expected_next_purchase
+        title: Αναμενόμενη επόμενη αγορά
+        type: time
+        sql: expected_next_purchase
+      - name: last_payment
+        title: Τελευταία πληρωμή
+        type: time
+        sql: last_payment

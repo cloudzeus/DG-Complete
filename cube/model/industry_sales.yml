@@ -1,0 +1,109 @@
+# Κλαδική ανάλυση: οι γραμμές πωλήσεων με τον κλάδο του πελάτη (ΚΑΔ από το μητρώο + κατηγοριοποίηση AI).
+cubes:
+  - name: industry_sales
+    title: Πωλήσεις ανά κλάδο πελάτη
+    description: >
+      Γραμμές πωλήσεων με τον κλάδο δραστηριότητας του πελάτη (κύριος ΚΑΔ, κλάδος-στόχος της επιχείρησης),
+      για το τι αγοράζει κάθε κλάδος, πότε, ποιες μάρκες και με ποιον μέσο τζίρο ανά πελάτη.
+    sql: >
+      SELECT f.findoc, f.mtrlines, f.trndate, f.trdr, f.net, f.cost, f.qty,
+             i.name AS item_name, b.name AS brand_name, c.name AS category_name,
+             cu.code AS customer_code, cu.name AS customer_name, cu.city AS customer_city,
+             s.segment_key, s.segment_name, s.main_kad, s.main_kad_descr, s.kad_division
+      FROM f_sales_lines f
+      JOIN customer_segment s ON s.trdr = f.trdr
+      LEFT JOIN items i ON i.mtrl = f.mtrl
+      LEFT JOIN item_categories c ON c.mtrcategory = i.mtrcategory
+      LEFT JOIN brands b ON b.mtrmark = i.mtrmark
+      LEFT JOIN customers cu ON cu.trdr = f.trdr
+
+    measures:
+      - name: revenue
+        title: Τζίρος
+        type: sum
+        sql: net
+      - name: revenue_costed
+        type: sum
+        sql: net
+        filters:
+          - sql: "cost IS NOT NULL"
+        public: false
+      - name: cost
+        type: sum
+        sql: cost
+        public: false
+      - name: margin_pct
+        title: Περιθώριο %
+        type: number
+        sql: "100.0 * ({revenue_costed} - {cost}) / NULLIF({revenue_costed}, 0)"
+      - name: quantity
+        title: Ποσότητα
+        type: sum
+        sql: qty
+      - name: documents
+        title: Παραστατικά
+        type: count_distinct
+        sql: findoc
+      - name: customers
+        title: Πελάτες
+        type: count_distinct
+        sql: trdr
+      - name: revenue_per_customer
+        title: Μέσος τζίρος ανά πελάτη
+        type: number
+        sql: "{CUBE.revenue} / NULLIF({CUBE.customers}, 0)"
+
+    dimensions:
+      - name: line_key
+        sql: "findoc::text || '-' || mtrlines::text"
+        type: string
+        primary_key: true
+        public: false
+      - name: date
+        title: Ημερομηνία
+        type: time
+        sql: trndate
+      - name: segment_key
+        title: Κλάδος (κωδικός)
+        type: string
+        sql: segment_key
+      - name: segment
+        title: Κλάδος
+        type: string
+        sql: segment_name
+      - name: main_kad
+        title: Κύριος ΚΑΔ
+        type: string
+        sql: main_kad
+      - name: main_kad_descr
+        title: Δραστηριότητα (κύριος ΚΑΔ)
+        type: string
+        sql: "COALESCE(main_kad_descr, '—')"
+      - name: kad_division
+        title: Κλάδος ΚΑΔ (2 ψηφία)
+        type: string
+        sql: kad_division
+      - name: brand
+        title: Μάρκα
+        type: string
+        sql: "COALESCE(brand_name, 'Χωρίς μάρκα')"
+      - name: category
+        title: Κατηγορία
+        type: string
+        sql: "COALESCE(category_name, 'Χωρίς κατηγορία')"
+      - name: item_name
+        title: Είδος
+        type: string
+        sql: "COALESCE(item_name, '—')"
+      - name: customer_code
+        title: Κωδικός πελάτη
+        type: string
+        sql: customer_code
+      - name: customer_name
+        title: Πελάτης
+        type: string
+        sql: "COALESCE(customer_name, '—')"
+      - name: city
+        title: Πόλη
+        type: string
+        sql: "COALESCE(NULLIF(TRIM(customer_city), ''), '—')"
