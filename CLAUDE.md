@@ -13,7 +13,8 @@
 - **Better Auth** (`lib/auth.ts`) — όχι Auth.js.
 - shadcn/ui (`radix-nova`) + **Vengeance UI** (`@vengeance`, skill `vengeance-ui`) + Tailwind v4· DG Design System ήδη στο `app/globals.css`· icons **lucide** (όπως dgsmartbi).
 - GSAP (`@gsap/react`) μόνο για διακριτικό motion.
-- zod 4, react-hook-form, TanStack Table, exceljs, Mailgun.
+- zod 4, φόρμες με Server Actions (`<form action>`, χωρίς react-hook-form — ADR‑023), TanStack Table, exceljs, Mailgun.
+- **Server side όπου γίνεται:** server components, Server Actions· client μόνο για modal shells και πραγματική διάδραση.
 - **pg-boss** (ουρές στον Postgres — χωρίς Redis/Valkey, ADR‑022), Playwright, **Bunny Storage + Pull zone (token auth)**, WXT για το extension.
 
 ## Δομή

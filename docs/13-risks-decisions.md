@@ -87,5 +87,8 @@ Web και worker συνδέονται μέσω PgBouncer (port 6432, `pool_mode
 - **Tests:** Testcontainers μόνο με Postgres.
 **Συνέπειες:** ένα service λιγότερο στο deploy· λιγότερο throughput από Redis, επαρκές για τον όγκο του DG Complete (χιλιάδες runs/ώρα). Αν χρειαστεί κλιμάκωση, οι ουρές περνούν πίσω από το `lib/queue` ώστε να αλλάξει ο driver χωρίς αλλαγές στους καταναλωτές.
 
+## ADR‑023 — Φόρμες με Server Actions, χωρίς react-hook-form
+**Απόφαση (25/10/2026):** όλες οι φόρμες είναι `<form action={serverAction}>`· ο έλεγχος γίνεται στον server με zod και τα σφάλματα πεδίων επιστρέφουν από το action (`useActionState`). Οι φόρμες ανοίγουν σε modals (`FormDialog`)· τα πεδία είναι server components μέσα στο client shell του modal. Δεν χρησιμοποιείται react-hook-form. Περισσότερα στον server, λιγότερο JS στον browser.
+
 ## ADR‑021 — Προγραμματισμένες εργασίες στον κώδικα, όχι στο Coolify
 Όλες οι περιοδικές εργασίες (χρεώσεις, συγχρονισμοί SoftOne, retention, health runs κ.λπ.) ορίζονται στο `lib/jobs/registry.ts` και τρέχουν από τον in‑process scheduler του dgsmartbi, με κλείδωμα ανά εργασία στον πίνακα `ScheduledTask`. Δεν χρησιμοποιούνται Scheduled Tasks του Coolify ούτε crontab στον server: τα ωράρια είναι versioned, ελέγχονται σε review/tests και μεταφέρονται αυτούσια σε κάθε περιβάλλον (docs/10 §4β).

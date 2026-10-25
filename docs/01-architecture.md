@@ -79,7 +79,7 @@ dg-complete/
 | Auth | **Better Auth** (email/κωδικός, προσκλήσεις, reset) + Microsoft Entra ID | από το dgsmartbi |
 | UI | shadcn/ui (`radix-nova`) + **Vengeance UI** + Tailwind v4, lucide icons | DG θέμα ήδη στο `app/globals.css` |
 | Motion | GSAP 3 (`@gsap/react`) | διακριτικές μεταβάσεις (DG motion tokens) |
-| Forms / validation | react-hook-form + zod 4 | ίδια schemas σε client/server/DSL |
+| Forms / validation | `<form action>` + Server Actions + zod 4 (χωρίς react-hook-form, ADR‑023) | ίδια schemas σε server/DSL· σφάλματα πεδίων από το action |
 | Πίνακες | TanStack Table v8 (+ virtual) | το dgsmartbi έχει ήδη `components/data-table` |
 | Οπτικός καμβάς ροών | @xyflow/react v12 + elkjs + zustand | επεξεργασία ροής, live εκτέλεση, heatmap, diff (docs/19) |
 | Code/JSON | Monaco editor | input schema, DSL raw view |
