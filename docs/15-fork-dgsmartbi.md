@@ -1,6 +1,6 @@
 # 15 — Fork του dgsmartbi ως βάση SaaS
 
-**Απόφαση:** Το DG Complete ξεκινά ως fork του [`cloudzeus/dgsmartbi`](https://github.com/cloudzeus/dgsmartbi) (commit αναφοράς `87bfae5`). Κρατάμε το «control plane» (χρήστες, tenants, πακέτα, πληρωμές, δικαιώματα, audit, κλειδιά API, κρυπτογράφηση, email, scheduler) και αφαιρούμε όλα τα BI modules. Repo [`cloudzeus/DG-Complete`](https://github.com/cloudzeus/DG-Complete) (branch `master`), δική του βάση `dgcomplete` και δικό του deploy. Το dgsmartbi μένει remote `upstream` για να περνάμε διορθώσεις της βάσης με cherry-pick.
+**Απόφαση:** Το DG Complete ξεκινά ως fork του [`cloudzeus/dgsmartbi`](https://github.com/cloudzeus/dgsmartbi) (commit αναφοράς `87bfae5`). Κρατάμε το «control plane» (χρήστες, tenants, πακέτα, πληρωμές, δικαιώματα, audit, κλειδιά API, κρυπτογράφηση, email, scheduler) και αφαιρούμε όλα τα BI modules. Repo [`cloudzeus/DG-Complete`](https://github.com/cloudzeus/DG-Complete) (branch `master`), δική του βάση `DG_COMPLETE` και δικό του deploy. Το dgsmartbi μένει remote `upstream` για να περνάμε διορθώσεις της βάσης με cherry-pick.
 
 ## 1. Τι υπάρχει στο dgsmartbi (σύνοψη)
 

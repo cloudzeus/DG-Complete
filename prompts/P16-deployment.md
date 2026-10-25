@@ -8,7 +8,7 @@ Staging και production σε Coolify (Contabo) με web + worker, Valkey, Post
 
 ## Εργασίες
 1. Dockerfile: Node 24, νέο target `worker` (Playwright image ίδιας έκδοσης με το package, non‑root, `--conditions=react-server`)· CI check εκδόσεων.
-2. Ξαναγράψε το `docs/DEPLOY.md` για το DG Complete: βάση `dgcomplete` και ρόλοι (`scripts/db-roles.sql`), **PgBouncer** (`deploy/pgbouncer/pgbouncer.ini` + `userlist.txt` template, transaction mode, port 6432, `max_prepared_statements=200`), `pg_hba.conf`, Valkey, δύο applications (web, worker σε δεύτερο server), env vars, health checks, migrations στο start, `SCHEDULER=off` στο 2ο replica.
+2. Ξαναγράψε το `docs/DEPLOY.md` για το DG Complete: βάση `DG_COMPLETE` και ρόλοι (`scripts/db-roles.sql`), **PgBouncer** (`deploy/pgbouncer/pgbouncer.ini` + `userlist.txt` template, transaction mode, port 6432, `max_prepared_statements=200`), `pg_hba.conf`, Valkey, δύο applications (web, worker σε δεύτερο server), env vars, health checks, migrations στο start, `SCHEDULER=off` στο 2ο replica.
 3. Bunny: οδηγός δημιουργίας storage zone (EU) + pull zone με Token Authentication, Block root path, CORS για το domain· staging και production ξεχωριστά zones.
 4. Backups Postgres (όπως dgsmartbi) + restore drill script.
 5. Monitoring: `/metrics` (worker), uptime checks, alert για queue depth.

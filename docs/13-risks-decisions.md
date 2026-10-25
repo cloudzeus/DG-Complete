@@ -69,8 +69,8 @@ Pilot με τη World Wide Associates σε TAXIS και ΟΠΣΚΕ (docs/18). Σ
 ## ADR‑018 — Χρέωση AI ξεχωριστά, κόστος + markup ανά πακέτο
 Το AI χρεώνεται χωριστά από τις εκτελέσεις: πραγματικό κόστος OpenRouter × (1 + `Plan.aiMarkupPct`), μηνιαία χρέωση `AI_USAGE` στο SoftOne (docs/14 §7). Δεν χρησιμοποιούνται προπληρωμένα AI tokens.
 
-## ADR‑019 — Βάση `dgcomplete` στον ίδιο Postgres server με το dgsmartbi
-Νέα, ξεχωριστή βάση `dgcomplete` στον υπάρχοντα server (`100.70.50.43`), με δικούς της ρόλους (`dgcomplete_app`, `dgcomplete_migrator`) χωρίς πρόσβαση στη βάση του dgsmartbi. Ξεχωριστά backups και `pg_hba.conf` κανόνες. Η εφαρμογή συνδέεται μέσω **PgBouncer** (transaction pooling, ADR‑020).
+## ADR‑019 — Βάση `DG_COMPLETE` στον ίδιο Postgres server με το dgsmartbi
+Νέα, ξεχωριστή βάση `DG_COMPLETE` (σε SQL με εισαγωγικά: `"DG_COMPLETE"`) στον υπάρχοντα server (`100.70.50.43`), με δικούς της ρόλους (`dgcomplete_app`, `dgcomplete_migrator`) χωρίς πρόσβαση στη βάση του dgsmartbi. Ξεχωριστά backups και `pg_hba.conf` κανόνες. Η εφαρμογή συνδέεται μέσω **PgBouncer** (transaction pooling, ADR‑020).
 
 ## ADR‑020 — PgBouncer μπροστά στον Postgres
 Web και worker συνδέονται μέσω PgBouncer (port 6432, `pool_mode = transaction`, `max_prepared_statements` ενεργό) για να μη γεμίζουν οι συνδέσεις του κοινού server με το dgsmartbi όταν κλιμακώνονται τα replicas. Συνέπειες στον κώδικα: RLS context μόνο με `set_config(..., true)` μέσα σε transaction, όχι session advisory locks, όχι LISTEN/NOTIFY, migrations απευθείας στο 5432 (docs/10 §4α).

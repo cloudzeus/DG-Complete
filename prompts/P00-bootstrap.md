@@ -20,7 +20,7 @@
 2. Τα `docs/DEPLOY.md` και `docs/PLAN.md` του dgsmartbi μετακινούνται στο `docs/legacy-dgsmartbi/` (αναφορά, όχι πηγή αλήθειας). Το `.claude/launch.json` του dgsmartbi μένει δίπλα στο δικό μας `.claude/settings.json`. Μην αγγίξεις τα `docs/00–26`, τα `prompts/` και το `design/`.
 3. Αφαίρεσε ό,τι λέει το docs/15 §3 (Cube, BI σελίδες/API/lib, BI μοντέλα και πεδία Tenant). Τρέξε `npm run typecheck` και καθάρισε κάθε αναφορά μέχρι να περνά. Μην αλλάξεις αρχεία που κρατάμε, πέρα από τα απαραίτητα imports.
    **Οι συγχρονισμοί με το SoftOne της DGsoft μένουν ακέραιοι** (πελάτες → tenants, jobs, ιστορικό, `/admin/customers`, `/admin/settings/sync`, `/admin/settings/softone`): αφαιρείς μόνο τον προορισμό `WAREHOUSE` και τις συνδέσεις SoftOne των πελατών (scope `TENANT`).
-4. Δημιούργησε migration που αφαιρεί τα BI μοντέλα (νέα βάση `dgcomplete`, οπότε προτίμησε **reset**: σβήσε τα παλιά migrations και φτιάξε ένα αρχικό `init` από το καθαρό schema).
+4. Δημιούργησε migration που αφαιρεί τα BI μοντέλα (νέα βάση `DG_COMPLETE`, οπότε προτίμησε **reset**: σβήσε τα παλιά migrations και φτιάξε ένα αρχικό `init` από το καθαρό schema).
 5. Μετονομασία: `appName` του Better Auth, `metadata` στο `app/layout.tsx`, `package.json` name `dg-complete`, email templates/αποστολέας, λογότυπα (`public/brand`) — κείμενο «DG Complete».
 6. Upgrade: `npx next upgrade` σε **16.4+** (React 19.3), `cacheComponents: true` στο `next.config.ts`· Node 24 στο Dockerfile. Pin `prisma`/`@prisma/client`/`@prisma/adapter-pg` σε `^7`.
 7. Δομή φακέλων: κενά `lib/dsl`, `lib/engine`, `lib/queue`, `lib/storage`, `lib/billing`, `lib/recorder`, `worker/index.ts` (συνδέεται σε Valkey και κάνει log), `extension/` (`npx wxt@latest init` με React), `sandbox/` (μικρό Next ή Hono app στο port 4100).
@@ -50,7 +50,7 @@
 
 ## Κριτήρια αποδοχής
 - [ ] `npm ci && npm run typecheck && npm run lint && npm run build` πράσινα.
-- [ ] `npm run db:migrate && npm run seed:admin` σε κενή βάση `dgcomplete`· login του SUPER_ADMIN στο `/login` → `/admin`.
+- [ ] `npm run db:migrate && npm run seed:admin` σε κενή βάση `DG_COMPLETE`· login του SUPER_ADMIN στο `/login` → `/admin`.
 - [ ] `grep -ri "cube\|kimon\|dgsmart bi" app lib` → μόνο σχόλια/τίποτα.
 - [ ] Στο `/admin/settings/sync` το job «Πελάτες» τρέχει χειροκίνητα, γεμίζει το `/admin/customers` και από εκεί δημιουργείται tenant συνδεδεμένος με πελάτη (TRDR).
 - [ ] `npm run worker:dev` ξεκινά και συνδέεται σε Valkey χωρίς σφάλμα `server-only`.

@@ -34,14 +34,14 @@ cd dg-complete
 
 ## 3. Βάση δεδομένων (μία φορά, στον Postgres server 100.70.50.43)
 
-Ξεχωριστή βάση `dgcomplete` στον ίδιο server με το dgsmartbi (ADR‑019), με PgBouncer μπροστά (ADR‑020):
+Ξεχωριστή βάση `DG_COMPLETE` στον ίδιο server με το dgsmartbi (ADR‑019), με PgBouncer μπροστά (ADR‑020):
 
 ```sql
 -- ως superuser στο 100.70.50.43
 CREATE ROLE dgcomplete_migrator LOGIN PASSWORD '…';
 CREATE ROLE dgcomplete_app LOGIN PASSWORD '…';
-CREATE DATABASE dgcomplete OWNER dgcomplete_migrator;
--- για το dev, προαιρετικά: CREATE DATABASE dgcomplete_dev OWNER dgcomplete_migrator;
+CREATE DATABASE "DG_COMPLETE" OWNER dgcomplete_migrator;
+-- για το dev, προαιρετικά: CREATE DATABASE "DG_COMPLETE_DEV" OWNER dgcomplete_migrator;
 ```
 
 - `pg_hba.conf`: ο `dgcomplete_migrator` από την IP του dev server/Coolify, ο `dgcomplete_app` μόνο από τον PgBouncer.

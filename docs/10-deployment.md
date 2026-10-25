@@ -9,7 +9,7 @@ flowchart LR
   DNS["DNS: complete.dgsmart.gr\n(Traefik / Let's Encrypt)"] --> TR["Coolify Traefik"]
   TR --> WEB["web ×2\nNext.js standalone\n+ scheduler στον κώδικα (§4β)"]
   WEB --> PGB["PgBouncer\ntransaction pooling :6432"]
-  PGB --> PG[("PostgreSQL\nβάση dgcomplete\n(server Tailscale)")]
+  PGB --> PG[("PostgreSQL\nβάση DG_COMPLETE\n(server Tailscale)")]
   WEB --> VK[("Valkey 8")]
   WK["worker ×2..N\nPlaywright image\nσε δεύτερο Contabo VPS"] --> PGB & VK
   MIG["migrations\n(start του web)"] -. "απευθείας :5432" .-> PG
@@ -42,7 +42,7 @@ flowchart LR
 
 ```
 # από το dgsmartbi
-DATABASE_URL=postgresql://dgcomplete_app:…@100.70.50.43:6432/dgcomplete   # μέσω PgBouncer
+DATABASE_URL=postgresql://dgcomplete_app:…@100.70.50.43:6432/DG_COMPLETE   # μέσω PgBouncer
 BETTER_AUTH_SECRET=…            BETTER_AUTH_URL=https://complete.dgsmart.gr
 DATA_ENCRYPTION_KEYS=k1:…       # AES-256-GCM keyring (rotation: νέο κλειδί πρώτο)
 SEED_ADMIN_EMAIL=… SEED_ADMIN_PASSWORD=… SEED_ADMIN_NAME=…
@@ -50,7 +50,7 @@ CRON_SECRET=…                   SCHEDULER=          # off μόνο για debu
 # Mailgun / SoftOne DGsoft (χρεώσεις, συγχρονισμοί): όπως στο dgsmartbi (ρυθμίζονται και από το /admin/settings)
 
 # νέα
-DATABASE_URL_MIGRATOR=postgresql://dgcomplete_migrator:…@100.70.50.43:5432/dgcomplete   # απευθείας, χωρίς PgBouncer
+DATABASE_URL_MIGRATOR=postgresql://dgcomplete_migrator:…@100.70.50.43:5432/DG_COMPLETE   # απευθείας, χωρίς PgBouncer
 DB_POOL_MAX=10                  # pool του @prisma/adapter-pg ανά process (web 10, worker 5)
 REDIS_URL=redis://valkey:6379
 MICROSOFT_CLIENT_ID=…  MICROSOFT_CLIENT_SECRET=…  MICROSOFT_TENANT_ID=common
@@ -69,7 +69,7 @@ WORKER_CONCURRENCY=8
 ## 4. Coolify — βήματα
 
 1. Project «DG Complete», environments `staging` / `production`.
-2. Νέα βάση `dgcomplete` στον Postgres server + κανόνες `pg_hba.conf` για τις IPs του Coolify (όπως στο DEPLOY.md του dgsmartbi).
+2. Νέα βάση `DG_COMPLETE` (με κεφαλαία → σε SQL πάντα με εισαγωγικά: `"DG_COMPLETE"`) στον Postgres server + κανόνες `pg_hba.conf` για τις IPs του Coolify (όπως στο DEPLOY.md του dgsmartbi).
 3. **PgBouncer** για τη βάση `dgcomplete` (port 6432, transaction mode)· κανόνας `pg_hba.conf` ώστε ο `dgcomplete_app` να συνδέεται μόνο από τον PgBouncer και ο `dgcomplete_migrator` από τις IPs του Coolify.
 4. Valkey από one‑click resource.
 5. Application **web** (Dockerfile target `runner`), domain `complete.dgsmart.gr`, health check `/api/health`, 2 replicas.

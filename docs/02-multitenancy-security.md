@@ -4,7 +4,7 @@
 
 ## 1. Μοντέλο tenancy
 
-**Μία βάση (`dgcomplete`), κοινό schema, `tenantId` σε κάθε tenant‑scoped πίνακα.** Ο tenant προκύπτει:
+**Μία βάση (`DG_COMPLETE`), κοινό schema, `tenantId` σε κάθε tenant‑scoped πίνακα.** Ο tenant προκύπτει:
 
 | Κανάλι | Πώς |
 |---|---|
