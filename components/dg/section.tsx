@@ -8,6 +8,7 @@ export function Section({
   children,
   className,
   bodyClassName,
+  stackHeader,
 }: {
   title?: string;
   description?: React.ReactNode;
@@ -15,11 +16,13 @@ export function Section({
   children: React.ReactNode;
   className?: string;
   bodyClassName?: string;
+  /** Title above the actions at every width (narrow side columns). */
+  stackHeader?: boolean;
 }) {
   return (
     <section className={cn("min-w-0 rounded-lg border border-border/70 bg-card shadow-fluent-2", className)}>
       {(title || actions) && (
-        <div className="flex flex-col gap-2 border-b border-border/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <div className={cn("flex flex-col gap-2 border-b border-border/60 px-4 py-3 sm:px-5", !stackHeader && "sm:flex-row sm:items-center sm:justify-between")}>
           <div className="min-w-0">
             {title && <h2 className="text-xl font-semibold tracking-tight">{title}</h2>}
             {description && <p className="text-xs text-muted-foreground">{description}</p>}

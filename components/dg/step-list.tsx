@@ -5,7 +5,14 @@ import type { StepDef } from "@/lib/data/tenant";
 export type Step = { id: string; no: string; type: string; label: string; locator?: string; value?: string; optional?: boolean; children?: Step[] };
 export type RunStep = { no: string; label: string; status: "ok" | "failed" | "skipped" | "pending"; durationMs: number; fallback?: boolean };
 
-const show = (v: unknown) => (v === undefined || v === null ? undefined : typeof v === "string" ? v : JSON.stringify(v));
+const show = (v: unknown): string | undefined => {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v === "string") return v;
+  const l = v as { strategy?: string; value?: string; role?: string; name?: string };
+  if (l.strategy === "role") return `role ${l.role ?? ""} "${l.name ?? ""}"`.trim();
+  if (l.strategy) return `${l.strategy} "${l.value ?? ""}"`;
+  return JSON.stringify(v);
+};
 
 /** DSL steps → numbered display steps (01, 02, 05a …). */
 export function numberSteps(steps: StepDef[] = [], prefix = ""): Step[] {

@@ -612,3 +612,44 @@ export async function markNotificationsReadAction(tenantId: string): Promise<voi
   await tenantDb(tenantId).notification.updateMany({ where: { readAt: null, OR: [{ userId: user.id }, { userId: null }] }, data: { readAt: new Date() } });
   revalidatePath(`/t/${tenantId}`, "layout");
 }
+
+// ───────────── Editor (list drag-and-drop, canvas) ─────────────
+
+const dslStep: z.ZodType<StepDef> = z.lazy(() =>
+  z.looseObject({ id: z.string().min(1).max(64), type: z.string().min(1).max(40), label: z.string().max(200).optional(), steps: z.array(dslStep).optional() }),
+) as z.ZodType<StepDef>;
+const dslDefinition = z.looseObject({ dslVersion: z.number().int().optional(), steps: z.array(dslStep).max(2000) });
+
+export type SaveResult = { ok: true; updatedAt: string; versionNo: number } | { ok: false; message: string; conflict?: boolean };
+
+/**
+ * Saves a whole definition produced by lib/dsl/commands on the client. Optimistic concurrency:
+ * `expectedUpdatedAt` must match the draft, otherwise someone else saved in between.
+ */
+export async function saveDefinitionAction(tenantId: string, workflowId: string, expectedUpdatedAt: string, definition: unknown): Promise<SaveResult> {
+  const user = await guard(tenantId, "tenant.workflows.edit");
+  const parsed = dslDefinition.safeParse(definition);
+  if (!parsed.success) return { ok: false, message: "Μη έγκυρος ορισμός ροής." };
+  const db = tenantDb(tenantId);
+  const latest = await db.workflowVersion.findFirst({ where: { workflowId }, orderBy: { versionNo: "desc" }, select: { status: true, updatedAt: true } });
+  if (!latest) return { ok: false, message: "Η ροή δεν βρέθηκε." };
+  if (latest.status === "DRAFT" && latest.updatedAt.toISOString() !== expectedUpdatedAt) {
+    return { ok: false, conflict: true, message: "Η ροή άλλαξε από άλλον χρήστη. Ανανεώστε τη σελίδα." };
+  }
+  const draft = await draftOf(tenantId, workflowId, user.id);
+  if (!draft) return { ok: false, message: "Η ροή δεν βρέθηκε." };
+  const r = await db.workflowVersion.update({ where: { id: draft.id }, data: { definition: parsed.data as never }, select: { updatedAt: true, versionNo: true } });
+  revalidatePath(`/t/${tenantId}/workflows/${workflowId}`);
+  return { ok: true, updatedAt: r.updatedAt.toISOString(), versionNo: r.versionNo };
+}
+
+export async function deleteStepAction(tenantId: string, workflowId: string, stepId: string): Result {
+  const user = await guard(tenantId, "tenant.workflows.edit");
+  const draft = await draftOf(tenantId, workflowId, user.id);
+  if (!draft) return { ok: false, message: "Η ροή δεν βρέθηκε." };
+  const def = (draft.definition ?? {}) as Definition;
+  const prune = (steps: StepDef[]): StepDef[] => steps.filter((s) => s.id !== stepId).map((s) => (s.steps ? { ...s, steps: prune(s.steps) } : s));
+  await tenantDb(tenantId).workflowVersion.update({ where: { id: draft.id }, data: { definition: { ...def, steps: prune(def.steps ?? []) } as never } });
+  revalidatePath(`/t/${tenantId}/workflows/${workflowId}`);
+  return { ok: true, message: `Το βήμα αφαιρέθηκε (v${draft.versionNo}).` };
+}
