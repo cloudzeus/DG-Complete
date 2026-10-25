@@ -31,5 +31,16 @@ export const requireTenant = cache(async (tenantId: string) => {
   });
   if (!tenant) notFound();
   const access = await tenantAccess(tenantId);
-  return { user, tenant, access };
+  const role = user.memberships.find((m) => m.tenantId === tenantId)?.role ?? null;
+  return { user, tenant, access, role, staff: isPlatformStaff(user) };
 });
+
+/** Tenants for the switcher in the topbar. */
+export const tenantsOf = userTenants;
+
+/** Guards an admin-only tenant page (members, API keys, approvals, settings). */
+export async function requireTenantAdmin(tenantId: string) {
+  const t = await requireTenant(tenantId);
+  if (!t.staff && t.role !== "TENANT_ADMIN") forbidden();
+  return t;
+}
