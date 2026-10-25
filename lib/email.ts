@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 // Sends the platform's emails (Mailgun) from the editable templates, logs every attempt in
 // email_log, and sends each reminder only once (dedupeKey).
 
-export const APP_URL = (process.env.BETTER_AUTH_URL ?? "https://bi.dgsmart.gr").replace(/\/+$/, "");
+export const APP_URL = (process.env.BETTER_AUTH_URL ?? "https://complete.dgsmart.gr").replace(/\/+$/, "");
 const LOGIN_URL = `${APP_URL}/login`;
 
 const eur = (v: unknown) => `${Number(v ?? 0).toLocaleString("el-GR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;

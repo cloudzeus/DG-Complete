@@ -2,9 +2,6 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { runAiHousekeeping } from "@/lib/ai-alerts";
 import { runSubscriptionReminders } from "@/lib/email";
-import { runGeocoding } from "@/lib/geo";
-import { runKadLookups } from "@/lib/kad";
-import { runWeeklyReports } from "@/lib/weekly-report";
 import { runDueJobs } from "@/lib/softone-sync";
 
 // Scheduler tick: runs every due SoftOne sync job (Ρυθμίσεις → Συγχρονισμοί).
@@ -23,10 +20,7 @@ function authorized(header: string | null) {
 
 const HOURLY = [
   ["reminders", runSubscriptionReminders], // each reminder once (dedupe in email_log)
-  ["geocoding", runGeocoding], // new / changed customer addresses
-  ["kad", runKadLookups], // activity codes by AFM
   ["ai", runAiHousekeeping], // monthly plan tokens + low OpenRouter credit alert
-  ["weekly", runWeeklyReports], // Κίμων's report, Monday morning
 ] as const;
 
 export async function POST(request: Request) {

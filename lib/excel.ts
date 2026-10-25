@@ -30,7 +30,7 @@ const cell = (v: unknown, f: ExportFormat) => {
 
 export async function buildWorkbook(title: string, sheets: ExportSheet[], meta: { subtitle?: string } = {}) {
   const wb = new ExcelJS.Workbook();
-  wb.creator = "DGsmart BI";
+  wb.creator = "DG Complete";
   wb.created = new Date();
   for (const s of sheets) {
     const ws = wb.addWorksheet(s.name.replace(/[\\/?*[\]:]/g, " ").slice(0, 31) || "Δεδομένα", {

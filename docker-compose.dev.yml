@@ -1,0 +1,48 @@
+# Local development services (docs/10 §2). No Redis/Valkey — queues run on Postgres (ADR-022).
+#   docker compose -f docker-compose.dev.yml up -d
+# .env for this stack:
+#   DATABASE_URL="postgresql://dgcomplete_app:dev@localhost:6432/DG_COMPLETE"        (through PgBouncer)
+#   DATABASE_URL_MIGRATOR="postgresql://dgcomplete_migrator:dev@localhost:5432/DG_COMPLETE"
+#   QUEUE_DATABASE_URL="postgresql://dgcomplete_app:dev@localhost:5432/DG_COMPLETE"   (direct)
+name: dg-complete-dev
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/dev-db-init.sql:/docker-entrypoint-initdb.d/10-dev-db-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 10
+
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.24.1-p1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: dgcomplete_app
+      DB_PASSWORD: dev
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      MAX_PREPARED_STATEMENTS: "200"
+      DEFAULT_POOL_SIZE: "20"
+      MAX_CLIENT_CONN: "500"
+    ports: ["6432:5432"]
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025" # web UI
+      - "1025:1025" # SMTP
+
+volumes:
+  pgdata:

@@ -5,23 +5,19 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   Bot,
   Building2,
-  ChartNoAxesCombined,
   ChevronRight,
   ChevronsUpDown,
   Contact,
   CreditCard,
-  Database,
   Landmark,
   LayoutDashboard,
   LogOut,
   Mail,
-  MapPinned,
   Package,
   PlugZap,
   ReceiptText,
   RefreshCcw,
   ScrollText,
-  Server,
   Settings,
   ShieldCheck,
   Users,
@@ -62,7 +58,6 @@ const MAIN: { label: string; items: Item[] }[] = [
     label: "Γενικά",
     items: [
       { href: "/admin", label: "Επισκόπηση", icon: LayoutDashboard, exact: true },
-      { href: "/dashboards", label: "Dashboards", icon: ChartNoAxesCombined },
     ],
   },
   {
@@ -71,7 +66,7 @@ const MAIN: { label: string; items: Item[] }[] = [
       { href: "/admin/tenants", label: "Tenants", icon: Building2 },
       { href: "/admin/customers", label: "Πελάτες SoftOne", icon: Contact },
       { href: "/admin/plans", label: "Πακέτα", icon: Package },
-  { href: "/admin/payments", label: "Πληρωμές", icon: CreditCard },
+      { href: "/admin/payments", label: "Πληρωμές", icon: CreditCard },
     ],
   },
 ];
@@ -84,10 +79,7 @@ const SETTINGS: Item[] = [
   { href: "/admin/settings/billing", label: "Τιμολόγηση", icon: ReceiptText, superAdminOnly: true },
   { href: "/admin/settings/ai", label: "AI · OpenRouter", icon: Bot, superAdminOnly: true },
   { href: "/admin/settings/email", label: "Email · Mailgun", icon: Mail, superAdminOnly: true },
-  { href: "/admin/settings/geo", label: "Χάρτες · Mapbox", icon: MapPinned, superAdminOnly: true },
-  { href: "/admin/settings/registry", label: "Μητρώο ΑΦΜ · ΚΑΔ", icon: Landmark, superAdminOnly: true },
-  { href: "/admin/settings/cube", label: "Cube server", icon: Server, superAdminOnly: true },
-  { href: "/admin/settings/connections", label: "Συνδέσεις δεδομένων", icon: Database },
+  { href: "/admin/settings/registry", label: "Μητρώο ΑΦΜ", icon: Landmark, superAdminOnly: true },
   { href: "/admin/settings/logs", label: "Αρχεία καταγραφής", icon: ScrollText, superAdminOnly: true },
 ];
 
@@ -141,7 +133,7 @@ export function AppSidebar({ user }: { user: { name: string; email: string; plat
                 <DgLogo className="size-8 shrink-0 text-dg-red-500" title="DGsoft" />
                 <span className="flex flex-col leading-tight">
                   <span className="text-sm font-bold tracking-tight">
-                    DGsmart <span className="text-dg-red-500">BI</span>
+                    DG <span className="text-dg-red-500">Complete</span>
                   </span>
                   <span className="text-2xs tracking-wide text-muted-foreground uppercase">Admin console</span>
                 </span>

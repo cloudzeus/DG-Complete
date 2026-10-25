@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -15,15 +16,18 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: { default: "DGsmart BI", template: "%s · DGsmart BI" },
-  description: "Business Intelligence για επιχειρήσεις SoftOne — DGsoft",
+  title: { default: "DG Complete", template: "%s · DG Complete" },
+  description: "Αυτόματες καταχωρίσεις σε web συστήματα — DGsoft",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="el" className={`${inter.variable} ${jetbrainsMono.variable} h-full`}>
       <body className="min-h-full">
-        <TooltipProvider delayDuration={300}>{children}</TooltipProvider>
+        {/* Every page reads the session: stream it behind the static shell (P01 brings the shells into it). */}
+        <TooltipProvider delayDuration={300}>
+          <Suspense>{children}</Suspense>
+        </TooltipProvider>
         <Toaster richColors position="top-right" />
       </body>
     </html>

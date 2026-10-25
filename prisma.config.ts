@@ -8,7 +8,8 @@ export default defineConfig({
   migrations: {
     path: "prisma/migrations",
   },
+  // The CLI (migrate, studio) connects directly to Postgres (5432), never through PgBouncer.
   datasource: {
-    url: process.env["DATABASE_URL"],
+    url: process.env["DATABASE_URL_MIGRATOR"] ?? process.env["DATABASE_URL"],
   },
 });

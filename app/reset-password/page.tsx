@@ -12,7 +12,7 @@ export default async function ResetPasswordPage({ searchParams }: PageProps<"/re
   return (
     <AuthShell
       title={welcome ? "Ορίστε τον κωδικό σας" : "Νέος κωδικός"}
-      description={welcome ? "Καλώς ήρθατε στο DGsmart BI. Διαλέξτε κωδικό για τον λογαριασμό σας." : "Διαλέξτε νέο κωδικό για τον λογαριασμό σας."}
+      description={welcome ? "Καλώς ήρθατε στο DG Complete. Διαλέξτε κωδικό για τον λογαριασμό σας." : "Διαλέξτε νέο κωδικό για τον λογαριασμό σας."}
     >
       {valid ? (
         <ResetForm token={token} />

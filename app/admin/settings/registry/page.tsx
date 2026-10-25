@@ -3,7 +3,7 @@ import { Landmark } from "lucide-react";
 import { PageHeader, SectionTitle } from "@/components/admin/page-header";
 import { StatusPill } from "@/components/admin/tone";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { getAfmSettings } from "@/lib/kad";
+import { getAfmSettings } from "@/lib/afm";
 import { requirePermission } from "@/lib/rbac";
 import { RegistryForm } from "./registry-form";
 

@@ -83,11 +83,8 @@ export async function tokenUsage(tenantId: string, since: Date): Promise<TokenUs
 }
 
 export const FEATURE_NAMES: Record<string, string> = {
-  kimon: "Κίμων",
-  chat: "Κίμων",
   industry: "Κλαδική ανάλυση",
   substitutes: "Εναλλακτικά είδη",
-  weekly_report: "Εβδομαδιαία αναφορά",
   pricing: "Τιμολόγηση",
   collections: "Εισπράξεις",
   anomalies: "Έξυπνες ειδοποιήσεις",

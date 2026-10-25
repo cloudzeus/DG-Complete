@@ -1,5 +1,5 @@
 {
-  "name": "dgsmartbi",
+  "name": "dg-complete",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -14,29 +14,34 @@
     "typecheck": "tsc --noEmit",
     "postmigrate": "prisma generate",
     "fluid-type": "node scripts/fluid-type.mjs",
-    "maplibre:worker": "node scripts/copy-maplibre-worker.mjs"
+    "worker:dev": "tsx --conditions=react-server worker/index.ts",
+    "worker:start": "tsx --conditions=react-server worker/index.ts",
+    "sandbox:dev": "tsx watch sandbox/server.ts",
+    "seed:dev": "tsx --conditions=react-server scripts/seed-dev.ts",
+    "test": "vitest run",
+    "test:int": "vitest run --config vitest.int.config.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "^7.10.0",
-    "@prisma/client": "^7.10.0",
-    "@react-pdf/renderer": "^4.9.0",
+    "@hono/node-server": "^2.1.5",
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
     "@tanstack/react-table": "^8.21.3",
     "better-auth": "^1.7.7",
     "class-variance-authority": "^0.7.1",
     "cmdk": "^1.1.1",
     "cn": "^0.4.0",
     "exceljs": "^4.4.0",
+    "hono": "^4.13.14",
     "iconv-lite": "^0.7.3",
     "lucide-react": "^1.52.0",
-    "maplibre-gl": "^6.12.0",
-    "mssql": "^12.7.3",
-    "mysql2": "^3.24.5",
-    "next": "16.3.8",
+    "next": "16.4.3",
     "next-themes": "^0.4.6",
     "pg": "^8.23.1",
+    "pg-boss": "^12.38.0",
     "radix-ui": "^1.6.7",
-    "react": "19.2.8",
-    "react-dom": "19.2.8",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "recharts": "^3.8.0",
     "server-only": "^0.0.1",
     "shadcn": "^4.21.1",
@@ -45,18 +50,22 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/postcss": "^4",
-    "@types/mssql": "^12.3.0",
-    "@types/node": "^20",
+    "@types/node": "^24.19.2",
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "dotenv": "^18.0.5",
     "eslint": "^9",
-    "eslint-config-next": "16.3.8",
-    "prisma": "^7.10.0",
+    "eslint-config-next": "16.4.3",
+    "prisma": "^7.10.1",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.0.5"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

@@ -14,7 +14,7 @@ const LIMIT = 2000;
 export default async function LogsPage() {
   await requirePermission("platform.settings.manage");
 
-  const [audit, runs, failedPayments, failedConnections, failedTenants] = await Promise.all([
+  const [audit, runs, failedPayments, failedConnections] = await Promise.all([
     prisma.auditLog.findMany({
       orderBy: { createdAt: "desc" },
       take: LIMIT,
@@ -22,8 +22,7 @@ export default async function LogsPage() {
     }),
     prisma.syncRun.findMany({ orderBy: { startedAt: "desc" }, take: LIMIT, include: { job: { select: { name: true } } } }),
     prisma.payment.findMany({ where: { s1Status: "FAILED" }, include: { tenant: { select: { name: true } } }, take: 500 }),
-    prisma.dataConnection.findMany({ where: { lastTestStatus: "FAILED" }, take: 500 }),
-    prisma.tenant.findMany({ where: { warehouseStatus: "ERROR" }, take: 500 }),
+    prisma.softOneConnection.findMany({ where: { lastTestStatus: "FAILED" }, take: 500 }),
   ]);
 
   const runRows = runs.map((r) => ({
@@ -52,16 +51,9 @@ export default async function LogsPage() {
     ...failedConnections.map((c) => ({
       id: `conn-${c.id}`,
       at: (c.lastTestedAt ?? c.updatedAt).toISOString(),
-      source: "Σύνδεση δεδομένων",
+      source: "Σύνδεση SoftOne",
       subject: c.name,
       message: c.lastTestError ?? "",
-    })),
-    ...failedTenants.map((t) => ({
-      id: `wh-${t.id}`,
-      at: t.updatedAt.toISOString(),
-      source: "Provisioning",
-      subject: t.name,
-      message: t.warehouseError ?? "",
     })),
   ];
 

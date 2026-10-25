@@ -6,7 +6,7 @@ import { sendPasswordResetEmail } from "@/lib/email";
 import { prisma } from "@/lib/prisma";
 
 export const auth = betterAuth({
-  appName: "DGsmart BI",
+  appName: "DG Complete",
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   emailAndPassword: {
     enabled: true,

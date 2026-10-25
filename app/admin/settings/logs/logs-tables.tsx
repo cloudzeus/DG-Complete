@@ -28,7 +28,6 @@ const ACTIONS: Record<string, { label: string; tone: Tone }> = {
   "connection.delete": { label: "Διαγραφή σύνδεσης δεδομένων", tone: "red" },
   "tenant.create": { label: "Νέος tenant", tone: "blue" },
   "tenant.status": { label: "Αλλαγή κατάστασης tenant", tone: "amber" },
-  "tenant.warehouse.provision": { label: "Provisioning αποθήκης", tone: "teal" },
   "tenant.s1.link": { label: "Αντιστοίχιση με πελάτη SoftOne", tone: "violet" },
   "tenant.s1.unlink": { label: "Αποσύνδεση από πελάτη SoftOne", tone: "amber" },
   "user.create": { label: "Νέος χρήστης", tone: "blue" },
@@ -52,10 +51,6 @@ const ACTIONS: Record<string, { label: string; tone: Tone }> = {
   "sync.job.seed": { label: "Προεπιλεγμένοι πίνακες", tone: "violet" },
   "payment.create": { label: "Νέα πληρωμή", tone: "green" },
   "payment.s1.post": { label: "Αποστολή πληρωμής στο SoftOne", tone: "green" },
-  "cube.create": { label: "Ρύθμιση Cube", tone: "red" },
-  "cube.update": { label: "Αλλαγή ρυθμίσεων Cube", tone: "red" },
-  "cube.secrets.reveal": { label: "Εμφάνιση secrets Cube", tone: "red" },
-  "cube.secrets.rotate": { label: "Νέα secrets Cube", tone: "red" },
 };
 
 export function AuditTable({ data }: { data: AuditRow[] }) {

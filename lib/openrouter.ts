@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 
 const API = "https://openrouter.ai/api/v1";
 const AAD = "ai_settings:default";
-const APP_URL = process.env.BETTER_AUTH_URL ?? "https://bi.dgsmart.gr";
+const APP_URL = process.env.BETTER_AUTH_URL ?? "https://complete.dgsmart.gr";
 
 export async function getAiSettings() {
   return (
@@ -29,7 +29,7 @@ const headers = (key: string) => ({
   Authorization: `Bearer ${key}`,
   "Content-Type": "application/json",
   "HTTP-Referer": APP_URL,
-  "X-Title": "DGsmart BI",
+  "X-Title": "DG Complete",
 });
 
 async function orFetch<T>(path: string, key: string, init?: RequestInit): Promise<T> {

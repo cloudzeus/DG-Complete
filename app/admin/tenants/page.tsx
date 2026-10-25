@@ -14,7 +14,7 @@ export default async function TenantsPage() {
   const user = await requirePermission("tenants.read");
   const tenants = await prisma.tenant.findMany({
     orderBy: { name: "asc" },
-    include: { _count: { select: { memberships: true, connections: true } } },
+    include: { _count: { select: { memberships: true } } },
   });
   const manage = can(user, "tenants.manage");
 
@@ -33,9 +33,7 @@ export default async function TenantsPage() {
               s1Code: t.s1Code,
               status: t.status,
               isDemo: t.isDemo,
-              warehouseStatus: t.warehouseStatus,
               users: t._count.memberships,
-              connections: t._count.connections,
               createdAt: t.createdAt.toISOString(),
             }))}
             toolbar={

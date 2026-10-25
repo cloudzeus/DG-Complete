@@ -102,7 +102,7 @@ function PaymentForm({
         </div>
         <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="description">Περιγραφή</Label>
-          <Input id="description" name="description" placeholder="π.χ. Συνδρομή DGsmart BI — Οκτώβριος 2026" required />
+          <Input id="description" name="description" placeholder="π.χ. Συνδρομή DG Complete — Οκτώβριος 2026" required />
           {e.description && <p className="text-xs text-destructive">{e.description}</p>}
         </div>
         <div className="space-y-1.5 sm:col-span-2">

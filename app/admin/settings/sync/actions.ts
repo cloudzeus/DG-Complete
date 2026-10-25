@@ -124,7 +124,7 @@ export async function saveJob(_prev: JobFormState, fd: FormData): Promise<JobFor
       if (!job) return { message: "Το job δεν βρέθηκε." };
       // The built-in customers job keeps its structure; only schedule / filter / enabled are editable.
       const patch =
-        // Built-in customers job and typed warehouse imports keep their structure.
+        // The built-in customers job (and legacy warehouse imports) keep their structure.
         job.type === "CUSTOMERS" || job.destination === "WAREHOUSE"
           ? { filter: data.filter, intervalMinutes: data.intervalMinutes, enabled: data.enabled }
           : data;

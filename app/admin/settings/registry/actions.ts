@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { audit } from "@/lib/audit";
-import { lookupAfm } from "@/lib/kad";
+import { lookupAfm } from "@/lib/afm";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/rbac";
 

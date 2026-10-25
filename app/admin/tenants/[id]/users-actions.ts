@@ -156,7 +156,6 @@ export async function removeTenantUser(tenantId: string, userId: string): Promis
     const actor = await manager(tenantId);
     if (userId === actor.id) return { ok: false, message: "Δεν μπορείτε να αφαιρέσετε τον εαυτό σας." };
     await prisma.membership.deleteMany({ where: { userId, tenantId } });
-    await prisma.kimonChat.deleteMany({ where: { userId, tenantId } });
     await audit({ actorId: actor.id, action: "membership.remove", entity: "User", entityId: userId, tenantId });
     refresh(tenantId);
     return { ok: true, message: "Ο χρήστης δεν έχει πλέον πρόσβαση σε αυτόν τον πελάτη." };

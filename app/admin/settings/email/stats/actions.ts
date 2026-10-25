@@ -25,7 +25,7 @@ export async function saveTracking(input: { webhookKey: string; trackOpens: bool
   return { ok: true, message: "Αποθηκεύτηκε." };
 }
 
-/** Registers bi.dgsmart.gr/api/webhooks/mailgun for every tracked event of the sending domain. */
+/** Registers complete.dgsmart.gr/api/webhooks/mailgun for every tracked event of the sending domain. */
 export async function registerMailgunWebhooks(): Promise<ActionResult> {
   const user = await requirePermission("platform.settings.manage");
   try {

@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 // unsubscribed / complained) are stored per sent email, and reminders are not sent to addresses
 // on the suppression list. The unsubscribe link is signed per address, so it cannot be forged.
 
-const APP_URL = (process.env.BETTER_AUTH_URL ?? "https://bi.dgsmart.gr").replace(/\/+$/, "");
+const APP_URL = (process.env.BETTER_AUTH_URL ?? "https://complete.dgsmart.gr").replace(/\/+$/, "");
 
 const secret = () => {
   const s = process.env.BETTER_AUTH_SECRET;

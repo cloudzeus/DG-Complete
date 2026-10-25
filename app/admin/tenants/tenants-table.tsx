@@ -4,12 +4,12 @@ import { useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Ban, CheckCircle2, DatabaseZap, Eye, PauseCircle } from "lucide-react";
+import { Ban, CheckCircle2, Eye, PauseCircle } from "lucide-react";
 import { toast } from "sonner";
 import { StatusPill, type Tone } from "@/components/admin/tone";
 import { DataTable } from "@/components/data-table/data-table";
 import { RowActions } from "@/components/data-table/row-actions";
-import { provisionWarehouse, setTenantStatus } from "./[id]/actions";
+import { setTenantStatus } from "./[id]/actions";
 
 export type TenantRow = {
   id: string;
@@ -19,9 +19,7 @@ export type TenantRow = {
   s1Code: string | null;
   status: string;
   isDemo: boolean;
-  warehouseStatus: string;
   users: number;
-  connections: number;
   createdAt: string;
 };
 
@@ -30,13 +28,6 @@ const STATUS: Record<string, { label: string; tone: Tone }> = {
   ACTIVE: { label: "Ενεργός", tone: "green" },
   SUSPENDED: { label: "Σε αναστολή", tone: "red" },
   CANCELED: { label: "Ακυρωμένος", tone: "slate" },
-};
-
-const WAREHOUSE: Record<string, { label: string; tone: Tone }> = {
-  NONE: { label: "—", tone: "slate" },
-  READY: { label: "Έτοιμο", tone: "teal" },
-  DISABLED: { label: "Ανενεργό", tone: "amber" },
-  ERROR: { label: "Σφάλμα", tone: "red" },
 };
 
 function Actions({ row, canManage }: { row: TenantRow; canManage: boolean }) {
@@ -56,15 +47,9 @@ function Actions({ row, canManage }: { row: TenantRow; canManage: boolean }) {
       actions={[
         { label: "Προβολή", icon: Eye, onSelect: () => router.push(`/admin/tenants/${row.id}`) },
         {
-          label: row.warehouseStatus === "NONE" ? "Provisioning" : "Επανάληψη provisioning",
-          icon: DatabaseZap,
-          onSelect: () => run(() => provisionWarehouse(row.id)),
-          hidden: !canManage,
-          separated: true,
-        },
-        {
           label: "Ενεργοποίηση",
           icon: CheckCircle2,
+          separated: true,
           onSelect: () => run(() => setTenantStatus(row.id, "ACTIVE")),
           hidden: !canManage || row.status === "ACTIVE",
         },
@@ -116,17 +101,7 @@ export function TenantsTable({ data, canManage, toolbar }: { data: TenantRow[]; 
       sortingFn: (a, b) => STATUS[a.original.status].label.localeCompare(STATUS[b.original.status].label, "el"),
       cell: ({ row }) => <StatusPill tone={STATUS[row.original.status].tone}>{STATUS[row.original.status].label}</StatusPill>,
     },
-    {
-      accessorKey: "warehouseStatus",
-      header: "Cube",
-      size: 110,
-      meta: { label: "Cube" },
-      cell: ({ row }) => (
-        <StatusPill tone={WAREHOUSE[row.original.warehouseStatus].tone}>{WAREHOUSE[row.original.warehouseStatus].label}</StatusPill>
-      ),
-    },
     { accessorKey: "users", header: "Χρήστες", size: 90, meta: { label: "Χρήστες", align: "right" } },
-    { accessorKey: "connections", header: "Συνδέσεις", size: 100, meta: { label: "Συνδέσεις", align: "right" } },
     {
       accessorKey: "createdAt",
       header: "Δημιουργία",

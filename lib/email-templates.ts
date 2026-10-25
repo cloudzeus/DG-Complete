@@ -22,15 +22,15 @@ const V = {
   name: { key: "name", label: "Όνομα παραλήπτη", sample: "Γιάννης Παπαδόπουλος" },
   email: { key: "email", label: "Email παραλήπτη", sample: "g.papadopoulos@example.gr" },
   tenant: { key: "tenant", label: "Εταιρεία", sample: "ΑΦΟΙ ΠΑΡΑΔΕΙΓΜΑ ΑΕ" },
-  link: { key: "link", label: "Σύνδεσμος ενέργειας", sample: "https://bi.dgsmart.gr/reset-password?token=…" },
-  loginUrl: { key: "loginUrl", label: "Σελίδα σύνδεσης", sample: "https://bi.dgsmart.gr/login" },
+  link: { key: "link", label: "Σύνδεσμος ενέργειας", sample: "https://complete.dgsmart.gr/reset-password?token=…" },
+  loginUrl: { key: "loginUrl", label: "Σελίδα σύνδεσης", sample: "https://complete.dgsmart.gr/login" },
   amount: { key: "amount", label: "Ποσό", sample: "1.200,00 €" },
   period: { key: "period", label: "Περίοδος συνδρομής", sample: "ετήσια" },
   endsAt: { key: "endsAt", label: "Λήξη συνδρομής", sample: "31/12/2026" },
   daysLeft: { key: "daysLeft", label: "Ημέρες ως τη λήξη", sample: "14" },
   date: { key: "date", label: "Ημερομηνία πληρωμής", sample: "06/10/2026" },
   method: { key: "method", label: "Τρόπος πληρωμής", sample: "Τραπεζική μεταφορά" },
-  description: { key: "description", label: "Περιγραφή", sample: "Ετήσια συνδρομή DGsmart BI 2027" },
+  description: { key: "description", label: "Περιγραφή", sample: "Ετήσια συνδρομή DG Complete 2027" },
   invoice: { key: "invoice", label: "Αριθμός παραστατικού", sample: "ΤΠΥ-Α 1024" },
   remaining: { key: "remaining", label: "Υπόλοιπο OpenRouter", sample: "$14,20" },
   threshold: { key: "threshold", label: "Όριο ειδοποίησης", sample: "$20,00" },
@@ -51,7 +51,7 @@ export const TEMPLATES: TemplateDef[] = [
     name: "Απώλεια κωδικού",
     description: "Όταν ο χρήστης πατά «Ξεχάσατε τον κωδικό;» στη σελίδα σύνδεσης.",
     vars: [V.name, V.email, V.link],
-    subject: "Νέος κωδικός για το DGsmart BI",
+    subject: "Νέος κωδικός για το DG Complete",
     body: `Γεια σας {{name}},
 
 Λάβαμε αίτημα για νέο κωδικό στον λογαριασμό σας ({{email}}).
@@ -65,10 +65,10 @@ export const TEMPLATES: TemplateDef[] = [
     name: "Καλωσόρισμα νέου χρήστη",
     description: "Όταν δημιουργείται χρήστης σε πελάτη: σύνδεσμος για να ορίσει μόνος του τον κωδικό του.",
     vars: [V.name, V.email, V.tenant, V.link, V.loginUrl],
-    subject: "Καλώς ήρθατε στο DGsmart BI — {{tenant}}",
+    subject: "Καλώς ήρθατε στο DG Complete — {{tenant}}",
     body: `Γεια σας {{name}},
 
-Σας δημιουργήθηκε λογαριασμός στο DGsmart BI για την εταιρεία **{{tenant}}**: πωλήσεις, κερδοφορία, πελάτες, εισπράξεις, αποθήκη και ο ψηφιακός σύμβουλος Κίμων, με τα δεδομένα της εταιρείας σας.
+Σας δημιουργήθηκε λογαριασμός στο DG Complete για την εταιρεία **{{tenant}}**: ροές καταχώρισης σε web συστήματα, αυτόματη και μαζική εκτέλεση με πλήρη logs.
 
 Όνομα χρήστη: **{{email}}**
 
@@ -82,17 +82,17 @@ export const TEMPLATES: TemplateDef[] = [
     name: "Υπενθύμιση ανανέωσης",
     description: "Πριν λήξει η συνδρομή (οι ημέρες ορίζονται παραπάνω). Στέλνεται στο email του πελάτη και στους διαχειριστές του.",
     vars: [V.tenant, V.endsAt, V.daysLeft, V.amount, V.period, V.loginUrl],
-    subject: "Η συνδρομή σας στο DGsmart BI λήγει στις {{endsAt}}",
+    subject: "Η συνδρομή σας στο DG Complete λήγει στις {{endsAt}}",
     body: `Γεια σας,
 
-Η συνδρομή της εταιρείας **{{tenant}}** στο DGsmart BI λήγει σε **{{daysLeft}} ημέρες**, στις {{endsAt}}.
+Η συνδρομή της εταιρείας **{{tenant}}** στο DG Complete λήγει σε **{{daysLeft}} ημέρες**, στις {{endsAt}}.
 
 - Ποσό ανανέωσης: **{{amount}}**
 - Περίοδος: {{period}}
 
 Για να συνεχίσετε χωρίς διακοπή, παρακαλούμε φροντίστε την πληρωμή πριν από τη λήξη. Για οποιαδήποτε απορία απαντήστε σε αυτό το μήνυμα.
 
-[[Μετάβαση στο DGsmart BI|{{loginUrl}}]]`,
+[[Μετάβαση στο DG Complete|{{loginUrl}}]]`,
   },
   {
     key: "payment_overdue",
@@ -103,7 +103,7 @@ export const TEMPLATES: TemplateDef[] = [
     subject: "Εκκρεμεί η ανανέωση της συνδρομής — {{tenant}}",
     body: `Γεια σας,
 
-Η συνδρομή της εταιρείας **{{tenant}}** στο DGsmart BI έληξε στις {{endsAt}} και δεν έχουμε λάβει ακόμα την πληρωμή ανανέωσης.
+Η συνδρομή της εταιρείας **{{tenant}}** στο DG Complete έληξε στις {{endsAt}} και δεν έχουμε λάβει ακόμα την πληρωμή ανανέωσης.
 
 - Ποσό: **{{amount}}**
 - Περίοδος: {{period}}
@@ -115,7 +115,7 @@ export const TEMPLATES: TemplateDef[] = [
     name: "Αποδεικτικό πληρωμής",
     description: "Όταν καταχωρείται πληρωμή συνδρομής.",
     vars: [V.tenant, V.amount, V.date, V.method, V.description, V.invoice, V.endsAt],
-    subject: "Λάβαμε την πληρωμή σας ({{amount}}) — DGsmart BI",
+    subject: "Λάβαμε την πληρωμή σας ({{amount}}) — DG Complete",
     body: `Γεια σας,
 
 Λάβαμε την πληρωμή σας — ευχαριστούμε!
@@ -163,20 +163,6 @@ TEMPLATES.push({
 Τιμολογήστε και, όταν πληρωθεί, εγκρίνετε το αίτημα για να προστεθούν τα tokens.
 
 [[Άνοιγμα αιτημάτων|{{link}}]]`,
-});
-
-TEMPLATES.push({
-  key: "weekly_report",
-  name: "Εβδομαδιαία αναφορά του Κίμωνα",
-  description: "Κάθε Δευτέρα πρωί, στους χρήστες που την έχουν ενεργοποιήσει (σελίδα «Ειδοποιήσεις»). Η σύνοψη γράφεται από τον Κίμωνα με τα δεδομένα της εβδομάδας.",
-  optional: true,
-  vars: [V.name, V.tenant, V.week, V.summary, V.link],
-  subject: "Η εβδομάδα σας στο DGsmart BI — {{tenant}} ({{week}})",
-  body: `Καλημέρα {{name}},
-
-{{summary}}
-
-[[Άνοιγμα του DGsmart BI|{{link}}]]`,
 });
 
 export const templateDef = (key: string) => TEMPLATES.find((t) => t.key === key);
@@ -270,12 +256,12 @@ export function renderEmail(t: { subject: string; body: string }, vars: Vars, op
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f3f0;padding:24px 12px"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e7e2dc">
 <tr><td style="height:4px;background:${BRAND};font-size:0;line-height:0">&nbsp;</td></tr>
-<tr><td style="padding:22px 28px 6px;font-size:18px;font-weight:700;letter-spacing:-0.2px"><span style="color:${BRAND}">DG</span>smart <span style="color:#8a817a;font-weight:600">BI</span></td></tr>
+<tr><td style="padding:22px 28px 6px;font-size:18px;font-weight:700;letter-spacing:-0.2px"><span style="color:${BRAND}">DG</span> <span style="color:#8a817a;font-weight:600">Complete</span></td></tr>
 <tr><td style="padding:12px 28px 8px;font-size:15px;line-height:1.6">${bodyHtml(filledHtml)}</td></tr>
-<tr><td style="padding:16px 28px 22px;border-top:1px solid #efeae4;font-size:12px;line-height:1.5;color:#8a817a">DGsoft · DGsmart BI — επιχειρηματική ευφυΐα για τα δεδομένα του SoftOne σας<br>Αυτό το μήνυμα στάλθηκε αυτόματα από το bi.dgsmart.gr.${opts.unsubscribeUrl ? `<br><a href="${esc(opts.unsubscribeUrl)}" style="color:#8a817a">Δεν θέλω να λαμβάνω υπενθυμίσεις</a>` : ""}</td></tr>
+<tr><td style="padding:16px 28px 22px;border-top:1px solid #efeae4;font-size:12px;line-height:1.5;color:#8a817a">DGsoft · DG Complete — αυτόματες καταχωρίσεις σε web συστήματα<br>Αυτό το μήνυμα στάλθηκε αυτόματα από το complete.dgsmart.gr.${opts.unsubscribeUrl ? `<br><a href="${esc(opts.unsubscribeUrl)}" style="color:#8a817a">Δεν θέλω να λαμβάνω υπενθυμίσεις</a>` : ""}</td></tr>
 </table></td></tr></table></body></html>`;
   const unsubscribe = opts.unsubscribeUrl ? `\nΔεν θέλω να λαμβάνω υπενθυμίσεις: ${opts.unsubscribeUrl}` : "";
-  return { subject, html, text: `${bodyText(filledText)}\n\n— DGsmart BI · bi.dgsmart.gr${unsubscribe}` };
+  return { subject, html, text: `${bodyText(filledText)}\n\n— DG Complete · complete.dgsmart.gr${unsubscribe}` };
 }
 
 export const sampleVars = (t: TemplateDef): Vars => Object.fromEntries(t.vars.map((v) => [v.key, v.sample]));

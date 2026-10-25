@@ -1,7 +1,7 @@
-# DGsmart BI — production image for Coolify (Next.js standalone + Prisma migrations on start).
-# Runtime env: DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL, DATA_ENCRYPTION_KEYS, CRON_SECRET
+# DG Complete — production image for Coolify (Next.js standalone + Prisma migrations on start).
+# Runtime env: see .env.example (DATABASE_URL via PgBouncer, DATABASE_URL_MIGRATOR direct 5432, …)
 
-ARG NODE_VERSION=22-bookworm-slim
+ARG NODE_VERSION=24-bookworm-slim
 
 # ── deps ──────────────────────────────────────────────────────────────
 FROM node:${NODE_VERSION} AS deps
@@ -44,7 +44,6 @@ COPY --from=migrator --chown=nextjs:nodejs /migrate /migrate
 COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=build --chown=nextjs:nodejs /app/public ./public
-COPY --from=build --chown=nextjs:nodejs /app/cube ./cube
 
 USER nextjs
 EXPOSE 3000

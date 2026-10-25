@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ChartNoAxesCombined } from "lucide-react";
+import { LayoutGrid } from "lucide-react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { can, requireUser } from "@/lib/rbac";
 
-export const metadata: Metadata = { title: "Τα dashboards μου" };
+export const metadata: Metadata = { title: "Οι επιχειρήσεις μου" };
 
-// Tenant portal — the user's businesses and their dashboards.
+// Tenant portal — the user's businesses and their areas.
 export default async function PortalHome() {
   const user = await requireUser();
   return (
@@ -21,11 +21,11 @@ export default async function PortalHome() {
               <CardTitle>{m.tenantName}</CardTitle>
               <CardDescription>
                 {can(user, "tenant.dashboards.view", m.tenantId) ? (
-                  <Link href={`/dashboards/${m.tenantId}/pnl`} className="inline-flex items-center gap-1.5 text-primary hover:underline">
-                    <ChartNoAxesCombined className="size-4" /> Άνοιγμα dashboards
+                  <Link href={`/t/${m.tenantId}`} className="inline-flex items-center gap-1.5 text-primary hover:underline">
+                    <LayoutGrid className="size-4" /> Άνοιγμα
                   </Link>
                 ) : (
-                  "Δεν έχετε δικαίωμα προβολής dashboards."
+                  "Δεν έχετε δικαίωμα πρόσβασης."
                 )}
               </CardDescription>
             </CardHeader>

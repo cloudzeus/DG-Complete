@@ -1,9 +1,8 @@
 import Link from "next/link";
-import { Activity, Building2, Contact, CreditCard, Database, LayoutDashboard, PlugZap, Server } from "lucide-react";
+import { Activity, Building2, Contact, CreditCard, LayoutDashboard, PlugZap, Users } from "lucide-react";
 import { PageHeader, SectionTitle } from "@/components/admin/page-header";
 import { StatCard } from "@/components/admin/stat-card";
 import { StatusPill } from "@/components/admin/tone";
-import { AiOverviewCard } from "@/components/admin/ai-overview-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/rbac";
@@ -13,17 +12,15 @@ const eur = new Intl.NumberFormat("el-GR", { style: "currency", currency: "EUR" 
 export default async function AdminHome() {
   const user = await requireUser();
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-  const [tenants, activeTenants, customers, revenue, pendingS1, connections, failedConnections, softone, cube, lastSync, recent] =
+  const [tenants, activeTenants, customers, revenue, pendingS1, users, softone, lastSync, recent] =
     await Promise.all([
       prisma.tenant.count(),
       prisma.tenant.count({ where: { status: "ACTIVE" } }),
       prisma.s1Customer.count(),
       prisma.payment.aggregate({ _sum: { amount: true }, where: { status: "PAID", paidAt: { gte: monthStart } } }),
       prisma.payment.count({ where: { status: "PAID", s1Status: { in: ["NOT_POSTED", "FAILED"] } } }),
-      prisma.dataConnection.count(),
-      prisma.dataConnection.count({ where: { lastTestStatus: "FAILED" } }),
+      prisma.user.count({ where: { active: true } }),
       prisma.softOneConnection.findFirst({ where: { scope: "DGSOFT" }, select: { lastTestStatus: true } }),
-      prisma.cubeDeployment.findUnique({ where: { id: "default" }, select: { apiUrl: true } }),
       prisma.syncRun.findFirst({ orderBy: { startedAt: "desc" }, select: { status: true, startedAt: true, rowsUpserted: true } }),
       prisma.payment.findMany({
         orderBy: { paidAt: "desc" },
@@ -41,13 +38,6 @@ export default async function AdminHome() {
       detail: softone ? "Web Services" : "Δεν έχει ρυθμιστεί",
     },
     {
-      label: "Cube server",
-      icon: Server,
-      href: "/admin/settings/cube",
-      state: cube ? "ok" : "none",
-      detail: cube ? new URL(cube.apiUrl).host : "Δεν έχει ρυθμιστεί",
-    },
-    {
       label: "Συγχρονισμός πελατών",
       icon: Activity,
       href: "/admin/customers",
@@ -63,7 +53,7 @@ export default async function AdminHome() {
       <PageHeader
         eyebrow="Επισκόπηση"
         title={`Καλώς ήρθατε, ${user.name.split(" ")[0]}`}
-        description="Η εικόνα της πλατφόρμας DGsmart BI με μια ματιά."
+        description="Η εικόνα της πλατφόρμας DG Complete με μια ματιά."
         icon={LayoutDashboard}
         tone="red"
       />
@@ -79,17 +69,8 @@ export default async function AdminHome() {
           icon={CreditCard}
           tone="green"
         />
-        <StatCard
-          href="/admin/settings/connections"
-          label="Συνδέσεις δεδομένων"
-          value={connections}
-          hint={failedConnections ? `${failedConnections} με σφάλμα` : "χωρίς σφάλματα"}
-          icon={Database}
-          tone={failedConnections ? "amber" : "teal"}
-        />
+        <StatCard href="/admin/settings/users" label="Χρήστες" value={users} hint="ενεργοί" icon={Users} tone="teal" />
       </div>
-
-      {user.platformRole === "SUPER_ADMIN" && <AiOverviewCard />}
 
       <div className="mt-4 grid gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-3">

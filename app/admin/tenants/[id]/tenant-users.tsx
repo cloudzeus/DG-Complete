@@ -130,7 +130,7 @@ export function TenantUsers({ tenantId, users, canManage, currentUserId }: { ten
             <DialogDescription>
               {editing
                 ? "Αφήστε τον κωδικό κενό για να μην αλλάξει. Νέος κωδικός ή απενεργοποίηση αποσυνδέει τον χρήστη."
-                : "Ο χρήστης συνδέεται στο bi.dgsmart.gr με το email και τον κωδικό που ορίζετε και βλέπει τα dashboards του πελάτη."}
+                : "Ο χρήστης συνδέεται στο complete.dgsmart.gr με το email και τον κωδικό που ορίζετε και έχει πρόσβαση στην περιοχή του πελάτη."}
             </DialogDescription>
           </DialogHeader>
           {editing !== undefined && <UserForm key={editing?.id ?? "new"} tenantId={tenantId} user={editing} onDone={() => setEditing(undefined)} />}
