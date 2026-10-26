@@ -1,3 +1,6 @@
-// Execution engine (docs/06) — Playwright step executors, locator resolver, error taxonomy.
-// Run by the worker; no `server-only`, no `@/lib/prisma` here. Implemented in P08.
-export {};
+// Execution engine (docs/06) — Playwright step interpreter, locator resolver, error taxonomy, SSRF guard.
+// Run by the worker; no `server-only`, no `@/lib/prisma` here.
+export * from "./errors";
+export * from "./guard";
+export * from "./interpreter";
+export * from "./locator";

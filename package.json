@@ -20,6 +20,7 @@
     "seed:dev": "tsx --conditions=react-server scripts/seed-dev.ts",
     "test": "vitest run",
     "test:int": "vitest run --config vitest.int.config.mts",
+    "test:engine": "vitest run --config vitest.engine.config.mts",
     "test:e2e": "playwright test"
   },
   "dependencies": {
