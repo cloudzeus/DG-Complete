@@ -63,7 +63,8 @@ app.get("/entries/new", (c) => {
           <label for="name">Επωνυμία</label><input id="name" name="name" />
           <label for="amount">Ποσό</label><input id="amount" name="amount" inputmode="decimal" />
           <button type="submit">Αποθήκευση</button>
-        </form>`,
+        </form>
+        <p><a href="https://example.com/" data-testid="external-help">Οδηγίες (άλλο domain)</a></p>`,
     ),
   );
 });

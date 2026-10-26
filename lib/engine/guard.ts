@@ -26,7 +26,8 @@ export function normalizeOrigins(list: string[], baseUrl: string): string[] {
   return [...out];
 }
 
-export async function installGuard(context: BrowserContext, allowedOrigins: string[], onBlock: (url: string, reason: string) => void) {
+/** Returns `allow(origin)` to extend the allowlist at runtime (live recorder, after the user agrees). */
+export async function installGuard(context: BrowserContext, allowedOrigins: string[], onBlock: (origin: string, reason: "private" | "origin", url: string) => void) {
   const allowed = new Set(allowedOrigins.map((o) => new URL(o).origin));
   await context.route("**/*", (route) => {
     const req = route.request();
@@ -39,13 +40,20 @@ export async function installGuard(context: BrowserContext, allowedOrigins: stri
     if (!/^https?:$/.test(url.protocol)) return route.continue();
     const ok = allowed.has(url.origin);
     if (!ok && isPrivateHost(url.hostname)) {
-      onBlock(url.origin, "private");
+      onBlock(url.origin, "private", url.toString());
       return route.abort("blockedbyclient");
     }
     if (!ok && req.isNavigationRequest() && req.frame() === req.frame().page()?.mainFrame()) {
-      onBlock(url.origin, "origin");
+      onBlock(url.origin, "origin", url.toString());
       return route.abort("blockedbyclient");
     }
     return route.continue();
   });
+  return {
+    allow(origin: string) {
+      const o = new URL(origin).origin;
+      if (isPrivateHost(new URL(o).hostname)) throw new Error("private origin");
+      allowed.add(o);
+    },
+  };
 }

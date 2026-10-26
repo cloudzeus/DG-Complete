@@ -31,6 +31,11 @@ type Session = {
   lastActivity: number;
   frame?: { at: number; buf: Buffer };
   forms: Record<string, CapturedForm>;
+  allow: (origin: string) => void;
+  /** Main-frame navigation the guard stopped (an origin not yet allowed) — offered to the user. */
+  blocked?: { origin: string; url: string };
+  /** Origins offered to the user in this session — the only ones that may be allowed. */
+  offered: Set<string>;
 };
 
 export const VIEWPORT = { width: 1280, height: 800 };
@@ -48,14 +53,21 @@ export class RecorderError extends Error {}
 export async function startSession(opts: { tenantId: string; userId: string; targetId: string; baseUrl: string; allowedOrigins: string[]; name: string }) {
   if (sessions.size >= MAX_SESSIONS) throw new RecorderError("Υπάρχουν ήδη πολλές ενεργές καταγραφές — δοκιμάστε σε λίγο.");
   const context = await newContext({ viewport: VIEWPORT, locale: "el-GR", timezoneId: "Europe/Athens" });
-  await installGuard(context, normalizeOrigins(opts.allowedOrigins, opts.baseUrl), () => undefined);
+  const ref: { s?: Session } = {};
+  const guard = await installGuard(context, normalizeOrigins(opts.allowedOrigins, opts.baseUrl), (origin, reason, url) => {
+    if (ref.s && reason === "origin") {
+      ref.s.blocked = { origin, url };
+      ref.s.offered.add(origin);
+    }
+  });
   const page = await context.newPage();
   page.on("dialog", (d) => void d.accept().catch(() => undefined));
   const id = randomBytes(12).toString("base64url");
-  const s: Session = { id, ...opts, context, page, steps: [], inputs: [], taken: new Set(), lastActivity: Date.now(), forms: {} };
-  sessions.set(id, s);
+  const session: Session = { id, ...opts, context, page, steps: [], inputs: [], taken: new Set(), lastActivity: Date.now(), forms: {}, allow: guard.allow, offered: new Set() };
+  ref.s = session;
+  sessions.set(id, session);
   await page.goto(opts.baseUrl, { waitUntil: "domcontentloaded", timeout: 30_000 }).catch(() => undefined);
-  push(s, { type: "navigate", label: "Άνοιγμα σελίδας", url: rel(s, page.url()) });
+  push(session, { type: "navigate", label: "Άνοιγμα σελίδας", url: rel(session, page.url()) });
   return id;
 }
 
@@ -134,12 +146,29 @@ export type Action =
   | { type: "undo" }
   | { type: "back" };
 
-export type ActionResult = { select?: ElementInfo; fields?: ElementInfo[]; message?: string };
+export type ActionResult = { select?: ElementInfo; fields?: ElementInfo[]; message?: string; blocked?: { origin: string; url: string } };
 
 const FIELD_TAGS = new Set(["input", "textarea"]);
 const KEYS = new Set(["Enter", "Tab", "Escape", "Backspace", "Delete", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown", " "]);
 
 export async function act(s: Session, a: Action): Promise<ActionResult> {
+  s.blocked = undefined;
+  const r = await actInner(s, a).catch((err) => {
+    if (!s.blocked) throw err;
+    return {} as ActionResult;
+  });
+  if (s.blocked) await s.page.waitForTimeout(100);
+  return s.blocked ? { ...r, blocked: s.blocked, message: undefined } : r;
+}
+
+/** The user agreed to add `origin` (already saved on the target): allow it and resume the navigation. */
+export async function allowAndContinue(s: Session, origin: string, url: string) {
+  s.allow(origin);
+  s.blocked = undefined;
+  await s.page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 }).catch(() => undefined);
+}
+
+async function actInner(s: Session, a: Action): Promise<ActionResult> {
   const page = s.page;
   switch (a.type) {
     case "click": {

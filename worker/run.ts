@@ -73,6 +73,7 @@ export async function processRun(runId: string, tenantId: string, workerId: stri
   let context: BrowserContext | null = null;
   let interpreter: Interpreter | null = null;
   let tracing = false;
+  let blockedOrigin: string | null = null;
   try {
     log("INFO", `Έναρξη εκτέλεσης (προσπάθεια ${run.attempt}) στον worker ${workerId}`, undefined, undefined, "system");
     const parsed = parseDefinition(version.definition, { inputSchema: version.inputSchema, outputSchema: version.outputSchema, name: version.workflow.name });
@@ -108,7 +109,10 @@ export async function processRun(runId: string, tenantId: string, workerId: stri
       storageState: session?.state as never,
     });
     const allowed = normalizeOrigins(target.allowedOrigins, target.baseUrl);
-    await installGuard(context, allowed, (origin, reason) => log("WARN", `Αποκλείστηκε αίτημα προς ${origin} (${reason === "private" ? "ιδιωτική διεύθυνση" : "εκτός επιτρεπτών origins"})`, undefined, undefined, "network"));
+    await installGuard(context, allowed, (origin, reason) => {
+      if (reason === "origin") blockedOrigin = origin;
+      log("WARN", `Αποκλείστηκε αίτημα προς ${origin} (${reason === "private" ? "ιδιωτική διεύθυνση" : "εκτός επιτρεπτών origins"})`, undefined, undefined, "network");
+    });
     const page = await context.newPage();
     const consoleLines: string[] = [];
     page.on("console", (m) => consoleLines.length < 2000 && consoleLines.push(`[${m.type()}] ${m.text().slice(0, 500)}`));
@@ -180,7 +184,10 @@ export async function processRun(runId: string, tenantId: string, workerId: stri
     log("INFO", "Η εκτέλεση ολοκληρώθηκε επιτυχώς.", undefined, undefined, "system");
     return "succeeded";
   } catch (raw) {
-    const err = classify(raw);
+    let err = classify(raw);
+    if (err.code === "E_NAVIGATION" && blockedOrigin) {
+      err = new EngineError("E_NAVIGATION", `Η σελίδα προσπάθησε να ανοίξει το ${new URL(blockedOrigin).host}, που δεν είναι στις επιτρεπτές διευθύνσεις του συστήματος‑στόχου. Προσθέστε το στο σύστημα (ή κάντε ξανά την καταγραφή στην εφαρμογή).`, err.extra);
+    }
     if (tracing && context) await saveTrace(context, interpreter, artifactCtx, log);
     if (err.code === "E_INTERNAL") log("ERROR", `Εσωτερικό σφάλμα: ${(raw as Error)?.message?.slice(0, 500)}`, undefined, err.extra.stepId, "system");
     const committed = interpreter?.mayHaveCommitted ?? false;

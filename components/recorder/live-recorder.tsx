@@ -25,6 +25,7 @@ export function LiveRecorder({ tenantId, initial, finish, cancel }: { tenantId: 
   const [fields, setFields] = useState<(ElementInfo & { kind: FieldKind })[] | null>(null);
   const [extractAt, setExtractAt] = useState<{ x: number; y: number } | null>(null);
   const [notice, setNotice] = useState<{ title: string; text: string; error?: boolean } | null>(null);
+  const [blocked, setBlocked] = useState<{ origin: string; url: string } | null>(null);
   const img = useRef<HTMLImageElement>(null);
   const keys = useRef<HTMLDivElement>(null);
   const buffer = useRef("");
@@ -45,7 +46,8 @@ export function LiveRecorder({ tenantId, initial, finish, cancel }: { tenantId: 
           }
           setState(body.state);
           setUrl(body.state.url);
-          if (body.result?.message) setNotice({ title: "Καταγραφή", text: body.result.message });
+          if (body.result?.blocked) setBlocked(body.result.blocked);
+          else if (body.result?.message) setNotice({ title: "Καταγραφή", text: body.result.message });
           return body.result as { select?: ElementInfo; fields?: ElementInfo[] };
         } finally {
           setBusy(false);
@@ -203,6 +205,46 @@ export function LiveRecorder({ tenantId, initial, finish, cancel }: { tenantId: 
           {cancel}
         </div>
       </aside>
+
+      <Dialog open={!!blocked} onOpenChange={(o) => !o && setBlocked(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Νέα διεύθυνση</DialogTitle>
+            <DialogDescription>
+              Η σελίδα θέλει να ανοίξει το <strong className="font-mono text-foreground">{blocked ? new URL(blocked.origin).host : ""}</strong>, που δεν είναι στις επιτρεπτές διευθύνσεις του συστήματος‑στόχου (π.χ. σελίδα σύνδεσης σε άλλο domain). Να προστεθεί; Θα ισχύει και στις αυτόματες εκτελέσεις.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setBlocked(null)}>
+              Όχι
+            </Button>
+            <Button
+              type="button"
+              autoFocus
+              onClick={async () => {
+                const b = blocked!;
+                setBlocked(null);
+                setBusy(true);
+                try {
+                  const res = await fetch(`/api/recorder/${state.id}/allow-origin`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tenantId, ...b }) });
+                  const body = await res.json();
+                  if (!res.ok) setNotice({ title: "Η διεύθυνση δεν προστέθηκε", text: body.title ?? "Δοκιμάστε ξανά.", error: true });
+                  else {
+                    setState(body.state);
+                    setUrl(body.state.url);
+                    setNotice({ title: "Προστέθηκε", text: body.message });
+                  }
+                } finally {
+                  setBusy(false);
+                  setTick((t) => t + 1);
+                }
+              }}
+            >
+              Προσθήκη και συνέχεια
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!notice} onOpenChange={(o) => !o && setNotice(null)}>
         <DialogContent className="sm:max-w-sm" role={notice?.error ? "alertdialog" : "dialog"}>
