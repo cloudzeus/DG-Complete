@@ -38,7 +38,7 @@ export type StepRunStatus = "RUNNING" | "SUCCEEDED" | "FAILED" | "SKIPPED";
 type StepNodeData = GraphNode & { selected: boolean; run?: StepRunStatus; onForm?: (formId: string, view: "image" | "fields") => void; hasImage?: boolean };
 export type CanvasForm = CapturedForm & { imageUrl?: string };
 
-const KIND_LABEL: Record<string, string> = { input: "Είσοδος API", username: "Χρήστης (διαπιστευτήριο)", password: "Κωδικός (διαπιστευτήριο)" };
+const KIND_LABEL: Record<string, string> = { input: "Είσοδος API", username: "Χρήστης (διαπιστευτήριο)", password: "Κωδικός (διαπιστευτήριο)", unmapped: "— δεν χρησιμοποιείται" };
 
 const RUN_LABEL: Record<StepRunStatus, string> = { RUNNING: "Εκτελείται", SUCCEEDED: "Ολοκληρώθηκε", FAILED: "Απέτυχε", SKIPPED: "Παραλείφθηκε" };
 

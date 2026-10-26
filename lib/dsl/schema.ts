@@ -13,12 +13,13 @@ export const LocatorCandidate = z.discriminatedUnion("kind", [
 ]);
 export type LocatorCandidate = z.infer<typeof LocatorCandidate>;
 
-export type Locator = { candidates: LocatorCandidate[]; frame: string[]; nth?: number; within?: Locator; description?: string };
+export type Locator = { candidates: LocatorCandidate[]; frame: string[]; nth?: number | string; within?: Locator; description?: string };
 export const Locator: z.ZodType<Locator> = z.lazy(() =>
   z.object({
     candidates: z.array(LocatorCandidate).min(1, "Το στοιχείο χρειάζεται τουλάχιστον έναν επιλογέα."),
     frame: z.array(z.string()).default([]),
-    nth: z.number().int().min(0).optional(),
+    // A template ("{{lineIndex}}") selects the row of a repeated block (forEach).
+    nth: z.union([z.number().int().min(0), z.string().min(1)]).optional(),
     within: Locator.optional(),
     description: z.string().optional(),
   }),

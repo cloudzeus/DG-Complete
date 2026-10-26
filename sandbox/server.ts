@@ -78,6 +78,35 @@ app.post("/entries", async (c) => {
   return c.html(page("Αποθηκεύτηκε", html`<p data-testid="entry-id">Αριθμός καταχώρισης: ${id}</p><a href="/entries/new">Νέα καταχώριση</a>`));
 });
 
+// Document with lines (multiple records on one page): «Προσθήκη γραμμής» adds a row lines[i][…].
+app.get("/invoices/new", (c) => {
+  if (!c.req.header("cookie")?.includes("sandbox_session=1")) return c.redirect("/login");
+  return c.html(
+    page(
+      "Νέο παραστατικό",
+      html`<p data-testid="user-menu">Συνδεδεμένος: demo</p>
+        <h1>Νέο παραστατικό</h1>
+        <form method="post" action="/invoices">
+          <label for="customer">Πελάτης</label>
+          <select id="customer" name="customer"><option value="">—</option><option value="C1">Alpha Α.Ε.</option><option value="C2">Beta Ο.Ε.</option></select>
+          <table id="lines" style="width:100%;margin-top:1rem"><thead><tr><th>Είδος</th><th>Ποσότητα</th></tr></thead>
+            <tbody><tr><td><input name="lines[0][item]" aria-label="Είδος" /></td><td><input name="lines[0][qty]" aria-label="Ποσότητα" inputmode="numeric" /></td></tr></tbody>
+          </table>
+          <button type="button" id="add-line" onclick="(function(){var b=document.querySelector('#lines tbody');var i=b.rows.length;var r=b.insertRow();r.innerHTML='<td><input name=&quot;lines['+i+'][item]&quot; aria-label=&quot;Είδος&quot; /></td><td><input name=&quot;lines['+i+'][qty]&quot; aria-label=&quot;Ποσότητα&quot; /></td>';})()">Προσθήκη γραμμής</button>
+          <button type="submit">Καταχώριση</button>
+        </form>`,
+    ),
+  );
+});
+
+app.post("/invoices", async (c) => {
+  const form = await c.req.parseBody({ all: true });
+  const lines = Object.keys(form).filter((k) => /^lines\[\d+\]\[item\]$/.test(k) && String(form[k]).trim()).length;
+  if (!form.customer) return c.html(page("Σφάλμα", html`<p class="error" data-testid="entry-error">Επιλέξτε πελάτη</p>`), 422);
+  const id = Math.floor(Math.random() * 90000 + 10000);
+  return c.html(page("Καταχωρήθηκε", html`<p data-testid="invoice-id">Παραστατικό ${id}</p><p data-testid="lines-count">${lines} γραμμές</p>`));
+});
+
 app.get("/health", (c) => c.json({ ok: true }));
 
 serve({ fetch: app.fetch, port: PORT }, (info) => console.log(`[sandbox] http://localhost:${info.port}`));

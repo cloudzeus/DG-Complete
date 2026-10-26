@@ -6,7 +6,7 @@ import { toInputKey } from "@/lib/dsl/import/chromeRecorder";
 import { newContext } from "@/worker/browser";
 import type { CapturedForm } from "@/lib/dsl/graph";
 import { getStorage } from "@/lib/storage";
-import { candidatesFor, describeInPage, fieldLabel, isPasswordField, type ElementInfo } from "./describe";
+import { candidatesFor, describeInPage, fieldLabel, isPasswordField, rowSelector, type ElementInfo } from "./describe";
 
 // Live recorder inside the app (docs/04 §10): a server-side Chromium shown to the user as images;
 // clicks and keys are forwarded, each action becomes a DSL step. Typed values are passed to the page
@@ -14,7 +14,7 @@ import { candidatesFor, describeInPage, fieldLabel, isPasswordField, type Elemen
 // worker, ADR-025), sessions in memory, closed after 20′ without activity.
 
 export type Step = Record<string, unknown> & { id: string; type: string; label: string };
-export type InputDef = { key: string; label: string; type: "string" | "enum"; enum?: string[]; required: boolean };
+export type InputDef = { key: string; label: string; type: "string" | "enum" | "array"; enum?: string[]; required: boolean; items?: { key: string; label: string; enum?: string[] }[] };
 
 type Session = {
   id: string;
@@ -23,6 +23,8 @@ type Session = {
   targetId: string;
   baseUrl: string;
   name: string;
+  /** Recording into an existing workflow (its draft) instead of a new one. */
+  workflowId?: string;
   context: BrowserContext;
   page: Page;
   steps: Step[];
@@ -36,6 +38,11 @@ type Session = {
   blocked?: { origin: string; url: string };
   /** Origins offered to the user in this session — the only ones that may be allowed. */
   offered: Set<string>;
+  /** Current page group (p1, p2 …): every step recorded on a page belongs to it (docs/04 §10). */
+  cur: string;
+  lastUrl: string;
+  /** Selectors of repeated row fields: typing into them adds no extra step. */
+  rowSelectors: string[];
 };
 
 export const VIEWPORT = { width: 1280, height: 800 };
@@ -50,7 +57,7 @@ g.__dgRecSweep ??= setInterval(() => {
 
 export class RecorderError extends Error {}
 
-export async function startSession(opts: { tenantId: string; userId: string; targetId: string; baseUrl: string; allowedOrigins: string[]; name: string }) {
+export async function startSession(opts: { tenantId: string; userId: string; targetId: string; baseUrl: string; allowedOrigins: string[]; name: string; workflowId?: string }) {
   if (sessions.size >= MAX_SESSIONS) throw new RecorderError("Υπάρχουν ήδη πολλές ενεργές καταγραφές — δοκιμάστε σε λίγο.");
   const context = await newContext({ viewport: VIEWPORT, locale: "el-GR", timezoneId: "Europe/Athens" });
   const ref: { s?: Session } = {};
@@ -63,10 +70,11 @@ export async function startSession(opts: { tenantId: string; userId: string; tar
   const page = await context.newPage();
   page.on("dialog", (d) => void d.accept().catch(() => undefined));
   const id = randomBytes(12).toString("base64url");
-  const session: Session = { id, ...opts, context, page, steps: [], inputs: [], taken: new Set(), lastActivity: Date.now(), forms: {}, allow: guard.allow, offered: new Set() };
+  const session: Session = { id, ...opts, context, page, steps: [], inputs: [], taken: new Set(), lastActivity: Date.now(), forms: {}, allow: guard.allow, offered: new Set(), cur: "", lastUrl: "", rowSelectors: [] };
   ref.s = session;
   sessions.set(id, session);
   await page.goto(opts.baseUrl, { waitUntil: "domcontentloaded", timeout: 30_000 }).catch(() => undefined);
+  await newPage(session);
   push(session, { type: "navigate", label: "Άνοιγμα σελίδας", url: rel(session, page.url()) });
   return id;
 }
@@ -93,9 +101,43 @@ function rel(s: Session, url: string) {
   }
 }
 
-function push(s: Session, step: Omit<Step, "id">) {
+function push(s: Session, step: { type: string; label: string; [k: string]: unknown }) {
   const n = s.steps.length + 1;
-  s.steps.push({ id: `s${String(n).padStart(2, "0")}`, ...step } as Step);
+  s.steps.push({ ...step, id: `s${String(n).padStart(2, "0")}`, form: (step.form as string | undefined) ?? s.cur } as Step);
+}
+
+const pageKey = (url: string) => url.split("#")[0];
+
+/** A new page: its own step group, with a masked image and the fields found on it. */
+async function newPage(s: Session) {
+  const n = Object.keys(s.forms).length + 1;
+  s.cur = `p${n}`;
+  s.lastUrl = pageKey(s.page.url());
+  await settle(s.page);
+  const found = ((await s.page.evaluate(describeInPage, { all: true }).catch(() => [])) ?? []) as ElementInfo[];
+  const image = await s.page.screenshot({ type: "jpeg", quality: 70, mask: [s.page.locator("input[type=password]")] }).catch(() => null);
+  let path: string | undefined;
+  if (image) {
+    path = `tenants/${s.tenantId}/recordings/${s.id}/${s.cur}.jpg`;
+    await (await getStorage()).put(path, image, "image/jpeg").catch(() => (path = undefined));
+  }
+  s.forms[s.cur] = {
+    title: (await s.page.title().catch(() => "")).slice(0, 60) || `Σελίδα ${n}`,
+    url: rel(s, s.page.url()),
+    image: path,
+    fields: found.map((e) => ({ label: fieldLabel(e), type: typeLabel(e), kind: "unmapped", required: e.required, options: e.options?.length })),
+  };
+}
+
+function typeLabel(e: ElementInfo) {
+  if (e.tag === "select") return "λίστα";
+  if (e.tag === "textarea") return "κείμενο (πολλές γραμμές)";
+  return ({ password: "κωδικός", checkbox: "επιλογή", radio: "επιλογή", email: "email", number: "αριθμός", date: "ημερομηνία", tel: "τηλέφωνο" } as Record<string, string>)[(e.type ?? "").toLowerCase()] ?? "κείμενο";
+}
+
+/** After an action: did the page change? Then the next steps belong to a new page group. */
+async function afterAction(s: Session) {
+  if (pageKey(s.page.url()) !== s.lastUrl) await newPage(s);
 }
 
 const sameField = (a: unknown, css: string) => (a as { candidates?: { kind: string; value?: string }[] } | undefined)?.candidates?.some((c) => c.kind === "css" && c.value === css);
@@ -142,11 +184,16 @@ export type Action =
   | { type: "select"; css: string; value: string }
   | { type: "extract"; x: number; y: number; key: string; label?: string }
   | { type: "capture" }
-  | { type: "captureApply"; fields: { css: string; kind: "input" | "username" | "password" | "skip" }[] }
+  | {
+      type: "captureApply";
+      fields: { css: string; kind: "input" | "username" | "password" | "skip"; repeat?: boolean }[];
+      /** Multiple records on the page (e.g. document lines): the repeated fields become a list input. */
+      repeat?: { list: string; label?: string; addButtonCss?: string; firstRowExists: boolean };
+    }
   | { type: "undo" }
   | { type: "back" };
 
-export type ActionResult = { select?: ElementInfo; fields?: ElementInfo[]; message?: string; blocked?: { origin: string; url: string } };
+export type ActionResult = { select?: ElementInfo; fields?: ElementInfo[]; buttons?: ElementInfo[]; message?: string; blocked?: { origin: string; url: string } };
 
 const FIELD_TAGS = new Set(["input", "textarea"]);
 const KEYS = new Set(["Enter", "Tab", "Escape", "Backspace", "Delete", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown", " "]);
@@ -158,6 +205,7 @@ export async function act(s: Session, a: Action): Promise<ActionResult> {
     return {} as ActionResult;
   });
   if (s.blocked) await s.page.waitForTimeout(100);
+  if (!["capture", "captureApply", "undo"].includes(a.type)) await afterAction(s).catch(() => undefined);
   return s.blocked ? { ...r, blocked: s.blocked, message: undefined } : r;
 }
 
@@ -166,6 +214,7 @@ export async function allowAndContinue(s: Session, origin: string, url: string) 
   s.allow(origin);
   s.blocked = undefined;
   await s.page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 }).catch(() => undefined);
+  await afterAction(s).catch(() => undefined);
 }
 
 async function actInner(s: Session, a: Action): Promise<ActionResult> {
@@ -192,6 +241,7 @@ async function actInner(s: Session, a: Action): Promise<ActionResult> {
       if (last?.type === "fill" && sameField(last.locator, e.css)) return {};
       // Already a step of a captured form: typing only fills the page so the user can go on.
       if (s.steps.some((x) => x.form && sameField(x.locator, e.css))) return {};
+      if (s.rowSelectors.length && (await page.evaluate((sels) => sels.some((q) => document.activeElement?.matches(q)), s.rowSelectors).catch(() => false))) return {};
       push(s, fillStep(s, e));
       return {};
     }
@@ -210,6 +260,7 @@ async function actInner(s: Session, a: Action): Promise<ActionResult> {
     case "navigate": {
       const url = /^https?:\/\//.test(a.url) ? a.url : new URL(a.url, s.baseUrl).toString();
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+      await afterAction(s); // the navigation opens the new page's group
       push(s, { type: "navigate", label: "Πλοήγηση", url: rel(s, page.url()) });
       return {};
     }
@@ -220,7 +271,7 @@ async function actInner(s: Session, a: Action): Promise<ActionResult> {
       const el = page.locator(a.css).first();
       const e = (await el.evaluate((n) => (n as HTMLElement).getBoundingClientRect()).then(async (r) => describe(page, { x: r.x + 2, y: r.y + 2 })).catch(() => null)) as ElementInfo | null;
       const chosen = await el.selectOption(a.value);
-      if (e) push(s, { type: "select", label: fieldLabel(e), locator: { candidates: candidatesFor(e) }, by: "label", value: `{{input.${inputFor(s, e, "enum")}}}` });
+      if (e && !s.steps.some((x) => x.form && sameField(x.locator, e.css))) push(s, { type: "select", label: fieldLabel(e), locator: { candidates: candidatesFor(e) }, by: "label", value: `{{input.${inputFor(s, e, "enum")}}}` });
       return { message: chosen.length ? undefined : "Η επιλογή δεν βρέθηκε." };
     }
     case "extract": {
@@ -232,15 +283,18 @@ async function actInner(s: Session, a: Action): Promise<ActionResult> {
     }
     case "capture": {
       const fields = ((await page.evaluate(describeInPage, { all: true }).catch(() => [])) ?? []) as ElementInfo[];
-      return { fields };
+      const buttons = ((await page.evaluate(describeInPage, { buttons: true }).catch(() => [])) ?? []) as ElementInfo[];
+      return { fields, buttons };
     }
     case "captureApply": {
       const all = ((await page.evaluate(describeInPage, { all: true }).catch(() => [])) ?? []) as ElementInfo[];
-      const formId = `f${Object.keys(s.forms).length + 1}`;
+      const formId = s.cur;
       const fields: CapturedForm["fields"] = [];
+      const buttons = a.repeat?.addButtonCss ? (((await page.evaluate(describeInPage, { buttons: true }).catch(() => [])) ?? []) as ElementInfo[]) : [];
+      const rowFields = a.repeat ? a.fields.filter((f) => f.repeat && f.kind === "input") : [];
       for (const f of a.fields) {
         const e = all.find((x) => x.css === f.css);
-        if (!e || f.kind === "skip") continue;
+        if (!e || f.kind === "skip" || rowFields.includes(f)) continue;
         const locator = { candidates: candidatesFor(e) };
         const base = { label: fieldLabel(e), locator, form: formId };
         let key: string | undefined;
@@ -249,17 +303,50 @@ async function actInner(s: Session, a: Action): Promise<ActionResult> {
         else if (e.tag === "select") push(s, { type: "select", ...base, by: "label", value: `{{input.${(key = inputFor(s, e, "enum"))}}}` });
         else if ((e.type ?? "").toLowerCase() === "checkbox") push(s, { type: "check", ...base, when: `input.${(key = inputFor(s, e))} == true` });
         else push(s, { type: "fill", ...base, value: `{{input.${(key = inputFor(s, e))}}}` });
-        fields.push({ label: fieldLabel(e), type: e.tag === "select" ? "λίστα" : e.tag === "textarea" ? "κείμενο (πολλές γραμμές)" : ({ password: "κωδικός", checkbox: "επιλογή", email: "email", number: "αριθμός", date: "ημερομηνία", tel: "τηλέφωνο" } as Record<string, string>)[(e.type ?? "").toLowerCase()] ?? "κείμενο", key, kind: f.kind, required: e.required, options: e.options?.length });
+        fields.push({ label: fieldLabel(e), type: typeLabel(e), key, kind: f.kind, required: e.required, options: e.options?.length });
+      }
+      if (a.repeat && rowFields.length) {
+        // forEach over input.<list>: optional «new line» click, then each field of row <index>.
+        const list = a.repeat.list.replace(/[^a-zA-Z0-9_]/g, "") || "lines";
+        const taken = new Set<string>();
+        const items: NonNullable<InputDef["items"]> = [];
+        const inner: Record<string, unknown>[] = [];
+        const add = buttons.find((b) => b.css === a.repeat!.addButtonCss);
+        if (add) inner.push({ id: "", type: "click", label: `Νέα γραμμή «${(add.text ?? add.ariaLabel ?? "").slice(0, 30)}»`, locator: { candidates: candidatesFor(add) }, ...(a.repeat.firstRowExists ? { when: "lineIndex > 0" } : {}) });
+        for (const f of rowFields) {
+          const e = all.find((x) => x.css === f.css);
+          if (!e) continue;
+          const key = toInputKey(fieldLabel(e), taken);
+          items.push({ key, label: fieldLabel(e), ...(e.options ? { enum: e.options.map((o) => o.label) } : {}) });
+          const sel = rowSelector(e);
+          s.rowSelectors.push(sel);
+          const locator = { candidates: [{ kind: "css", value: sel }], nth: "{{lineIndex}}" };
+          inner.push(e.tag === "select" ? { id: "", type: "select", label: fieldLabel(e), locator, by: "label", value: `{{line.${key}}}` } : { id: "", type: "fill", label: fieldLabel(e), locator, value: `{{line.${key}}}` });
+          fields.push({ label: fieldLabel(e), type: typeLabel(e), key: `${list}[].${key}`, kind: "input", required: e.required, options: e.options?.length });
+        }
+        const listKey = s.inputs.some((i) => i.key === list) ? toInputKey(list, s.taken) : (s.taken.add(list), list);
+        s.inputs.push({ key: listKey, label: a.repeat.label || "Γραμμές", type: "array", required: true, items });
+        const base = s.steps.length;
+        push(s, {
+          type: "forEach",
+          label: `${a.repeat.label || "Γραμμές"} (πολλαπλές εγγραφές)`,
+          items: `input.${listKey} ?? []`,
+          as: "line",
+          form: formId,
+          steps: inner.map((x, k) => ({ ...x, id: `s${String(base + 1).padStart(2, "0")}_${k + 1}` })),
+        });
       }
       if (!fields.length) return { message: "Δεν επιλέχθηκε κανένα πεδίο." };
-      // Image of the page at capture time (password fields masked) for the canvas node.
+      // Refresh the page image (now with the user's input, passwords masked) and the field mapping.
       const image = await page.screenshot({ type: "jpeg", quality: 70, mask: [page.locator("input[type=password]")] }).catch(() => null);
-      let path: string | undefined;
+      const prev = s.forms[formId];
+      let path = prev?.image;
       if (image) {
         path = `tenants/${s.tenantId}/recordings/${s.id}/${formId}.jpg`;
-        await (await getStorage()).put(path, image, "image/jpeg").catch(() => (path = undefined));
+        await (await getStorage()).put(path, image, "image/jpeg").catch(() => (path = prev?.image));
       }
-      s.forms[formId] = { title: (await page.title().catch(() => "")).slice(0, 60) || undefined, url: rel(s, page.url()), image: path, fields };
+      const mapped = new Set(fields.map((f) => f.label));
+      s.forms[formId] = { title: prev?.title, url: rel(s, page.url()), image: path, fields: [...fields, ...(prev?.fields ?? []).filter((f) => !mapped.has(f.label) && f.kind === "unmapped")] };
       return { message: `Η φόρμα καταγράφηκε με ${fields.length} πεδία.` };
     }
     case "undo": {

@@ -21,7 +21,7 @@ export type ElementInfo = {
 };
 
 /** Executed in the page. Must be self-contained (no closures). */
-export function describeInPage(arg: { x?: number; y?: number; active?: boolean; all?: boolean }): ElementInfo | ElementInfo[] | null {
+export function describeInPage(arg: { x?: number; y?: number; active?: boolean; all?: boolean; buttons?: boolean }): ElementInfo | ElementInfo[] | null {
   const clean = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ").trim() || null;
   const cssEscape = (s: string) => (window.CSS && CSS.escape ? CSS.escape(s) : s.replace(/[^a-zA-Z0-9_-]/g, "\\$&"));
   const implicitRole = (el: Element): string | null => {
@@ -93,6 +93,15 @@ export function describeInPage(arg: { x?: number; y?: number; active?: boolean; 
       rect: { x: r.x, y: r.y, w: r.width, h: r.height },
     };
   };
+  if (arg.buttons) {
+    return Array.from(document.querySelectorAll("button, input[type=button], input[type=submit], a[role=button], [role=button]"))
+      .filter((el) => {
+        const r = (el as HTMLElement).getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      })
+      .slice(0, 100)
+      .map(info);
+  }
   if (arg.all) {
     const fields = Array.from(document.querySelectorAll("input, select, textarea")).filter((el) => {
       const type = (el.getAttribute("type") ?? "").toLowerCase();
@@ -131,4 +140,15 @@ export function fieldLabel(e: ElementInfo) {
 
 export function isPasswordField(e: ElementInfo) {
   return (e.type ?? "").toLowerCase() === "password";
+}
+
+/** Selector matching the same field in every row: digits in the name become a prefix/suffix match. */
+export function rowSelector(e: ElementInfo): string {
+  if (e.name) {
+    const m = /^(.*?)(\d+)(\D*)$/.exec(e.name);
+    if (m && (m[1] || m[3])) return `${e.tag}${m[1] ? `[name^="${m[1]}"]` : ""}${m[3] ? `[name$="${m[3]}"]` : ""}`;
+    return `${e.tag}[name="${e.name}"]`;
+  }
+  if (e.label) return `${e.tag}[aria-label="${e.label}"]`;
+  return e.css.replace(/:nth-of-type\(\d+\)/g, "");
 }

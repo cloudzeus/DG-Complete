@@ -22,6 +22,7 @@ const bindingsOf = (s: DslStep) => [...JSON.stringify(s).matchAll(/\{\{\s*(input
 export function toGraph(def: DslDefinition, opts: { collapseForms?: boolean; inputs?: string[]; outputs?: string[] } = {}) {
   const nodes: GraphNode[] = [{ id: "__input", kind: "input", label: "Είσοδος", no: "", stepIds: [], bindings: opts.inputs ?? [] }];
   const edges: GraphEdge[] = [];
+  const pageOrder = new Map<string, number>();
 
   function level(steps: DslStep[], prefix: string, parentId: string | undefined, entry: string): string {
     let prev = entry;
@@ -39,7 +40,11 @@ export function toGraph(def: DslDefinition, opts: { collapseForms?: boolean; inp
         const group = steps.slice(i, j);
         consumed = group.length;
         const f = (def.forms as Record<string, CapturedForm> | undefined)?.[formId];
-        node = { id: `form:${formId}`, kind: "form", label: `${f?.title ? `${f.title} · ` : "Φόρμα · "}${group.length} πεδία`, no, parentId, stepIds: group.map((g) => g.id), bindings: group.flatMap(bindingsOf), formId };
+        // Pages numbered in the order they appear in the flow (pages without steps are not counted).
+        if (/^p\d+$/.test(formId) && !pageOrder.has(formId)) pageOrder.set(formId, pageOrder.size + 1);
+        const pageNo = pageOrder.get(formId);
+        const fieldsN = group.filter((g) => FORM.has(g.type)).length;
+        node = { id: `form:${formId}`, kind: "form", label: `${pageNo ? `Σελίδα ${pageNo}` : "Φόρμα"}${f?.title ? ` · ${f.title}` : ""}${fieldsN ? ` · ${fieldsN} πεδία` : ""}`, no, parentId, stepIds: group.map((g) => g.id), bindings: group.flatMap(bindingsOf), formId };
       } else if (opts.collapseForms && FORM.has(s.type)) {
         let j = i;
         while (j < steps.length && FORM.has(steps[j].type)) j++;

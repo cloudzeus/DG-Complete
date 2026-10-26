@@ -15,7 +15,11 @@ const ActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("select"), css: z.string().min(1).max(500), value: z.string().max(500) }),
   z.object({ type: z.literal("extract"), x: num, y: num, key: z.string().min(1).max(40), label: z.string().max(80).optional() }),
   z.object({ type: z.literal("capture") }),
-  z.object({ type: z.literal("captureApply"), fields: z.array(z.object({ css: z.string().max(500), kind: z.enum(["input", "username", "password", "skip"]) })).max(200) }),
+  z.object({
+    type: z.literal("captureApply"),
+    fields: z.array(z.object({ css: z.string().max(500), kind: z.enum(["input", "username", "password", "skip"]), repeat: z.boolean().optional() })).max(200),
+    repeat: z.object({ list: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,39}$/), label: z.string().max(80).optional(), addButtonCss: z.string().max(500).optional(), firstRowExists: z.boolean() }).optional(),
+  }),
   z.object({ type: z.literal("undo") }),
   z.object({ type: z.literal("back") }),
 ]);

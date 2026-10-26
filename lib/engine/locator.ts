@@ -41,13 +41,15 @@ export async function resolveLocator(page: Page, loc: Locator, opts: { timeoutMs
     if ("name" in out && typeof out.name === "string") out.name = opts.render(out.name);
     return out as LocatorCandidate;
   });
-  const pick = (l: PwLocator) => (loc.nth != null ? l.nth(loc.nth) : l);
+  const nth = typeof loc.nth === "string" ? Number(opts.render(loc.nth)) : loc.nth;
+  if (nth !== undefined && (!Number.isInteger(nth) || nth < 0)) throw new EngineError("E_INPUT_VALIDATION", `Μη έγκυρη θέση γραμμής «${String(loc.nth)}».`);
+  const pick = (l: PwLocator) => (nth != null ? l.nth(nth) : l);
 
   // Fast pass: what is on the page right now.
   for (let i = 0; i < rendered.length; i++) {
     const l = toPlaywright(root, rendered[i]);
     const count = await l.count();
-    if (count === 1 || (loc.nth != null && count > loc.nth)) return { handle: pick(l), used: rendered[i], index: i };
+    if (count === 1 || (nth != null && count > nth)) return { handle: pick(l), used: rendered[i], index: i };
   }
   // Nothing yet: the DOM may still be loading — wait for any candidate until the timeout.
   const deadline = Date.now() + opts.timeoutMs;
@@ -56,8 +58,8 @@ export async function resolveLocator(page: Page, loc: Locator, opts: { timeoutMs
     for (let i = 0; i < rendered.length; i++) {
       const l = toPlaywright(root, rendered[i]);
       const count = await l.count();
-      if (count === 1 || (loc.nth != null && count > loc.nth)) return { handle: pick(l), used: rendered[i], index: i };
-      if (count > 1 && loc.nth == null && i === rendered.length - 1) {
+      if (count === 1 || (nth != null && count > nth)) return { handle: pick(l), used: rendered[i], index: i };
+      if (count > 1 && nth == null && i === rendered.length - 1) {
         throw new EngineError("E_LOCATOR_NOT_FOUND", `Ο επιλογέας «${describe(rendered[i])}» ταιριάζει σε ${count} στοιχεία.`);
       }
     }

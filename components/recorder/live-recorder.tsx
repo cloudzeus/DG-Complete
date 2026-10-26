@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 // are forwarded to it, each action becomes a step. Values typed here go to the page only.
 
 type Step = { id: string; type: string; label: string; value?: string; into?: string; form?: string };
-type State = { id: string; name: string; url: string; steps: Step[]; inputs: { key: string; label: string }[]; viewport: { width: number; height: number } };
+type State = { id: string; name: string; url: string; steps: Step[]; inputs: { key: string; label: string; type?: string }[]; forms?: Record<string, { title?: string }>; viewport: { width: number; height: number } };
 type FieldKind = "input" | "username" | "password" | "skip";
 
 export function LiveRecorder({ tenantId, initial, finish, cancel }: { tenantId: string; initial: State; finish: React.ReactNode; cancel: React.ReactNode }) {
@@ -22,7 +22,9 @@ export function LiveRecorder({ tenantId, initial, finish, cancel }: { tenantId: 
   const [mode, setMode] = useState<"interact" | "extract">("interact");
   const [url, setUrl] = useState(initial.url);
   const [select, setSelect] = useState<ElementInfo | null>(null);
-  const [fields, setFields] = useState<(ElementInfo & { kind: FieldKind })[] | null>(null);
+  const [fields, setFields] = useState<(ElementInfo & { kind: FieldKind; repeat: boolean })[] | null>(null);
+  const [buttons, setButtons] = useState<ElementInfo[]>([]);
+  const [repeat, setRepeat] = useState({ list: "lines", label: "Γραμμές", addButtonCss: "", firstRowExists: true });
   const [extractAt, setExtractAt] = useState<{ x: number; y: number } | null>(null);
   const [notice, setNotice] = useState<{ title: string; text: string; error?: boolean } | null>(null);
   const [blocked, setBlocked] = useState<{ origin: string; url: string } | null>(null);
@@ -111,7 +113,8 @@ export function LiveRecorder({ tenantId, initial, finish, cancel }: { tenantId: 
     if (!r?.fields) return;
     if (!r.fields.length) return setNotice({ title: "Capture πεδίων", text: "Δεν βρέθηκαν πεδία φόρμας σε αυτή τη σελίδα." });
     const pw = r.fields.findIndex((f) => (f.type ?? "").toLowerCase() === "password");
-    setFields(r.fields.map((f, i) => ({ ...f, kind: i === pw ? "password" : pw > 0 && i === pw - 1 ? "username" : "input" })));
+    setButtons((r as { buttons?: ElementInfo[] }).buttons ?? []);
+    setFields(r.fields.map((f, i) => ({ ...f, kind: i === pw ? "password" : pw > 0 && i === pw - 1 ? "username" : "input", repeat: false })));
   };
 
   const fieldLabel = (f: ElementInfo) => f.label ?? f.ariaLabel ?? f.placeholder ?? f.name ?? f.id ?? "Πεδίο";
@@ -177,7 +180,14 @@ export function LiveRecorder({ tenantId, initial, finish, cancel }: { tenantId: 
           </header>
           <ol className="max-h-[45dvh] space-y-1 overflow-auto p-3 text-sm" aria-live="polite">
             {state.steps.map((s, i) => (
-              <li key={s.id} className="flex gap-2 rounded-sm px-2 py-1 hover:bg-muted/60">
+              <li key={s.id} className="rounded-sm">
+                {s.form && s.form !== state.steps[i - 1]?.form && (
+                  <p className="eyebrow mt-2 mb-1 border-t border-border/60 pt-2 text-sisyphus-700 first:mt-0 first:border-0 first:pt-0">
+                    Σελίδα {[...new Set(state.steps.map((x) => x.form))].indexOf(s.form) + 1}
+                    {state.forms?.[s.form]?.title ? ` · ${state.forms[s.form].title}` : ""}
+                  </p>
+                )}
+                <div className="flex gap-2 px-2 py-1 hover:bg-muted/60">
                 <span className="w-6 shrink-0 font-mono text-xs text-muted-foreground tabular-nums">{String(i + 1).padStart(2, "0")}</span>
                 <span className="min-w-0 flex-1">
                   <span className="eyebrow mr-1">{STEP_TYPES[s.type === "navigate" ? "goto" : s.type] ?? s.type}</span>
@@ -185,6 +195,7 @@ export function LiveRecorder({ tenantId, initial, finish, cancel }: { tenantId: 
                   {typeof s.value === "string" && <code className="ml-1 font-mono text-2xs text-muted-foreground">{s.value.replace(/[{}]/g, "")}</code>}
                   {s.into && <code className="ml-1 font-mono text-2xs text-sisyphus-600">→ {s.into}</code>}
                 </span>
+                </div>
               </li>
             ))}
           </ol>
@@ -196,6 +207,7 @@ export function LiveRecorder({ tenantId, initial, finish, cancel }: { tenantId: 
             {state.inputs.map((i) => (
               <li key={i.key} className="rounded-xs bg-muted px-1.5 py-0.5 font-mono text-xs" title={i.label}>
                 {i.key}
+                {i.type === "array" ? "[ ]" : ""}
               </li>
             ))}
           </ul>
@@ -290,7 +302,8 @@ export function LiveRecorder({ tenantId, initial, finish, cancel }: { tenantId: 
                 <tr className="border-b text-left text-xs text-muted-foreground">
                   <th className="py-1.5 pr-3 font-medium">Πεδίο</th>
                   <th className="py-1.5 pr-3 font-medium">Τύπος</th>
-                  <th className="py-1.5 font-medium">Χρήση</th>
+                  <th className="py-1.5 pr-3 font-medium">Χρήση</th>
+                  <th className="py-1.5 font-medium" title="Το πεδίο επαναλαμβάνεται σε κάθε γραμμή (π.χ. γραμμές παραστατικού)">Ανά γραμμή</th>
                 </tr>
               </thead>
               <tbody>
@@ -301,7 +314,7 @@ export function LiveRecorder({ tenantId, initial, finish, cancel }: { tenantId: 
                       {f.required && <span className="ml-1 text-danger-500">*</span>}
                     </td>
                     <td className="py-1.5 pr-3 text-muted-foreground">{f.tag === "select" ? `λίστα · ${f.options?.length ?? 0}` : (f.type ?? f.tag)}</td>
-                    <td className="py-1.5">
+                    <td className="py-1.5 pr-3">
                       <select
                         aria-label={`Χρήση του πεδίου ${fieldLabel(f)}`}
                         value={f.kind}
@@ -314,16 +327,67 @@ export function LiveRecorder({ tenantId, initial, finish, cancel }: { tenantId: 
                         <option value="skip">Παράλειψη</option>
                       </select>
                     </td>
+                    <td className="py-1.5 text-center">
+                      <input
+                        type="checkbox"
+                        aria-label={`Το ${fieldLabel(f)} επαναλαμβάνεται ανά γραμμή`}
+                        checked={f.repeat}
+                        disabled={f.kind !== "input"}
+                        onChange={(e) => setFields((all) => all!.map((x, j) => (j === i ? { ...x, repeat: e.target.checked } : x)))}
+                        className="size-4 accent-sisyphus-500"
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          {fields?.some((f) => f.repeat) && (
+            <fieldset className="grid gap-3 rounded-lg border border-border/70 p-3 sm:grid-cols-2">
+              <legend className="eyebrow px-1">Πολλαπλές εγγραφές</legend>
+              <p className="text-sm text-muted-foreground sm:col-span-2">
+                Τα πεδία «ανά γραμμή» γίνονται λίστα στο API (π.χ. γραμμές παραστατικού): για κάθε γραμμή η ροή πατά το κουμπί νέας γραμμής και συμπληρώνει τα πεδία της.
+              </p>
+              <label className="text-sm">
+                <span className="mb-1 block font-medium">Όνομα λίστας στο API</span>
+                <input value={repeat.list} onChange={(e) => setRepeat((r) => ({ ...r, list: e.target.value.replace(/[^a-zA-Z0-9_]/g, "") }))} className="h-9 w-full rounded-sm border border-border bg-background px-2 font-mono text-sm" />
+              </label>
+              <label className="text-sm">
+                <span className="mb-1 block font-medium">Περιγραφή</span>
+                <input value={repeat.label} onChange={(e) => setRepeat((r) => ({ ...r, label: e.target.value }))} className="h-9 w-full rounded-sm border border-border bg-background px-2 text-sm" />
+              </label>
+              <label className="text-sm sm:col-span-2">
+                <span className="mb-1 block font-medium">Κουμπί «νέα γραμμή»</span>
+                <select value={repeat.addButtonCss} onChange={(e) => setRepeat((r) => ({ ...r, addButtonCss: e.target.value }))} className="h-9 w-full rounded-sm border border-border bg-background px-2 text-sm">
+                  <option value="">— Καμία (οι γραμμές υπάρχουν ήδη)</option>
+                  {buttons.map((b) => (
+                    <option key={b.css} value={b.css}>
+                      {b.text ?? b.ariaLabel ?? b.css}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                <input type="checkbox" checked={repeat.firstRowExists} onChange={(e) => setRepeat((r) => ({ ...r, firstRowExists: e.target.checked }))} className="size-4 accent-sisyphus-500" />
+                Η πρώτη γραμμή υπάρχει ήδη κενή (το κουμπί πατιέται από τη 2η γραμμή)
+              </label>
+            </fieldset>
+          )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setFields(null)}>
               Άκυρο
             </Button>
-            <Button type="button" onClick={() => (void send({ type: "captureApply", fields: fields!.map((f) => ({ css: f.css, kind: f.kind })) }), setFields(null))}>
+            <Button
+              type="button"
+              onClick={() => (
+                void send({
+                  type: "captureApply",
+                  fields: fields!.map((f) => ({ css: f.css, kind: f.kind, repeat: f.repeat })),
+                  ...(fields!.some((f) => f.repeat) ? { repeat: { list: repeat.list || "lines", label: repeat.label, addButtonCss: repeat.addButtonCss || undefined, firstRowExists: repeat.firstRowExists } } : {}),
+                }),
+                setFields(null)
+              )}
+            >
               Προσθήκη ως βήματα
             </Button>
           </DialogFooter>
