@@ -1,5 +1,8 @@
 // Run lifecycle (docs/06 §3): claim → semaphores → decrypt → session/login → steps → artifacts →
 // final status, billing (docs/14) and retry. Every write to run tables goes through withTenantTx (RLS).
+import { readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { generateSync } from "otplib";
 import type { BrowserContext, Page } from "playwright";
 import { applyCredit } from "@/lib/billing";
@@ -9,6 +12,7 @@ import { EngineError, Interpreter, classify, installGuard, normalizeOrigins, res
 import type { LogLevel, RunStatus } from "@/lib/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { getBoss } from "@/lib/queue";
+import { publishRunEvent, type RunEvent } from "@/lib/queue/events";
 import { RUNS_QUEUE } from "@/lib/runs/create";
 import { withTenantTx } from "@/lib/tenant-db";
 import { collectOnError, saveArtifact, type ArtifactCtx } from "./artifacts";
@@ -21,17 +25,13 @@ type LogRow = { level: LogLevel; source: string; message: string; data?: Record<
 const ATTENTION = new Set(["E_CAPTCHA_DETECTED", "E_HUMAN_TIMEOUT"]);
 
 export async function processRun(runId: string, tenantId: string, workerId: string): Promise<string> {
-  const claimed = await withTenantTx(tenantId, (tx) =>
-    tx.run.updateMany({ where: { id: runId, status: { in: ["QUEUED", "RETRY_SCHEDULED"] } }, data: { status: "RUNNING", workerId, startedAt: new Date() } }),
-  );
-  if (!claimed.count) return "not-claimable";
-
   const run = await withTenantTx(tenantId, (tx) =>
-    tx.run.findUniqueOrThrow({
-      where: { id: runId },
+    tx.run.findFirst({
+      where: { id: runId, status: { in: ["QUEUED", "RETRY_SCHEDULED"] } },
       include: { workflowVersion: { include: { workflow: { include: { targetSystem: true } } } }, method: true },
     }),
   );
+  if (!run) return "not-claimable";
   const tenant = await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { isDemo: true, plan: { select: { maxConcurrentRuns: true, artifactRetentionDays: true, freeTestRunsDaily: true } } } });
   const version = run.workflowVersion;
   const target = version.workflow.targetSystem;
@@ -42,11 +42,18 @@ export async function processRun(runId: string, tenantId: string, workerId: stri
     { scope: "target", key: target.id, max: target.maxConcurrency },
     ...(credential ? [{ scope: "credential" as const, key: credential.id, max: credential.maxSessions }] : []),
   ];
+  // Slots first, then the claim: a run is RUNNING only while it really holds its slots.
   if (!(await acquire(runId, leases))) {
-    await withTenantTx(tenantId, (tx) => tx.run.update({ where: { id: runId }, data: { status: run.attempt > 1 ? "RETRY_SCHEDULED" : "QUEUED", workerId: null, startedAt: null } }));
     const boss = await getBoss("worker");
     await boss.send(RUNS_QUEUE, { runId, tenantId }, { startAfter: 2 + Math.floor(Math.random() * 4), singletonKey: `${runId}:${Date.now()}` });
     return "no-slot";
+  }
+  const claimed = await withTenantTx(tenantId, (tx) =>
+    tx.run.updateMany({ where: { id: runId, status: { in: ["QUEUED", "RETRY_SCHEDULED"] } }, data: { status: "RUNNING", workerId, startedAt: new Date() } }),
+  );
+  if (!claimed.count) {
+    await release(runId);
+    return "not-claimable";
   }
 
   const started = Date.now();
@@ -57,12 +64,15 @@ export async function processRun(runId: string, tenantId: string, workerId: stri
     if (!batch.length) return;
     await withTenantTx(tenantId, (tx) => tx.runLog.createMany({ data: batch.map((l) => ({ tenantId, runId, stepId: l.stepId ?? null, ts: l.ts, level: l.level, source: l.source, message: l.message.slice(0, 2000), data: (l.data ?? undefined) as never })) }));
   };
+  const emit = (e: RunEvent) => void publishRunEvent(runId, tenantId, e).catch(() => undefined);
+  emit({ type: "status", status: "RUNNING" });
   const beat = setInterval(() => void heartbeat(runId).catch(() => undefined), 60_000);
   const flusher = setInterval(() => void flushLogs().catch(() => undefined), 2_000);
   const artifactCtx: ArtifactCtx = { tenantId, runId, retentionDays: tenant.plan?.artifactRetentionDays ?? 30 };
 
   let context: BrowserContext | null = null;
   let interpreter: Interpreter | null = null;
+  let tracing = false;
   try {
     log("INFO", `Έναρξη εκτέλεσης (προσπάθεια ${run.attempt}) στον worker ${workerId}`, undefined, undefined, "system");
     const parsed = parseDefinition(version.definition, { inputSchema: version.inputSchema, outputSchema: version.outputSchema, name: version.workflow.name });
@@ -103,6 +113,7 @@ export async function processRun(runId: string, tenantId: string, workerId: stri
           tx.runStep.create({ data: { tenantId, runId, stepId: e.step.id, seq: e.seq, path: e.path, type: e.step.type, label: e.step.label || e.step.type, status: "RUNNING", startedAt: new Date() }, select: { id: true } }),
         );
         stepRows.set(e.seq, row.id);
+        emit({ type: "step.started", stepId: e.step.id, seq: e.seq, iteration: e.iteration });
       },
       onStepEnd: async (r) => {
         const data = {
@@ -122,6 +133,7 @@ export async function processRun(runId: string, tenantId: string, workerId: stri
             ? tx.runStep.update({ where: { id }, data })
             : tx.runStep.create({ data: { tenantId, runId, stepId: r.step.id, seq: r.seq, path: r.path, type: r.step.type, label: r.step.label || r.step.type, ...data } }),
         );
+        emit({ type: "step", stepId: r.step.id, seq: r.seq, status: r.status, durationMs: r.durationMs, errorCode: r.errorCode, iteration: r.iteration });
         log(r.status === "FAILED" ? "ERROR" : "INFO", `${r.step.label || r.step.type}: ${r.status === "SUCCEEDED" ? "ολοκληρώθηκε" : r.status === "SKIPPED" ? "παραλείφθηκε" : (r.message ?? "απέτυχε")}`, { durationMs: r.durationMs }, r.step.id);
       },
       onStepError: async (e, _err, c) => {
@@ -136,6 +148,8 @@ export async function processRun(runId: string, tenantId: string, workerId: stri
 
     const loginSeq = !credential ? 0 : await ensureLogin({ tenantId, run, def, page, context, credentialId: credential.id, sessionTtlSec: target.sessionTtlSec, hadSession: !!session, baseUrl: target.baseUrl, secrets, log, hooks });
 
+    // Trace after the login (it records typed values unmasked); kept only if no sensitive value was typed.
+    tracing = await context.tracing.start({ screenshots: true, snapshots: true }).then(() => true, () => false);
     interpreter = new Interpreter(def, {
       page,
       input,
@@ -147,11 +161,13 @@ export async function processRun(runId: string, tenantId: string, workerId: stri
       seqStart: loginSeq,
     });
     const result = await interpreter.run();
+    if (tracing) await context.tracing.stop().catch(() => undefined);
     await finish({ tenantId, run, status: "SUCCEEDED", started, output: result.output, tenant });
     log("INFO", "Η εκτέλεση ολοκληρώθηκε επιτυχώς.", undefined, undefined, "system");
     return "succeeded";
   } catch (raw) {
     const err = classify(raw);
+    if (tracing && context) await saveTrace(context, interpreter, artifactCtx, log);
     if (err.code === "E_INTERNAL") log("ERROR", `Εσωτερικό σφάλμα: ${(raw as Error)?.message?.slice(0, 500)}`, undefined, err.extra.stepId, "system");
     const committed = interpreter?.mayHaveCommitted ?? false;
     const maxAttempts = run.trigger === "UI_TEST" ? 1 : (run.method?.maxAttempts ?? run.maxAttempts);
@@ -162,6 +178,7 @@ export async function processRun(runId: string, tenantId: string, workerId: stri
       await withTenantTx(tenantId, (tx) =>
         tx.run.update({ where: { id: runId }, data: { status: "RETRY_SCHEDULED", attempt: run.attempt + 1, errorCode: err.code, errorMessage: err.message, errorStepId: err.extra.stepId ?? null, workerId: null } }),
       );
+      emit({ type: "status", status: "RETRY_SCHEDULED", errorCode: err.code });
       const boss = await getBoss("worker");
       await boss.send(RUNS_QUEUE, { runId, tenantId }, { startAfter: delay, singletonKey: `${runId}:retry:${run.attempt + 1}` });
       log("WARN", `Νέα προσπάθεια σε ${delay}″ (${err.code}).`, undefined, err.extra.stepId, "system");
@@ -295,7 +312,25 @@ async function finish(c: FinishCtx) {
       await tx.workflowVersion.updateMany({ where: { id: c.run.workflowVersionId }, data: { lastTestRunId: c.run.id } });
     }
   });
+  void publishRunEvent(c.run.id, c.tenantId, { type: "status", status: c.status, errorCode: c.err?.code ?? null }).catch(() => undefined);
   if (c.status === "SUCCEEDED") await charge(c);
+}
+
+async function saveTrace(context: BrowserContext, interpreter: Interpreter | null, ctx: ArtifactCtx, log: (level: LogLevel, message: string, data?: Record<string, unknown>, stepId?: string, source?: string) => void) {
+  if (!interpreter || interpreter.filledSensitive) {
+    await context.tracing.stop().catch(() => undefined);
+    if (interpreter?.filledSensitive) log("INFO", "Το Playwright trace δεν κρατήθηκε: η ροή συμπλήρωσε ευαίσθητες τιμές.", undefined, undefined, "system");
+    return;
+  }
+  const file = path.join(tmpdir(), `trace-${ctx.runId}-${Date.now()}.zip`);
+  try {
+    await context.tracing.stop({ path: file });
+    await saveArtifact(ctx, "PLAYWRIGHT_TRACE", await readFile(file), "application/zip");
+  } catch (err) {
+    log("WARN", `Το trace δεν αποθηκεύτηκε: ${(err as Error).message.slice(0, 200)}`, undefined, undefined, "system");
+  } finally {
+    await rm(file, { force: true }).catch(() => undefined);
+  }
 }
 
 /** One unit per successful run (ledger key usage:<runId>); health runs, demo tenants and test runs within the daily allowance are free (docs/14). */

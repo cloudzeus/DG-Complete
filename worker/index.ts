@@ -16,7 +16,27 @@ import { processRun } from "./run";
 
 const Payload = z.object({ runId: z.string().min(1), tenantId: z.string().min(1) });
 const WORKER_ID = `${hostname()}:${process.pid}`;
-const stats = { active: 0, done: 0, failed: 0, startedAt: new Date().toISOString() };
+const stats = { active: 0, done: 0, failed: 0, other: 0, durationSum: 0, startedAt: new Date().toISOString() };
+
+function prometheus() {
+  return [
+    "# HELP dg_worker_active_runs Runs executing in this worker.",
+    "# TYPE dg_worker_active_runs gauge",
+    `dg_worker_active_runs ${stats.active}`,
+    "# HELP dg_worker_runs_total Runs finished by this worker, by outcome.",
+    "# TYPE dg_worker_runs_total counter",
+    `dg_worker_runs_total{outcome="succeeded"} ${stats.done}`,
+    `dg_worker_runs_total{outcome="failed"} ${stats.failed}`,
+    `dg_worker_runs_total{outcome="other"} ${stats.other}`,
+    "# HELP dg_worker_run_seconds_sum Total seconds spent in runs.",
+    "# TYPE dg_worker_run_seconds_sum counter",
+    `dg_worker_run_seconds_sum ${(stats.durationSum / 1000).toFixed(3)}`,
+    "# HELP dg_worker_rss_bytes Resident memory of the worker process.",
+    "# TYPE dg_worker_rss_bytes gauge",
+    `dg_worker_rss_bytes ${process.memoryUsage().rss}`,
+    "",
+  ].join("\n");
+}
 
 /** Runs left QUEUED without a live queue job (lost send, restart) get a new one; singletonKey dedupes. */
 async function sweep() {
@@ -55,10 +75,13 @@ async function main() {
       return;
     }
     stats.active++;
+    const t0 = Date.now();
     try {
       const outcome = await processRun(p.data.runId, p.data.tenantId, WORKER_ID);
       if (outcome.startsWith("failed")) stats.failed++;
       else if (outcome === "succeeded") stats.done++;
+      else stats.other++;
+      stats.durationSum += Date.now() - t0;
       console.log(`[worker] run ${p.data.runId} → ${outcome}`);
     } catch (err) {
       // processRun handles run errors itself; this is infrastructure (DB down …) — let pg-boss retry.
@@ -79,6 +102,11 @@ async function main() {
   // Liveness / metrics for Coolify (internal port only).
   const port = Number(process.env.WORKER_METRICS_PORT ?? 9100);
   const server = createServer((req, res) => {
+    if (req.url?.startsWith("/metrics")) {
+      res.setHeader("content-type", "text/plain; version=0.0.4");
+      res.end(prometheus());
+      return;
+    }
     res.setHeader("content-type", "application/json");
     res.end(JSON.stringify({ ok: true, worker: WORKER_ID, ...stats }));
   });

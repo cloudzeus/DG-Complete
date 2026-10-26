@@ -8,7 +8,7 @@ import { withTenantTx } from "@/lib/tenant-db";
 
 export type ArtifactCtx = { tenantId: string; runId: string; retentionDays: number };
 
-const EXT: Record<string, string> = { "image/png": "png", "text/html": "html", "application/json": "json" };
+const EXT: Record<string, string> = { "image/png": "png", "text/html": "html", "application/json": "json", "application/zip": "zip" };
 
 export async function saveArtifact(ctx: ArtifactCtx, kind: ArtifactKind, body: Buffer, contentType: string, extra: { runStepId?: string | null; meta?: Record<string, unknown>; width?: number; height?: number } = {}) {
   const id = randomUUID().replaceAll("-", "");

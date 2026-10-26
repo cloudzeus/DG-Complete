@@ -111,6 +111,11 @@ export class Interpreter {
     return { output: this.output, vars: this.vars, committed: this.committed };
   }
 
+  /** A sensitive value (secret / sensitive input) was typed — traces must not be kept. */
+  get filledSensitive() {
+    return this.sensitive.length > 0;
+  }
+
   /** Last step number used (for a following interpreter on the same run). */
   get lastSeq() {
     return this.seq;
