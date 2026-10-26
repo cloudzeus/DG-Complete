@@ -271,6 +271,9 @@ export async function listMethods(tenantId: string, collectionId?: string) {
       runTimeoutSec: m.runTimeoutSec,
       maxAttempts: m.maxAttempts,
       screenshotPolicy: m.screenshotPolicy,
+      httpMethod: m.httpMethod,
+      resource: m.resource ?? m.slug,
+      summary: m.summary,
       calls7d: s?.calls ?? 0,
       errorRate: s && s.done ? (s.failed / s.done) * 100 : 0,
       status: m.state === "PAUSED" || !m.isActive ? ("PAUSED" as const) : ("ACTIVE" as const),
@@ -598,4 +601,9 @@ export async function workflowRuns(tenantId: string, workflowId: string, take = 
       logs: logs.filter((l) => l.runId === r.id).slice(-50).map((l) => ({ at: iso(l.ts)!, level: l.level.toLowerCase(), message: l.message })),
     }));
   });
+}
+
+/** Input / output JSON Schemas of a version (API docs of a method). */
+export async function getVersionSchemas(tenantId: string, versionId: string) {
+  return tenantDb(tenantId).workflowVersion.findUnique({ where: { id: versionId }, select: { inputSchema: true, outputSchema: true, versionNo: true } });
 }

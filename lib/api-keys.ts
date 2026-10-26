@@ -7,7 +7,9 @@ import { hasService } from "@/lib/tenant-services";
 // is shown once when created. A request is accepted when the key is active, the tenant is active
 // (or demo) and its plan includes the API service.
 
-export const API_KEY_PREFIX = "dgbi_";
+export const API_KEY_PREFIX = "dgc_";
+/** Keys created before DG Complete (dgsmartbi format) keep working. */
+const LEGACY_PREFIX = "dgbi_";
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 
 export async function createApiKey(tenantId: string, name: string, createdById: string | null) {
@@ -35,12 +37,14 @@ const lastSeen = new Map<string, number>();
 
 export async function authenticateApiKey(authorization: string | null) {
   const key = authorization?.match(/^Bearer\s+(\S+)$/i)?.[1] ?? "";
-  if (!key.startsWith(API_KEY_PREFIX)) throw new ApiAuthError("Λείπει ή δεν είναι έγκυρο το API key (Authorization: Bearer dgbi_…).", 401);
-  const row = await prisma.apiKey.findUnique({
-    where: { hash: sha256(key) },
-    select: { id: true, tenantId: true, revokedAt: true, tenant: { select: { status: true, isDemo: true } } },
+  if (!key.startsWith(API_KEY_PREFIX) && !key.startsWith(LEGACY_PREFIX)) throw new ApiAuthError("Λείπει ή δεν είναι έγκυρο το API key (Authorization: Bearer dgc_…).", 401);
+  // Keys from Ρυθμίσεις → Κλειδιά API are hashed with API_KEY_PEPPER; older ones without.
+  const row = await prisma.apiKey.findFirst({
+    where: { hash: { in: [sha256(`${process.env.API_KEY_PEPPER ?? ""}${key}`), sha256(key)] } },
+    select: { id: true, tenantId: true, revokedAt: true, expiresAt: true, scopes: true, collectionIds: true, tenant: { select: { status: true, isDemo: true } } },
   });
   if (!row || row.revokedAt) throw new ApiAuthError("Το API key δεν είναι έγκυρο ή έχει ανακληθεί.", 401);
+  if (row.expiresAt && row.expiresAt < new Date()) throw new ApiAuthError("Το API key έχει λήξει.", 401);
   if (!row.tenant.isDemo && row.tenant.status !== "ACTIVE") throw new ApiAuthError("Ο λογαριασμός της εταιρείας δεν είναι ενεργός.", 403);
   if (!(await hasService(row.tenantId, "api"))) throw new ApiAuthError("Τα web services δεν περιλαμβάνονται στο πακέτο σας.", 403);
 
@@ -54,5 +58,5 @@ export async function authenticateApiKey(authorization: string | null) {
     lastSeen.set(row.id, now);
     await prisma.apiKey.update({ where: { id: row.id }, data: { lastUsedAt: new Date() } });
   }
-  return { tenantId: row.tenantId, keyId: row.id };
+  return { tenantId: row.tenantId, keyId: row.id, scopes: row.scopes, collectionIds: row.collectionIds };
 }

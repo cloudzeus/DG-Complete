@@ -156,3 +156,10 @@ X-DGComplete-Signature: t=1761381062,v1=hex(hmac_sha256(secret, t + "." + body))
 - `sdk/ (φάκελος στο repo)`: TypeScript client generated (openapi-typescript + openapi-fetch) με helper `waitForRun(id)`.
 - Παράδειγμα κλήσης από **SoftOne** (S1 script / web service) και από το WooCommerce→SoftOne middleware.
 - Φάση 3: **MCP server** που εκθέτει κάθε method ως MCP tool (ώστε AI agents να καταχωρίζουν).
+
+## 9. Υλοποίηση (πρώτη έκδοση)
+
+- **Μέθοδος από τη ροή:** στη δημοσίευση (`publish`) δημιουργείται η μέθοδος στη συλλογή του συστήματος‑στόχου (slug = slug του συστήματος): `httpMethod` από το `Workflow.intent` (READ→GET, CREATE→POST, UPDATE→PATCH, DELETE→DELETE, ACTION→POST), `resource` = `resourceSlug` ή kebab του ονόματος, GET → `SYNC` εξ ορισμού. Σε επόμενη δημοσίευση η μέθοδος δείχνει τη νέα έκδοση, εκτός αν υπάρχει breaking change (νέα υποχρεωτική είσοδος / αφαίρεση εξόδου) — τότε μένει και προτείνεται αναβάθμιση (`lib/methods`).
+- **Κλήση:** `{GET|POST|PATCH|PUT|DELETE} /api/v1/{collection}/{resource}` — είσοδος από το JSON (`{ input, externalRef, mode, callbackUrl }` ή σκέτα πεδία) ή από το query string (GET/DELETE)· `mode=sync` περιμένει έως `syncTimeoutSec` (≤120″) → 200 ή problem 422 με `code`/`targetMessage`· αλλιώς 202 + `Location: /api/v1/runs/{id}`. Idempotency‑Key: ίδιο αίτημα → ίδια εκτέλεση, διαφορετικό → 409 (`Run.requestHash`). `GET /api/v1/runs/{id}`, `GET /api/v1/collections/{c}/openapi.json`. Σφάλματα RFC 9457.
+- **Κλειδιά:** `dgc_…` (Ρυθμίσεις → Κλειδιά API, SHA‑256 με `API_KEY_PEPPER`), scopes `runs:write` / `runs:read` / `collections:read`, περιορισμός συλλογών, λήξη· τα παλιά `dgbi_` ισχύουν.
+- **Τεκμηρίωση στη σελίδα της μεθόδου:** endpoint, curl/TypeScript, απαντήσεις 200/202, παράμετροι, «Τι κάνει στο σύστημα, σελίδα‑σελίδα» με τα στιγμιότυπα της καταγραφής και ποιο πεδίο γεμίζει ποια παράμετρος, σφάλματα, λήψη OpenAPI. Εκκρεμούν: Postman collection, `docs.md` ανά σύστημα, jobs/batch.

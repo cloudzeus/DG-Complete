@@ -148,7 +148,7 @@ function inputFor(s: Session, e: ElementInfo, kind: "input" | "enum" = "input") 
   const existing = s.inputs.find((i) => i.label === label);
   if (existing) return existing.key;
   const key = toInputKey(label, s.taken);
-  s.inputs.push({ key, label, type: kind === "enum" ? "enum" : "string", ...(kind === "enum" && e.options ? { enum: e.options.map((o) => o.label) } : {}), required: true });
+  s.inputs.push({ key, label, type: kind === "enum" ? "enum" : "string", ...(kind === "enum" && e.options ? { enum: e.options.filter((o) => o.value !== "").map((o) => o.label) } : {}), required: true });
   return key;
 }
 
@@ -328,7 +328,7 @@ async function actInner(s: Session, a: Action): Promise<ActionResult> {
           const e = all.find((x) => x.css === f.css);
           if (!e) continue;
           const key = toInputKey(fieldLabel(e), taken);
-          items.push({ key, label: fieldLabel(e), ...(e.options ? { enum: e.options.map((o) => o.label) } : {}) });
+          items.push({ key, label: fieldLabel(e), ...(e.options ? { enum: e.options.filter((o) => o.value !== "").map((o) => o.label) } : {}) });
           const sel = rowSelector(e);
           s.rowSelectors.push(sel);
           const locator = { candidates: [{ kind: "css", value: sel }], nth: "{{lineIndex}}" };

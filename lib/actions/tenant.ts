@@ -9,6 +9,7 @@ import { audit } from "@/lib/audit";
 import { encrypt, encryptJson } from "@/lib/crypto";
 import { importChromeRecording } from "@/lib/dsl/import/chromeRecorder";
 import { closeSession, getSession, RecorderError, startSession } from "@/lib/recorder/live";
+import { ensureMethodForVersion } from "@/lib/methods";
 import { sendWelcomeEmail } from "@/lib/email";
 import { validate, type FormState } from "@/lib/forms";
 import { prisma } from "@/lib/prisma";
@@ -534,8 +535,15 @@ async function publish(tenantId: string, versionId: string, userId: string, note
   });
   await db.workflow.updateMany({ where: { id: v.workflowId }, data: { publishedVersionId: v.id } });
   await audit({ actorId: userId, action: "workflow.publish", entity: "WorkflowVersion", entityId: v.id, tenantId, meta: { version: v.versionNo } });
+  // The published flow is an API method of its system's collection (created or re-pinned).
+  const m = await ensureMethodForVersion(tenantId, v.id);
+  const method = await db.method.findUnique({ where: { id: m.methodId }, select: { httpMethod: true, resource: true, slug: true, collection: { select: { slug: true } } } });
+  const endpoint = method ? `${method.httpMethod} /api/v1/${method.collection.slug}/${method.resource ?? method.slug}` : "";
+  await audit({ actorId: userId, action: m.created ? "method.create" : "method.upgrade", entity: "Method", entityId: m.methodId, tenantId, meta: { endpoint, breaking: m.breaking } });
   revalidatePath(`/t/${tenantId}/workflows/${v.workflowId}`);
-  return done(tenantId, "/approvals", `Η έκδοση v${v.versionNo} δημοσιεύτηκε.`);
+  revalidatePath(`/t/${tenantId}/collections`, "layout");
+  const api = m.created ? ` Δημιουργήθηκε η μέθοδος ${endpoint}.` : m.upgraded ? ` Η μέθοδος ${endpoint} εκτελεί πλέον τη v${v.versionNo}.` : m.breaking.length ? ` Η μέθοδος ${endpoint} μένει στην προηγούμενη έκδοση (${m.breaking.join(", ")}) — αναβαθμίστε τη από τη σελίδα της.` : "";
+  return done(tenantId, "/approvals", `Η έκδοση v${v.versionNo} δημοσιεύτηκε.${api}`);
 }
 
 export async function approveVersionAction(tenantId: string, versionId: string, _p: FormState, fd: FormData): Result {

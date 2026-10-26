@@ -53,6 +53,9 @@ export async function createRun(opts: {
   jobId?: string | null;
   itemIndex?: number | null;
   retryOfRunId?: string | null;
+  idempotencyKey?: string | null;
+  apiKeyId?: string | null;
+  callbackUrl?: string | null;
 }) {
   const version = await tenantDb(opts.tenantId).workflowVersion.findUnique({ where: { id: opts.workflowVersionId }, select: { status: true } });
   if (!version) throw new RunError("E_NOT_PUBLISHED", "Η έκδοση της ροής δεν βρέθηκε.");
@@ -75,6 +78,9 @@ export async function createRun(opts: {
         itemIndex: opts.itemIndex ?? null,
         retryOfRunId: opts.retryOfRunId ?? null,
         createdByUserId: opts.userId ?? null,
+        idempotencyKey: opts.idempotencyKey ?? null,
+        apiKeyId: opts.apiKeyId ?? null,
+        callbackUrl: opts.callbackUrl ?? null,
         inputEnc: "pending",
         inputPreview: previewInput(opts.input) as never,
       },
