@@ -13,7 +13,8 @@ const ActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("scroll"), dy: num }),
   z.object({ type: z.literal("navigate"), url: z.string().min(1).max(2000) }),
   z.object({ type: z.literal("select"), css: z.string().min(1).max(500), value: z.string().max(500) }),
-  z.object({ type: z.literal("extract"), x: num, y: num, key: z.string().min(1).max(40), label: z.string().max(80).optional() }),
+  z.object({ type: z.literal("extract"), x: num, y: num, key: z.string().min(1).max(40), label: z.string().max(80).optional(), table: z.boolean().optional() }),
+  z.object({ type: z.literal("inspect"), x: num, y: num }),
   z.object({ type: z.literal("capture") }),
   z.object({
     type: z.literal("captureApply"),

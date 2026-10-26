@@ -87,8 +87,20 @@ export const STEP_TYPES: Record<string, string> = {
   waitFor: "Αναμονή",
   assert: "Έλεγχος",
   extract: "Εξαγωγή",
+  extractTable: "Εξαγωγή πίνακα",
   forEach: "Για κάθε",
   if: "Συνθήκη",
   humanTask: "Ενέργεια χειριστή",
   upload: "Ανέβασμα αρχείου",
 };
+
+/** What a workflow does on the target system → HTTP method of its API method (docs/24 §2). */
+export const INTENTS = {
+  READ: { label: "Ανάγνωση εγγραφών", http: "GET", hint: "Λίστα ή στοιχεία εγγραφών (π.χ. αιτήσεις, πελάτες)" },
+  CREATE: { label: "Δημιουργία", http: "POST", hint: "Νέα εγγραφή (π.χ. υποβολή αίτησης, νέος πελάτης)" },
+  UPDATE: { label: "Ενημέρωση", http: "PATCH", hint: "Αλλαγή υπάρχουσας εγγραφής" },
+  DELETE: { label: "Διαγραφή", http: "DELETE", hint: "Διαγραφή / ακύρωση εγγραφής" },
+  ACTION: { label: "Ενέργεια", http: "POST", hint: "Άλλη ενέργεια (π.χ. οριστικοποίηση, εκτύπωση)" },
+} as const;
+export type Intent = keyof typeof INTENTS;
+export const INTENT_OPTIONS = (Object.keys(INTENTS) as Intent[]).map((k) => ({ value: k, label: `${INTENTS[k].http} · ${INTENTS[k].label}`, hint: INTENTS[k].hint }));

@@ -113,6 +113,16 @@ const leaf = [
     regex: z.string().optional(),
     into: z.string().regex(/^(output|vars)\.[a-zA-Z][a-zA-Z0-9_]*$/, "Προορισμός: output.x ή vars.y"),
   }),
+  z.object({
+    ...base,
+    type: z.literal("extractTable"),
+    // The table (or list container). Rows: tbody tr (or tr after the header row).
+    locator: Locator,
+    // Columns by header text, never by position (docs/26); omitted = every column, keys from the headers.
+    columns: z.array(z.object({ key: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]*$/), header: z.string() })).optional(),
+    limit: z.number().int().min(1).max(5000).default(500),
+    into: z.string().regex(/^(output|vars)\.[a-zA-Z][a-zA-Z0-9_]*$/, "Προορισμός: output.x ή vars.y"),
+  }),
   z.object({ ...base, type: z.literal("setVar"), name: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]*$/), value: z.string() }),
   z.object({ ...base, type: z.literal("switchTab"), match: z.union([z.literal("opener"), z.object({ urlContains: z.string().optional(), index: z.number().int().min(0).optional() })]) }),
   z.object({ ...base, type: z.literal("dialog"), action: z.enum(["accept", "dismiss"]).default("accept"), promptText: z.string().optional() }),

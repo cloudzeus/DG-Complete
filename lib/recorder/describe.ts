@@ -18,6 +18,8 @@ export type ElementInfo = {
   required: boolean;
   options?: { value: string; label: string }[];
   rect?: { x: number; y: number; w: number; h: number };
+  /** The element is inside a table: offered as «whole table as a list» (extractTable). */
+  table?: { css: string; testId: string | null; headers: string[]; rows: number };
 };
 
 /** Executed in the page. Must be self-contained (no closures). */
@@ -91,6 +93,17 @@ export function describeInPage(arg: { x?: number; y?: number; active?: boolean; 
       required: (el as HTMLInputElement).required ?? false,
       options: t === "select" ? Array.from((el as HTMLSelectElement).options).map((o) => ({ value: o.value, label: clean(o.textContent) ?? o.value })).slice(0, 200) : undefined,
       rect: { x: r.x, y: r.y, w: r.width, h: r.height },
+      table: (() => {
+        const t = el.closest("table");
+        if (!t) return undefined;
+        const head = t.querySelector("thead tr") ?? t.querySelector("tr");
+        return {
+          css: cssPath(t),
+          testId: t.getAttribute("data-testid"),
+          headers: head ? Array.from(head.children).map((c) => clean(c.textContent) ?? "") : [],
+          rows: t.querySelectorAll("tbody tr").length || Math.max(0, t.querySelectorAll("tr").length - 1),
+        };
+      })(),
     };
   };
   if (arg.buttons) {

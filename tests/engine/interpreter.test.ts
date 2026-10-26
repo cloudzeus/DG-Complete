@@ -94,6 +94,14 @@ describe("interpreter (sandbox)", () => {
     expect(missing.err?.code).toBe("E_LOCATOR_NOT_FOUND");
   });
 
+  it("extracts a table as a list of records, columns by header", async () => {
+    const r = await run([...LOGIN, { id: "c1", type: "navigate", url: "/customers" }, { id: "c2", type: "extractTable", locator: "testid customers", into: "output.items", columns: [{ key: "afm", header: "ΑΦΜ" }, { key: "name", header: "Επωνυμία" }] }], {});
+    expect(r.err).toBeUndefined();
+    const items = r.out?.output.items as { afm: string; name: string }[];
+    expect(items).toHaveLength(4);
+    expect(items[0]).toEqual({ afm: "094014201", name: "Alpha Α.Ε." });
+  });
+
   it("blocks navigation outside the allowed origins", async () => {
     const r = await run([{ id: "n", type: "navigate", url: "http://127.0.0.1:9/" }], {});
     expect(r.err?.code).toBe("E_NAVIGATION");

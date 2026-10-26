@@ -24,6 +24,7 @@ type Result = Promise<FormState>;
 
 const req = (label: string) => z.string().trim().min(1, `Συμπληρώστε: ${label}`);
 const opt = z.string().trim().optional().transform((v) => v || undefined);
+const intent = z.enum(["READ", "CREATE", "UPDATE", "DELETE", "ACTION"]).optional().or(z.literal("").transform(() => undefined));
 const int = (label: string, min: number, max: number) => z.coerce.number({ message: `${label}: αριθμός` }).int().min(min, `${label}: από ${min}`).max(max, `${label}: έως ${max}`);
 const list = (label: string) =>
   z.union([z.string(), z.array(z.string())]).transform((v) => (Array.isArray(v) ? v : [v])).pipe(z.array(z.string()).min(1, `Επιλέξτε τουλάχιστον ένα: ${label}`));
@@ -215,7 +216,7 @@ const EMPTY_SCHEMA = { type: "object", properties: {}, required: [] as string[] 
 
 export async function newWorkflowAction(tenantId: string, _p: FormState, fd: FormData): Result {
   const user = await guard(tenantId, "tenant.workflows.edit");
-  const v = validate(z.object({ name: req("Όνομα"), targetId: req("Σύστημα‑στόχος"), recordingId: opt }), fd);
+  const v = validate(z.object({ name: req("Όνομα"), targetId: req("Σύστημα‑στόχος"), recordingId: opt, intent }), fd);
   if ("state" in v) return v.state;
   const db = tenantDb(tenantId);
   if (!(await db.targetSystem.findUnique({ where: { id: v.data.targetId }, select: { id: true } }))) return { ok: false, errors: { targetId: "Το σύστημα δεν βρέθηκε" } };
@@ -231,6 +232,7 @@ export async function newWorkflowAction(tenantId: string, _p: FormState, fd: For
       name: v.data.name,
       slug: `${slugify(v.data.name)}-${randomBytes(2).toString("hex")}`,
       targetSystemId: v.data.targetId,
+      intent: v.data.intent ?? null,
       createdById: user.id,
       latestVersionNo: 1,
       versions: { create: { tenantId, versionNo: 1, definition: { dslVersion: 1, steps }, inputSchema: EMPTY_SCHEMA, outputSchema: EMPTY_SCHEMA, createdById: user.id } },
@@ -253,14 +255,14 @@ export async function deleteRecordingAction(tenantId: string, id: string): Resul
 
 export async function startLiveRecordingAction(tenantId: string, _p: FormState, fd: FormData): Result {
   const user = await guard(tenantId, "tenant.workflows.edit");
-  const v = validate(z.object({ name: req("Όνομα"), targetId: req("Σύστημα‑στόχος"), workflowId: opt }), fd);
+  const v = validate(z.object({ name: req("Όνομα"), targetId: req("Σύστημα‑στόχος"), workflowId: opt, intent }), fd);
   if ("state" in v) return v.state;
   const target = await tenantDb(tenantId).targetSystem.findUnique({ where: { id: v.data.targetId }, select: { id: true, baseUrl: true, allowedOrigins: true } });
   if (!target) return { ok: false, errors: { targetId: "Το σύστημα δεν βρέθηκε" } };
   if (v.data.workflowId && !(await tenantDb(tenantId).workflow.findUnique({ where: { id: v.data.workflowId }, select: { id: true } }))) return { ok: false, message: "Η ροή δεν βρέθηκε." };
   let id: string;
   try {
-    id = await startSession({ tenantId, userId: user.id, targetId: target.id, baseUrl: target.baseUrl, allowedOrigins: target.allowedOrigins, name: v.data.name, workflowId: v.data.workflowId });
+    id = await startSession({ tenantId, userId: user.id, targetId: target.id, baseUrl: target.baseUrl, allowedOrigins: target.allowedOrigins, name: v.data.name, workflowId: v.data.workflowId, intent: v.data.intent });
   } catch (err) {
     return { ok: false, message: err instanceof RecorderError ? err.message : "Ο browser καταγραφής δεν ξεκίνησε. Δοκιμάστε ξανά." };
   }
@@ -286,8 +288,21 @@ export async function finishLiveRecordingAction(tenantId: string, sessionId: str
     ),
     required: s.inputs.filter((i) => i.required).map((i) => i.key),
   };
-  const outputs = s.steps.filter((x) => x.type === "extract").map((x) => String(x.into).replace(/^output\./, ""));
-  const outputSchema = { type: "object", properties: Object.fromEntries(outputs.map((k) => [k, { type: "string" }])), required: [] as string[] };
+  // extract → string, extractTable → array of row objects (columns by header).
+  const outputSchema = {
+    type: "object",
+    properties: Object.fromEntries(
+      s.steps
+        .filter((x) => (x.type === "extract" || x.type === "extractTable") && String(x.into).startsWith("output."))
+        .map((x) => [
+          String(x.into).slice(7),
+          x.type === "extractTable"
+            ? { type: "array", items: { type: "object", properties: Object.fromEntries(((x.columns ?? []) as { key: string; header: string }[]).map((c) => [c.key, { type: "string", title: c.header }])) } }
+            : { type: "string" },
+        ]),
+    ),
+    required: [] as string[],
+  };
   if (s.workflowId) {
     // Into the existing workflow's draft: append after its steps, merge inputs/outputs/forms.
     const draft = await draftOf(tenantId, s.workflowId, user.id);
@@ -307,6 +322,7 @@ export async function finishLiveRecordingAction(tenantId: string, sessionId: str
         outputSchema: { type: "object", properties: { ...(oldOut.properties ?? {}), ...outputSchema.properties }, required: [] } as never,
       },
     });
+    if (s.intent) await tenantDb(tenantId).workflow.updateMany({ where: { id: s.workflowId }, data: { intent: s.intent } });
     await closeSession(sessionId);
     await audit({ actorId: user.id, action: "workflow.record", entity: "Workflow", entityId: s.workflowId, tenantId, meta: { steps: s.steps.length, appended: existing.length > 0 } });
     revalidatePath(`/t/${tenantId}/workflows/${s.workflowId}`);
@@ -319,6 +335,7 @@ export async function finishLiveRecordingAction(tenantId: string, sessionId: str
       targetSystemId: s.targetId,
       createdById: user.id,
       latestVersionNo: 1,
+      intent: s.intent ?? null,
       tags: ["live-recorder"],
       versions: { create: { tenantId, versionNo: 1, definition: { dslVersion: 1, steps: s.steps, forms: s.forms }, inputSchema, outputSchema, createdById: user.id, changelog: "Καταγραφή στην εφαρμογή" } },
     } as never,

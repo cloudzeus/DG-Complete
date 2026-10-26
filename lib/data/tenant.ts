@@ -132,6 +132,7 @@ export async function listWorkflows(tenantId: string, opts: { q?: string; status
         name: w.name,
         target: w.targetSystem.name,
         targetId: w.targetSystemId,
+        intent: w.intent,
         version: v?.versionNo ?? 0,
         status: v?.status ?? "DRAFT",
         methods: v?._count.methods ?? 0,
@@ -157,6 +158,7 @@ export async function getWorkflow(tenantId: string, id: string) {
   return {
     id: wf.id,
     name: wf.name,
+    intent: wf.intent,
     target: wf.targetSystem,
     latest: latest && {
       id: latest.id,

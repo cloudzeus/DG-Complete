@@ -14,7 +14,7 @@ export type GraphEdge = { id: string; source: string; target: string; label?: st
 const FORM = new Set(["fill", "select", "choose", "check", "upload"]);
 const KIND: Record<string, NodeKind> = {
   goto: "navigate", navigate: "navigate", click: "action", press: "action", waitFor: "check", assert: "check", checkTargetErrors: "check",
-  extract: "read", setVar: "read", forEach: "loop", if: "condition", humanTask: "human", screenshot: "helper", dialog: "helper", switchTab: "helper",
+  extract: "read", extractTable: "read", setVar: "read", forEach: "loop", if: "condition", humanTask: "human", screenshot: "helper", dialog: "helper", switchTab: "helper",
 };
 
 const bindingsOf = (s: DslStep) => [...JSON.stringify(s).matchAll(/\{\{\s*(input\.\w+)/g)].map((m) => m[1]);

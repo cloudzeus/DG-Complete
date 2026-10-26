@@ -25,7 +25,8 @@ export function LiveRecorder({ tenantId, initial, finish, cancel }: { tenantId: 
   const [fields, setFields] = useState<(ElementInfo & { kind: FieldKind; repeat: boolean })[] | null>(null);
   const [buttons, setButtons] = useState<ElementInfo[]>([]);
   const [repeat, setRepeat] = useState({ list: "lines", label: "Γραμμές", addButtonCss: "", firstRowExists: true });
-  const [extractAt, setExtractAt] = useState<{ x: number; y: number } | null>(null);
+  const [extractAt, setExtractAt] = useState<{ x: number; y: number; element?: ElementInfo | null } | null>(null);
+  const [wholeTable, setWholeTable] = useState(true);
   const [notice, setNotice] = useState<{ title: string; text: string; error?: boolean } | null>(null);
   const [blocked, setBlocked] = useState<{ origin: string; url: string } | null>(null);
   const img = useRef<HTMLImageElement>(null);
@@ -86,7 +87,9 @@ export function LiveRecorder({ tenantId, initial, finish, cancel }: { tenantId: 
     flush();
     const p = point(e);
     if (mode === "extract") {
-      setExtractAt(p);
+      const r = (await send({ type: "inspect", ...p })) as { element?: ElementInfo | null } | null;
+      setWholeTable(!!r?.element?.table);
+      setExtractAt({ ...p, element: r?.element });
       return;
     }
     const r = await send({ type: "click", ...p });
@@ -401,16 +404,32 @@ export function LiveRecorder({ tenantId, initial, finish, cancel }: { tenantId: 
               e.preventDefault();
               const key = String(new FormData(e.currentTarget).get("key") ?? "").trim();
               if (!key || !extractAt) return;
-              void send({ type: "extract", ...extractAt, key });
+              void send({ type: "extract", x: extractAt.x, y: extractAt.y, key, table: !!extractAt.element?.table && wholeTable });
               setExtractAt(null);
               setMode("interact");
             }}
           >
             <DialogHeader>
               <DialogTitle>Όνομα αποτελέσματος</DialogTitle>
-              <DialogDescription>Έτσι θα επιστρέφεται στην απάντηση του API (λατινικά, π.χ. protocolNo).</DialogDescription>
+              <DialogDescription>Έτσι θα επιστρέφεται στην απάντηση του API (λατινικά, π.χ. protocolNo ή items).</DialogDescription>
             </DialogHeader>
-            <input name="key" required pattern="[A-Za-z][A-Za-z0-9_]*" autoFocus aria-label="Όνομα αποτελέσματος" className="my-4 h-9 w-full rounded-sm border border-border bg-background px-2 font-mono text-sm" />
+            {extractAt?.element?.table && (
+              <fieldset className="mt-4 space-y-2 text-sm">
+                <legend className="sr-only">Τι εξάγεται</legend>
+                <label className="flex items-start gap-2">
+                  <input type="radio" name="what" checked={wholeTable} onChange={() => setWholeTable(true)} className="mt-1 accent-sisyphus-500" />
+                  <span>
+                    Ολόκληρος ο πίνακας ως λίστα ({extractAt.element.table.rows} γραμμές)
+                    <span className="block text-xs text-muted-foreground">Στήλες: {extractAt.element.table.headers.filter(Boolean).join(", ")}</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2">
+                  <input type="radio" name="what" checked={!wholeTable} onChange={() => setWholeTable(false)} className="mt-1 accent-sisyphus-500" />
+                  <span>Μόνο το στοιχείο «{(extractAt.element.text ?? "").slice(0, 40)}»</span>
+                </label>
+              </fieldset>
+            )}
+            <input name="key" required pattern="[A-Za-z][A-Za-z0-9_]*" autoFocus defaultValue={extractAt?.element?.table ? "items" : ""} aria-label="Όνομα αποτελέσματος" className="my-4 h-9 w-full rounded-sm border border-border bg-background px-2 font-mono text-sm" />
             <DialogFooter>
               <Button type="submit">Προσθήκη</Button>
             </DialogFooter>

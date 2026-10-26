@@ -29,7 +29,8 @@ import { Section } from "@/components/dg/section";
 import { StatusBadge, Tag } from "@/components/dg/status-badge";
 import { numberSteps, type Step } from "@/components/dg/step-list";
 import { Button } from "@/components/ui/button";
-import { STEP_TYPES, VERSION_STATUS } from "@/lib/labels";
+import { INTENT_OPTIONS, STEP_TYPES, VERSION_STATUS } from "@/lib/labels";
+import { IntentBadge } from "@/components/dg/intent-badge";
 import {
   addCredentialAction,
   addInputAction,
@@ -131,6 +132,7 @@ export default async function WorkflowEditor({
         title={wf.name}
         description={
           <span className="inline-flex flex-wrap items-center gap-2">
+            <IntentBadge intent={wf.intent} />
             <span className="tabular-nums">v{latest.versionNo}</span>
             <StatusBadge status={latest.status} map={VERSION_STATUS} />
             <span>
@@ -357,6 +359,7 @@ export default async function WorkflowEditor({
                     }
                   >
                     <TextField name="name" label="Όνομα" required defaultValue={wf.name} />
+                    <SelectField name="intent" label="Λειτουργία" placeholder="Επιλέξτε…" defaultValue={wf.intent ?? undefined} options={INTENT_OPTIONS} />
                     <input type="hidden" name="targetId" value={wf.target.id} />
                     <input type="hidden" name="workflowId" value={wf.id} />
                   </FormDialog>

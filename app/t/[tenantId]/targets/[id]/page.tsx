@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { KeyRound, MonitorCog, Pencil, Plus, Trash2 } from "lucide-react";
+import { Disc3, KeyRound, Pencil, Plus, Trash2 } from "lucide-react";
 import { DataTable } from "@/components/dg/data-table";
 import { EmptyState } from "@/components/dg/empty-state";
 import { fmtDateTime, fmtNum } from "@/components/dg/format";
@@ -13,11 +13,11 @@ import { PageHeader } from "@/components/dg/page-header";
 import { Grid, Section } from "@/components/dg/section";
 import { StatusBadge, Tag } from "@/components/dg/status-badge";
 import { Button } from "@/components/ui/button";
-import { addCredentialAction, deleteCredentialAction, updateTargetAction } from "@/lib/actions/tenant";
+import { addCredentialAction, deleteCredentialAction, startLiveRecordingAction, updateTargetAction } from "@/lib/actions/tenant";
 import { getTarget, listCredentials, listWorkflows } from "@/lib/data/tenant";
 import { RowActions } from "@/components/dg/row-actions";
 import { targetDelete } from "../shared";
-import { TARGET_HEALTH, VERSION_STATUS } from "@/lib/labels";
+import { INTENTS, TARGET_HEALTH, VERSION_STATUS, type Intent } from "@/lib/labels";
 import { can } from "@/lib/rbac";
 import { requireTenant } from "@/lib/tenant";
 
@@ -34,6 +34,7 @@ export default async function TargetPage({ params, searchParams }: PageProps<"/t
   const workflows = wfs.filter((w) => w.targetId === t.id);
   const canTargets = can(user, "tenant.targets.manage", tenantId);
   const canCreds = can(user, "tenant.credentials.manage", tenantId);
+  const canEdit = can(user, "tenant.workflows.edit", tenantId);
 
   return (
     <>
@@ -62,7 +63,7 @@ export default async function TargetPage({ params, searchParams }: PageProps<"/t
         tabs={[
           { key: "general", label: "Γενικά" },
           { key: "credentials", label: "Διαπιστευτήρια", count: creds.length },
-          { key: "workflows", label: "Ροές", count: workflows.length },
+          { key: "workflows", label: "Ροές & λειτουργίες", count: workflows.length },
           { key: "health", label: "Υγεία" },
         ]}
       />
@@ -143,19 +144,55 @@ export default async function TargetPage({ params, searchParams }: PageProps<"/t
       )}
 
       {tab === "workflows" && (
-        <Section title="Ροές του συστήματος">
-          <DataTable
-            rows={workflows}
-            rowKey={(w) => w.id}
-            empty={<EmptyState icon={MonitorCog} title="Καμία ροή" description="Δημιουργήστε ροή από μια καταγραφή." />}
-            columns={[
-              { key: "n", header: "Ροή", cell: (w) => <Link className="font-medium hover:text-primary hover:underline" href={`${base}/workflows/${w.id}`}>{w.name}</Link> },
-              { key: "v", header: "Έκδοση", cell: (w) => `v${w.version}` },
-              { key: "s", header: "Κατάσταση", cell: (w) => <StatusBadge status={w.status} map={VERSION_STATUS} /> },
-              { key: "m", header: "Μέθοδοι", align: "right", cell: (w) => w.methods },
-            ]}
-          />
-        </Section>
+        <div className="grid gap-4 md:grid-cols-2">
+          {[...(Object.keys(INTENTS) as Intent[]), null].map((intent) => {
+            const list = workflows.filter((w) => (w.intent ?? null) === intent);
+            if (intent === null && !list.length) return null;
+            return (
+              <Section
+                key={intent ?? "none"}
+                title={intent ? `${INTENTS[intent].http} · ${INTENTS[intent].label}` : "Χωρίς λειτουργία"}
+                description={intent ? INTENTS[intent].hint : "Ορίστε λειτουργία στη ροή για να γίνει μέθοδος του API."}
+                actions={
+                  intent &&
+                  canEdit && (
+                    <FormDialog
+                      title={`Καταγραφή · ${INTENTS[intent].label}`}
+                      description={`Ανοίγει το ${t.name} μέσα στην εφαρμογή· η ροή θα γίνει μέθοδος ${INTENTS[intent].http} του API.`}
+                      action={startLiveRecordingAction.bind(null, tenantId)}
+                      submitLabel="Έναρξη καταγραφής"
+                      trigger={
+                        <Button size="sm" variant="outline">
+                          <Disc3 aria-hidden /> Καταγραφή
+                        </Button>
+                      }
+                    >
+                      <TextField name="name" label="Όνομα" required placeholder={intent === "READ" ? "π.χ. Λίστα αιτήσεων" : intent === "CREATE" ? "π.χ. Υποβολή αίτησης" : "π.χ. Ενημέρωση στοιχείων"} />
+                      <input type="hidden" name="targetId" value={t.id} />
+                      <input type="hidden" name="intent" value={intent} />
+                    </FormDialog>
+                  )
+                }
+              >
+                {list.length ? (
+                  <ul className="divide-y divide-border/60">
+                    {list.map((w) => (
+                      <li key={w.id} className="flex items-center gap-3 py-2">
+                        <Link className="min-w-0 flex-1 truncate font-medium hover:text-primary hover:underline" href={`${base}/workflows/${w.id}`}>
+                          {w.name}
+                        </Link>
+                        <span className="text-xs text-muted-foreground tabular-nums">v{w.version}</span>
+                        <StatusBadge status={w.status} map={VERSION_STATUS} />
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Καμία ροή ακόμα.</p>
+                )}
+              </Section>
+            );
+          })}
+        </div>
       )}
 
       {tab === "health" && (

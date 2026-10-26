@@ -3,6 +3,7 @@
 import type { Dialog, Locator as PwLocator, Page } from "playwright";
 import { evaluate, type Scope } from "@/lib/dsl/expr";
 import { render, renderValue } from "@/lib/dsl/template";
+import { toInputKey } from "@/lib/dsl/import/chromeRecorder";
 import type { Locator, Step, WorkflowDefinition } from "@/lib/dsl/schema";
 import { EngineError, classify, type ErrorCode } from "./errors";
 import { describe, resolveLocator, toPlaywright } from "./locator";
@@ -327,6 +328,27 @@ export class Interpreter {
         const [root, key] = step.into.split(".");
         (root === "output" ? this.output : this.vars)[key] = raw;
         return { ...info, valuePreview: raw.length > 80 ? `${raw.slice(0, 77)}…` : raw };
+      }
+      case "extractTable": {
+        const { handle, info } = await this.locate(step, step.locator, scope, set);
+        const table = (await handle.evaluate((el: Element, limit: number) => {
+          const text = (n: Element | null | undefined) => (n?.textContent ?? "").replace(/\s+/g, " ").trim();
+          const t = el.closest("table") ?? el.querySelector("table") ?? el;
+          const head = t.querySelector("thead tr") ?? t.querySelector("tr");
+          const headers = head ? Array.from(head.children).map(text) : [];
+          const body = Array.from(t.querySelectorAll("tbody tr")).filter((r) => r !== head);
+          const rows = (body.length ? body : Array.from(t.querySelectorAll("tr")).filter((r) => r !== head)).slice(0, limit);
+          return { headers, rows: rows.map((r) => Array.from(r.children).map(text)) };
+        }, step.limit)) as { headers: string[]; rows: string[][] };
+        const taken = new Set<string>();
+        const cols = (step.columns ?? table.headers.map((h, i) => ({ header: h, key: h ? toInputKey(h, taken) : `col${i + 1}` })))
+          .map((c) => ({ ...c, index: table.headers.findIndex((h) => h.toLocaleLowerCase("el-GR") === c.header.toLocaleLowerCase("el-GR")) }));
+        const missing = cols.filter((c) => c.index < 0);
+        if (missing.length) throw new EngineError("E_LOCATOR_NOT_FOUND", `Δεν βρέθηκαν οι στήλες: ${missing.map((m) => m.header).join(", ")}.`);
+        const rows = table.rows.filter((r) => r.some(Boolean)).map((r) => Object.fromEntries(cols.map((c) => [c.key, r[c.index] ?? ""])));
+        const [root, key] = step.into.split(".");
+        (root === "output" ? this.output : this.vars)[key] = rows;
+        return { ...info, valuePreview: `${rows.length} εγγραφές · ${cols.length} στήλες` };
       }
       case "setVar": {
         const v = evaluate(step.value, scope);

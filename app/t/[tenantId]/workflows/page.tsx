@@ -10,7 +10,8 @@ import { PageHeader } from "@/components/dg/page-header";
 import { Section } from "@/components/dg/section";
 import { StatusBadge } from "@/components/dg/status-badge";
 import { Button } from "@/components/ui/button";
-import { VERSION_STATUS, type VersionStatus } from "@/lib/labels";
+import { INTENT_OPTIONS, VERSION_STATUS, type VersionStatus } from "@/lib/labels";
+import { IntentBadge } from "@/components/dg/intent-badge";
 import { deleteWorkflowAction, newWorkflowAction } from "@/lib/actions/tenant";
 import { RowActions } from "@/components/dg/row-actions";
 import { can } from "@/lib/rbac";
@@ -52,6 +53,7 @@ export default async function WorkflowsPage({ params, searchParams }: PageProps<
           >
             <TextField name="name" label="Όνομα" required />
             <SelectField name="targetId" label="Σύστημα‑στόχος" required placeholder="Επιλέξτε…" options={targets} />
+            <SelectField name="intent" label="Λειτουργία" placeholder="Επιλέξτε…" options={INTENT_OPTIONS} />
             <SelectField name="recordingId" label="Από καταγραφή (προαιρετικό)" placeholder="Κενή ροή" defaultValue={from} options={convertible.map((r) => ({ value: r.id, label: `${r.name} · ${r.target}` }))} />
           </FormDialog>
         }
@@ -78,6 +80,7 @@ export default async function WorkflowsPage({ params, searchParams }: PageProps<
                 </Link>
               ),
             },
+            { key: "i", header: "Λειτουργία", cell: (w) => <IntentBadge intent={w.intent} /> },
             { key: "v", header: "Έκδοση", cell: (w) => <span className="tabular-nums">v{w.version}</span> },
             { key: "s", header: "Κατάσταση", cell: (w) => <StatusBadge status={w.status} map={VERSION_STATUS} /> },
             { key: "m", header: "Μέθοδοι", align: "right", cell: (w) => w.methods },

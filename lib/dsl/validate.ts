@@ -127,7 +127,7 @@ export function validateForPublish(raw: unknown, ctx: { allowedOrigins?: string[
       expr(s, s.value, loopVars, "value");
       written.add(`vars.${s.name}`);
     }
-    if (s.type === "extract") written.add(s.into);
+    if (s.type === "extract" || s.type === "extractTable") written.add(s.into);
     if (s.type === "navigate" && ctx.allowedOrigins?.length && !hasTemplate(s.url)) {
       try {
         const origin = new URL(s.url, ctx.baseUrl ?? "http://relative.invalid").origin;

@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { deleteRecordingAction, importChromeRecordingAction, newRecordingAction, startLiveRecordingAction } from "@/lib/actions/tenant";
 import { RowActions } from "@/components/dg/row-actions";
 import { listRecordings, targetOptions } from "@/lib/data/tenant";
-import { RECORDING_STATUS } from "@/lib/labels";
+import { INTENT_OPTIONS, RECORDING_STATUS } from "@/lib/labels";
 import { EmptyState } from "@/components/dg/empty-state";
 import { requireTenant } from "@/lib/tenant";
 
@@ -45,6 +45,7 @@ export default async function RecordingsPage({ params }: PageProps<"/t/[tenantId
           >
             <TextField name="name" label="Όνομα" required placeholder="π.χ. Υποβολή αίτησης" />
             <SelectField name="targetId" label="Σύστημα‑στόχος" required placeholder="Επιλέξτε…" options={targets} />
+            <SelectField name="intent" label="Λειτουργία" placeholder="Επιλέξτε…" options={INTENT_OPTIONS} hint="Ορίζει τη μέθοδο του API: GET για ανάγνωση εγγραφών, POST για δημιουργία κ.λπ." />
           </FormDialog>
           <FormDialog
             title="Εισαγωγή από Chrome Recorder"

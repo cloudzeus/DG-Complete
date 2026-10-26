@@ -78,6 +78,21 @@ app.post("/entries", async (c) => {
   return c.html(page("Αποθηκεύτηκε", html`<p data-testid="entry-id">Αριθμός καταχώρισης: ${id}</p><a href="/entries/new">Νέα καταχώριση</a>`));
 });
 
+// A list of records (READ / GET): a table with headers.
+app.get("/customers", (c) => {
+  if (!c.req.header("cookie")?.includes("sandbox_session=1")) return c.redirect("/login");
+  const rows = [["C001", "Alpha Α.Ε.", "094014201"], ["C002", "Beta Ο.Ε.", "099369820"], ["C003", "Gamma Ι.Κ.Ε.", "800000000"], ["C004", "Delta Μ.Ε.Π.Ε.", "998765432"]];
+  return c.html(
+    page(
+      "Πελάτες",
+      html`<p data-testid="user-menu">Συνδεδεμένος: demo</p>
+        <h1>Πελάτες</h1>
+        <table data-testid="customers" style="width:100%"><thead><tr><th>Κωδικός</th><th>Επωνυμία</th><th>ΑΦΜ</th></tr></thead>
+          <tbody>${rows.map((r) => html`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`)}</tbody></table>`,
+    ),
+  );
+});
+
 // Document with lines (multiple records on one page): «Προσθήκη γραμμής» adds a row lines[i][…].
 app.get("/invoices/new", (c) => {
   if (!c.req.header("cookie")?.includes("sandbox_session=1")) return c.redirect("/login");

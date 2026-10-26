@@ -25,6 +25,7 @@ type Session = {
   name: string;
   /** Recording into an existing workflow (its draft) instead of a new one. */
   workflowId?: string;
+  intent?: string;
   context: BrowserContext;
   page: Page;
   steps: Step[];
@@ -57,7 +58,7 @@ g.__dgRecSweep ??= setInterval(() => {
 
 export class RecorderError extends Error {}
 
-export async function startSession(opts: { tenantId: string; userId: string; targetId: string; baseUrl: string; allowedOrigins: string[]; name: string; workflowId?: string }) {
+export async function startSession(opts: { tenantId: string; userId: string; targetId: string; baseUrl: string; allowedOrigins: string[]; name: string; workflowId?: string; intent?: string }) {
   if (sessions.size >= MAX_SESSIONS) throw new RecorderError("Υπάρχουν ήδη πολλές ενεργές καταγραφές — δοκιμάστε σε λίγο.");
   const context = await newContext({ viewport: VIEWPORT, locale: "el-GR", timezoneId: "Europe/Athens" });
   const ref: { s?: Session } = {};
@@ -182,7 +183,8 @@ export type Action =
   | { type: "scroll"; dy: number }
   | { type: "navigate"; url: string }
   | { type: "select"; css: string; value: string }
-  | { type: "extract"; x: number; y: number; key: string; label?: string }
+  | { type: "extract"; x: number; y: number; key: string; label?: string; table?: boolean }
+  | { type: "inspect"; x: number; y: number }
   | { type: "capture" }
   | {
       type: "captureApply";
@@ -193,7 +195,7 @@ export type Action =
   | { type: "undo" }
   | { type: "back" };
 
-export type ActionResult = { select?: ElementInfo; fields?: ElementInfo[]; buttons?: ElementInfo[]; message?: string; blocked?: { origin: string; url: string } };
+export type ActionResult = { element?: ElementInfo | null; select?: ElementInfo; fields?: ElementInfo[]; buttons?: ElementInfo[]; message?: string; blocked?: { origin: string; url: string } };
 
 const FIELD_TAGS = new Set(["input", "textarea"]);
 const KEYS = new Set(["Enter", "Tab", "Escape", "Backspace", "Delete", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown", " "]);
@@ -205,7 +207,7 @@ export async function act(s: Session, a: Action): Promise<ActionResult> {
     return {} as ActionResult;
   });
   if (s.blocked) await s.page.waitForTimeout(100);
-  if (!["capture", "captureApply", "undo"].includes(a.type)) await afterAction(s).catch(() => undefined);
+  if (!["capture", "captureApply", "undo", "inspect"].includes(a.type)) await afterAction(s).catch(() => undefined);
   return s.blocked ? { ...r, blocked: s.blocked, message: undefined } : r;
 }
 
@@ -278,9 +280,18 @@ async function actInner(s: Session, a: Action): Promise<ActionResult> {
       const e = await describe(page, a);
       if (!e) return { message: "Δεν βρέθηκε στοιχείο σε αυτό το σημείο." };
       const key = a.key.replace(/[^a-zA-Z0-9_]/g, "") || "result";
+      if (a.table && e.table) {
+        const taken = new Set<string>();
+        const columns = e.table.headers.map((h, i) => ({ header: h, key: h ? toInputKey(h, taken) : `col${i + 1}` })).filter((c) => c.header);
+        const candidates = [...(e.table.testId ? [{ kind: "testId" as const, value: e.table.testId }] : []), { kind: "css" as const, value: e.table.css }];
+        push(s, { type: "extractTable", label: a.label || `Πίνακας → ${key}`, locator: { candidates }, columns, limit: 500, into: `output.${key}` });
+        return { message: `Ο πίνακας (${e.table.rows} γραμμές, στήλες: ${columns.map((c) => c.header).join(", ")}) θα επιστρέφεται ως λίστα «${key}».` };
+      }
       push(s, { type: "extract", label: a.label || `Εξαγωγή ${key}`, locator: { candidates: candidatesFor(e) }, from: FIELD_TAGS.has(e.tag) ? "value" : "text", into: `output.${key}` });
       return { message: `Το «${(e.text ?? fieldLabel(e)).slice(0, 40)}» θα επιστρέφεται ως ${key}.` };
     }
+    case "inspect":
+      return { element: await describe(page, a) };
     case "capture": {
       const fields = ((await page.evaluate(describeInPage, { all: true }).catch(() => [])) ?? []) as ElementInfo[];
       const buttons = ((await page.evaluate(describeInPage, { buttons: true }).catch(() => [])) ?? []) as ElementInfo[];
