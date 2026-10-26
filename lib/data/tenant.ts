@@ -578,7 +578,11 @@ export async function workflowRuns(tenantId: string, workflowId: string, take = 
     const logs = runs.length
       ? await tx.runLog.findMany({ where: { runId: { in: runs.map((r) => r.id) } }, orderBy: { ts: "asc" }, take: 50 * runs.length })
       : [];
-    return runs.map((r) => ({
+    // Step statuses of the latest run, for the canvas (the last attempt of each step wins).
+    const latestSteps = runs[0] ? await tx.runStep.findMany({ where: { runId: runs[0].id }, orderBy: { seq: "asc" }, select: { stepId: true, status: true, path: true } }) : [];
+    const stepStatus = Object.fromEntries(latestSteps.filter((s) => !s.path.startsWith("login")).map((s) => [s.stepId, s.status]));
+    return runs.map((r, i) => ({
+      stepStatus: i === 0 ? stepStatus : undefined,
       id: r.id,
       status: r.status,
       trigger: r.trigger,

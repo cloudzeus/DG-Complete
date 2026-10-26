@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ImageOff, RotateCcw, XCircle } from "lucide-react";
-import { AutoRefresh } from "@/components/dg/auto-refresh";
+import { LiveRun } from "@/components/dg/live-run";
 import { fmtDateTime, fmtDuration } from "@/components/dg/format";
 import { FormDialog } from "@/components/dg/form-dialog";
 import { TextareaField } from "@/components/dg/fields";
@@ -50,7 +50,7 @@ export default async function RunPage({ params, searchParams }: PageProps<"/t/[t
 
   return (
     <>
-      {active && run.status !== "NEEDS_ATTENTION" && run.status !== "HELD" && <AutoRefresh />}
+      {active && run.status !== "NEEDS_ATTENTION" && run.status !== "HELD" && <LiveRun tenantId={tenantId} runId={run.id} />}
       <PageHeader
         crumbs={[{ href: `/t/${tenantId}/runs`, label: "Εκτελέσεις" }]}
         title={run.methodName}

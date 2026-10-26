@@ -33,7 +33,20 @@ const W = 154;
 const H = 49;
 const elk = new ELK();
 
-type StepNodeData = GraphNode & { selected: boolean };
+export type StepRunStatus = "RUNNING" | "SUCCEEDED" | "FAILED" | "SKIPPED";
+type StepNodeData = GraphNode & { selected: boolean; run?: StepRunStatus };
+
+const RUN_LABEL: Record<StepRunStatus, string> = { RUNNING: "Εκτελείται", SUCCEEDED: "Ολοκληρώθηκε", FAILED: "Απέτυχε", SKIPPED: "Παραλείφθηκε" };
+
+/** Status of a node from its steps in the latest run (a collapsed form groups several). */
+function nodeStatus(ids: string[], status?: Record<string, StepRunStatus>): StepRunStatus | undefined {
+  const all = ids.map((id) => status?.[id]).filter((v): v is StepRunStatus => !!v);
+  if (!all.length) return undefined;
+  if (all.includes("FAILED")) return "FAILED";
+  if (all.includes("RUNNING")) return "RUNNING";
+  if (all.every((v) => v === "SKIPPED")) return "SKIPPED";
+  return "SUCCEEDED";
+}
 type InsertEdgeData = { insertAfter: string | null; canEdit: boolean; onInsert: (afterId: string | null, type: string) => void };
 
 function StepNode({ data }: NodeProps<Node<StepNodeData>>) {
@@ -45,7 +58,12 @@ function StepNode({ data }: NodeProps<Node<StepNodeData>>) {
         "h-14 w-44 overflow-hidden rounded-md border bg-card px-2 py-1.5 text-left shadow-fluent-2 transition-shadow duration-150 hover:shadow-fluent-8",
         data.selected ? "border-sisyphus-500 ring-2 ring-sisyphus-500/25" : "border-border/80",
         terminal && "bg-muted/60",
+        data.run === "SUCCEEDED" && !data.selected && "border-success-500",
+        data.run === "FAILED" && "border-danger-500 ring-2 ring-danger-500/25",
+        data.run === "RUNNING" && "border-sisyphus-500 ring-2 ring-sisyphus-500/40 animate-pulse motion-reduce:animate-none",
+        data.run === "SKIPPED" && "opacity-60",
       )}
+      title={data.run ? `${data.label} — ${RUN_LABEL[data.run]}` : undefined}
     >
       <Handle type="target" position={Position.Left} className="opacity-0" isConnectable={false} />
       <div className="flex items-center gap-1.5">
@@ -114,6 +132,8 @@ export function WorkflowCanvas(props: {
   canEdit: boolean;
   inputs: string[];
   outputs: string[];
+  /** Step statuses of the latest run (live while it runs). */
+  runStatus?: Record<string, StepRunStatus>;
 }) {
   const router = useRouter();
   const { definition, apply, saving } = useDefinition(props);
@@ -147,7 +167,7 @@ export function WorkflowCanvas(props: {
     // Controlled nodes without onNodesChange are never "measured": give React Flow the size we laid out.
     width: W,
     height: H,
-    data: { ...n, selected: n.stepIds.includes(props.selected ?? "") },
+    data: { ...n, selected: n.stepIds.includes(props.selected ?? ""), run: nodeStatus(n.stepIds, props.runStatus) },
     draggable: false,
     connectable: false,
     selectable: n.stepIds.length > 0,

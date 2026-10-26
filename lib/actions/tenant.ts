@@ -259,6 +259,9 @@ export async function testRunAction(tenantId: string, workflowVersionId: string,
   try {
     const run = await createRun({ tenantId, workflowVersionId, input, trigger: "UI_TEST", userId: user.id });
     await tenantDb(tenantId).workflowVersion.updateMany({ where: { id: workflowVersionId }, data: { lastTestRunId: run.id } });
+    // The editor shows the run live on the canvas (SSE): re-render it too.
+    const v = await tenantDb(tenantId).workflowVersion.findUnique({ where: { id: workflowVersionId }, select: { workflowId: true } });
+    if (v) revalidatePath(`/t/${tenantId}/workflows/${v.workflowId}`);
     return done(tenantId, "/runs", `Η δοκιμαστική εκτέλεση μπήκε στην ουρά (${run.id}).`);
   } catch (err) {
     return fail(err);

@@ -37,7 +37,8 @@ import {
   submitVersionAction,
   testRunAction,
 } from "@/lib/actions/tenant";
-import { WorkflowCanvas } from "@/components/workflow-editor/canvas";
+import { WorkflowCanvas, type StepRunStatus } from "@/components/workflow-editor/canvas";
+import { LiveRun } from "@/components/dg/live-run";
 import { StepTree } from "@/components/workflow-editor/step-tree";
 import { getWorkflow, workflowRuns } from "@/lib/data/tenant";
 import { RunLogPanel } from "@/components/workflow-editor/run-log-panel";
@@ -104,8 +105,10 @@ export default async function WorkflowEditor({
   const href = (q: Record<string, string>) =>
     `${base}?${new URLSearchParams({ view, ...(selected ? { step: selected.id } : {}), ...q })}`;
 
+  const liveRun = runs.find((r) => ["QUEUED", "RUNNING", "RETRY_SCHEDULED"].includes(r.status));
   return (
     <>
+      {liveRun && <LiveRun tenantId={tenantId} runId={liveRun.id} />}
       <PageHeader
         crumbs={[{ href: `/t/${tenantId}/workflows`, label: "Ροές" }]}
         title={wf.name}
@@ -246,6 +249,7 @@ export default async function WorkflowEditor({
                 canEdit={canEdit}
                 inputs={wf.inputs.map((x) => x.key)}
                 outputs={wf.outputs}
+                runStatus={runs[0]?.stepStatus as Record<string, StepRunStatus> | undefined}
               />
             ) : (
               <StepTree
