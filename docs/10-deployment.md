@@ -34,6 +34,7 @@ flowchart LR
 Το Dockerfile του dgsmartbi έχει stages `deps → build → migrator → runner` με `node:22-bookworm-slim`. Αλλαγές:
 - `NODE_VERSION=24-bookworm-slim`.
 - Νέο stage **`worker`**: `FROM mcr.microsoft.com/playwright:v1.xx.x-noble`, αντιγράφει `node_modules`, `lib/`, `worker/`, `lib/generated/prisma`, εντολή `node --conditions=react-server --import tsx worker/index.ts` (ή προ‑compiled με `tsup` → `node --conditions=react-server dist/worker.js`).
+- **Από ADR‑025 ο worker τρέχει μέσα στο web** (Chromium στο image)· ένα application αρκεί. Τα παρακάτω για ξεχωριστό worker ισχύουν μόνο για κλιμάκωση (`WORKER_EMBEDDED=off` στο web).
 - Coolify: δύο applications από το ίδιο repo με διαφορετικό **Docker target** (`runner` για web, `worker` για worker). Το stage `worker` είναι πριν το `runner`, ώστε χωρίς target να χτίζεται το web. Ο worker χρειάζεται τις ίδιες μεταβλητές με το web (βάση, `QUEUE_DATABASE_URL`, `DATA_ENCRYPTION_KEYS`, `BETTER_AUTH_*`, `CRON_SECRET`) και `WORKER_CONCURRENCY`· healthcheck JSON στη θύρα 9100. Με web και worker σε διαφορετικά containers ο driver αρχείων πρέπει να είναι **Bunny** (`/admin/settings/storage`)· ο `local` λειτουργεί μόνο όταν μοιράζονται τον ίδιο φάκελο `.storage`.
 - CI ελέγχει ότι η έκδοση του `playwright` package == tag του image.
 - `docker-compose.dev.yml` για τοπική ανάπτυξη: postgres, **pgbouncer** (ίδια ρύθμιση με την παραγωγή), mailpit, sandbox (το storage σε dev είναι ο local driver).

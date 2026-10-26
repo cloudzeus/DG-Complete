@@ -80,6 +80,9 @@ export async function processRun(runId: string, tenantId: string, workerId: stri
     const def = parsed.def;
 
     const input = decryptJson<Record<string, unknown>>(run.inputEnc, `${tenantId}:${runId}`);
+    // One-off login details given in the test dialog (UI_TEST only) replace the stored credential.
+    const oneOff = run.trigger === "UI_TEST" && input.__secrets && typeof input.__secrets === "object" ? (input.__secrets as Record<string, string>) : null;
+    delete input.__secrets;
     const missing = def.inputs.filter((i) => i.required && (input[i.key] === undefined || input[i.key] === null || input[i.key] === ""));
     if (missing.length) throw new EngineError("E_INPUT_VALIDATION", `Λείπουν υποχρεωτικές είσοδοι: ${missing.map((m) => m.label || m.key).join(", ")}.`);
 
@@ -88,6 +91,12 @@ export async function processRun(runId: string, tenantId: string, workerId: stri
     if (creds) {
       for (const [k, v] of Object.entries(creds)) if (typeof v === "string" && k !== "totpSecret") secrets[k] = v;
       if (creds.totpSecret) Object.defineProperty(secrets, "totp", { enumerable: true, get: () => generateSync({ secret: creds.totpSecret! }) });
+    }
+
+    if (oneOff) Object.assign(secrets, oneOff);
+    const usesSecrets = JSON.stringify(version.definition).includes("{{secrets.");
+    if (usesSecrets && !secrets.password && !secrets.username) {
+      throw new EngineError("E_AUTH_FAILED", `Η ροή χρειάζεται στοιχεία σύνδεσης για το «${target.name}», αλλά δεν έχει οριστεί διαπιστευτήριο. Προσθέστε τα από τη σελίδα της ροής («Προσθήκη στοιχείων σύνδεσης»).`);
     }
 
     const browserOpts = (target.browserOptions ?? {}) as { locale?: string; timezone?: string };

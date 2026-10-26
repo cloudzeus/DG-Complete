@@ -51,9 +51,12 @@ CMD ["node", "--conditions=react-server", "--import", "tsx", "worker/index.ts"]
 # ── runtime ───────────────────────────────────────────────────────────
 FROM node:${NODE_VERSION} AS runner
 WORKDIR /app
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0 PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates curl && rm -rf /var/lib/apt/lists/* \
   && groupadd --system --gid 1001 nodejs && useradd --system --uid 1001 --gid nodejs nextjs
+# Chromium for the embedded worker (ADR-025) — same Playwright version as package.json.
+RUN npx -y playwright@1.64.1 install --with-deps chromium-headless-shell \
+  && rm -rf /var/lib/apt/lists/* /root/.npm && chmod -R a+rX /ms-playwright
 
 COPY --from=migrator --chown=nextjs:nodejs /migrate /migrate
 COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./

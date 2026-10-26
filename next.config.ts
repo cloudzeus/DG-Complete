@@ -7,7 +7,9 @@ const nextConfig: NextConfig = {
   experimental: {
     authInterrupts: true,
   },
-  serverExternalPackages: ["pg", "exceljs"],
+  // The embedded worker loads Playwright at runtime; file tracing misses its data files.
+  outputFileTracingIncludes: { "/*": ["./node_modules/playwright-core/**/*", "./node_modules/playwright/**/*"] },
+  serverExternalPackages: ["pg", "exceljs", "pg-boss", "playwright", "playwright-core"],
 };
 
 export default nextConfig;

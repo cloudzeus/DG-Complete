@@ -95,3 +95,9 @@ Web και worker συνδέονται μέσω PgBouncer (port 6432, `pool_mode
 
 ## ADR‑021 — Προγραμματισμένες εργασίες στον κώδικα, όχι στο Coolify
 Όλες οι περιοδικές εργασίες (χρεώσεις, συγχρονισμοί SoftOne, retention, health runs κ.λπ.) ορίζονται στο `lib/jobs/registry.ts` και τρέχουν από τον in‑process scheduler του dgsmartbi, με κλείδωμα ανά εργασία στον πίνακα `ScheduledTask`. Δεν χρησιμοποιούνται Scheduled Tasks του Coolify ούτε crontab στον server: τα ωράρια είναι versioned, ελέγχονται σε review/tests και μεταφέρονται αυτούσια σε κάθε περιβάλλον (docs/10 §4β).
+
+## ADR-025 — Ενσωματωμένος worker στο web (προεπιλογή)
+
+**Πλαίσιο.** Με ξεχωριστή εφαρμογή worker στο Coolify, μια απλή δοκιμαστική εκτέλεση έμενε «Σε ουρά» μέχρι να στηθεί δεύτερο deploy με Docker target — δύσκολο για την πρώτη χρήση.
+**Απόφαση.** Το image του web περιέχει Chromium (Playwright 1.64.1) και το `instrumentation.ts` ξεκινά τον consumer της ουράς `runs` μέσα στο web process (`worker/consumer.ts`) — production: εκτός αν `WORKER_EMBEDDED=off`· development: μόνο με `WORKER_EMBEDDED=on`. Ο ξεχωριστός worker (Docker target `worker`) μένει για κλιμάκωση· τότε `WORKER_EMBEDDED=off` στο web. Αποτυχία εκκίνησης του worker δεν ρίχνει ποτέ το web.
+**Συνέπειες.** Μεγαλύτερο image web (~+300 MB)· η καταγραφή μέσα στην εφαρμογή (docs/04 §10) χρησιμοποιεί τον ίδιο browser. Τα `WORKER_CONCURRENCY` και `QUEUE_DATABASE_URL` ισχύουν και για το web.
