@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Pause, Pencil, Play, Plus, RefreshCcw, Table2, Trash2, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/components/dg/notice";
 import { StatusPill } from "@/components/admin/tone";
 import { DataTable } from "@/components/data-table/data-table";
 import { RowActions } from "@/components/data-table/row-actions";

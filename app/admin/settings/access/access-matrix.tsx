@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Lock, RotateCcw, Save } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/components/dg/notice";
 import {
   AlertDialog,
   AlertDialogAction,

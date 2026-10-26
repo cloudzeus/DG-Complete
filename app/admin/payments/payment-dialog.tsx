@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useEffectEvent, useState } from "react";
 import { Plus } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/components/dg/notice";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

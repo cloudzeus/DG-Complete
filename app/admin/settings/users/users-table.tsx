@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Pencil, Plus, UserCheck, UserX } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/components/dg/notice";
 import { StatusPill } from "@/components/admin/tone";
 import { DataTable } from "@/components/data-table/data-table";
 import { RowActions } from "@/components/data-table/row-actions";

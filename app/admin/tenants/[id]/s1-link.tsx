@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { Link2, Unlink } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/components/dg/notice";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { linkTenantToCustomer, searchCustomers } from "@/app/admin/customers/actions";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
-import { toast } from "sonner";
+import { toast } from "@/components/dg/notice";
 import { Switch } from "@/components/ui/switch";
 import { setTenantDemo } from "./actions";
 

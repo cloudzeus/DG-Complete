@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useEffectEvent, useState, useTransition } from "react";
 import { KeyRound, Mail, MoreHorizontal, Pencil, Plus, Trash2, UserMinus } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/components/dg/notice";
 import { StatusPill } from "@/components/admin/tone";
 import {
   AlertDialog,

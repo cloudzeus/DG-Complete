@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { PageSkeleton } from "@/components/dg/page-skeleton";
-import { Toaster } from "@/components/ui/sonner";
+import { NoticeHost } from "@/components/dg/notice";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
@@ -29,7 +29,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <TooltipProvider delayDuration={300}>
           <Suspense fallback={<PageSkeleton />}>{children}</Suspense>
         </TooltipProvider>
-        <Toaster richColors position="top-right" />
+        <NoticeHost />
       </body>
     </html>
   );

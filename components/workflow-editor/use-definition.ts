@@ -2,7 +2,7 @@
 
 import { useCallback, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/components/dg/notice";
 import { saveDefinitionAction } from "@/lib/actions/tenant";
 import { CommandError, History, type DslDefinition } from "@/lib/dsl/commands";
 

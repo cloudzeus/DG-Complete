@@ -1,8 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { useActionState, useState } from "react";
+import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { INITIAL_FORM_STATE, type FormState } from "@/lib/forms";
@@ -27,8 +26,13 @@ export function FormDialog({
   destructive = false,
   size = "md",
   children,
+  open: openProp,
+  onOpenChange,
 }: {
-  trigger: React.ReactNode;
+  /** Omit when the dialog is opened from elsewhere (e.g. a row's actions menu) via `open`. */
+  trigger?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   title: string;
   description?: string;
   action: Action;
@@ -37,17 +41,23 @@ export function FormDialog({
   size?: "sm" | "md" | "lg";
   children?: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
+  const [ownOpen, setOwnOpen] = useState(false);
   const [round, setRound] = useState(0);
+  const open = openProp ?? ownOpen;
+  const [seen, setSeen] = useState(open);
+  if (open !== seen) {
+    setSeen(open);
+    if (open) setRound((r) => r + 1); // fresh form state on every open
+  }
   return (
     <Dialog
       open={open}
       onOpenChange={(o) => {
-        setOpen(o);
-        if (o) setRound((r) => r + 1); // fresh form state on every open
+        setOwnOpen(o);
+        onOpenChange?.(o);
       }}
     >
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent
         className={cn(
           "max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-xl p-0 sm:max-w-lg",
@@ -62,7 +72,7 @@ export function FormDialog({
           action={action}
           submitLabel={submitLabel}
           destructive={destructive}
-          onDone={() => setOpen(false)}
+          onDone={() => (setOwnOpen(false), onOpenChange?.(false))}
         >
           {children}
         </FormBody>
@@ -90,13 +100,25 @@ function FormBody({
 }) {
   const [state, formAction, pending] = useActionState(action, INITIAL_FORM_STATE);
 
-  useEffect(() => {
-    if (state === INITIAL_FORM_STATE) return;
-    if (state.ok && !state.reveal) {
-      toast.success(state.message ?? "Αποθηκεύτηκε.");
-      onDone();
-    } else if (!state.ok && state.message && !state.errors) toast.error(state.message);
-  }, [state, onDone]);
+  // Result in the same modal (no toasts): success → information panel with «Εντάξει»; a failure
+  // stays in the form above the buttons so the user can correct and retry.
+  if (state !== INITIAL_FORM_STATE && state.ok && !state.reveal) {
+    return (
+      <div className="space-y-4 p-5 sm:p-6" role="status">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CheckCircle2 aria-hidden className="size-5 text-success-500" /> {title}
+          </DialogTitle>
+          <DialogDescription>{state.message ?? "Η ενέργεια ολοκληρώθηκε."}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button type="button" autoFocus onClick={onDone}>
+            Εντάξει
+          </Button>
+        </DialogFooter>
+      </div>
+    );
+  }
 
   if (state.ok && state.reveal) {
     return (
@@ -128,8 +150,9 @@ function FormBody({
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
         {children && <div className="space-y-4 p-5 sm:p-6">{children}</div>}
-        {state.errors && state.message && (
-          <p role="alert" className="mx-5 mb-2 rounded-sm bg-danger-50 px-3 py-2 text-xs font-medium text-danger-500 sm:mx-6">
+        {!state.ok && state.message && (
+          <p role="alert" className="mx-5 mb-2 flex items-start gap-2 rounded-sm bg-danger-50 px-3 py-2 text-sm font-medium text-danger-500 sm:mx-6">
+            <AlertCircle aria-hidden className="mt-0.5 size-4 shrink-0" />
             {state.message}
           </p>
         )}

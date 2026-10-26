@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useEffectEvent, useRef, useState, useTransition } from "react";
 import { CheckCircle2, XCircle } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/components/dg/notice";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
