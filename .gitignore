@@ -50,3 +50,6 @@ next-env.d.ts
 cube/cube.js
 cube/dgsmartbi-cube.yml
 /.storage
+
+# local evaluation screenshots
+/screens/
