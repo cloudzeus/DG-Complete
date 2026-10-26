@@ -2,7 +2,7 @@ import { Plus } from "lucide-react";
 import { FormDialog } from "@/components/dg/form-dialog";
 import { FormRow, TextareaField, TextField } from "@/components/dg/fields";
 import { Button } from "@/components/ui/button";
-import { createTargetAction } from "@/lib/actions/tenant";
+import { createTargetAction, deleteTargetAction } from "@/lib/actions/tenant";
 
 export function CreateTargetDialog({ tenantId }: { tenantId: string }) {
   return (
@@ -25,4 +25,15 @@ export function CreateTargetDialog({ tenantId }: { tenantId: string }) {
       </FormRow>
     </FormDialog>
   );
+}
+
+/** Confirm text for deleting a target: says what goes with it. */
+export function targetDelete(tenantId: string, t: { id: string; name: string; workflows: number; credentials: number }) {
+  const parts = [t.workflows && `${t.workflows} ροές με τις εκδόσεις, μεθόδους και εκτελέσεις τους`, t.credentials && `${t.credentials} διαπιστευτήρια`].filter(Boolean);
+  return {
+    title: `Διαγραφή «${t.name}»`,
+    description: parts.length ? `Θα διαγραφούν μαζί: ${parts.join(" και ")}. Η ενέργεια δεν αναιρείται.` : "Η ενέργεια δεν αναιρείται.",
+    action: deleteTargetAction.bind(null, tenantId, t.id),
+    submitLabel: "Οριστική διαγραφή",
+  };
 }

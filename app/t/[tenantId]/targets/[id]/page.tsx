@@ -15,6 +15,8 @@ import { StatusBadge, Tag } from "@/components/dg/status-badge";
 import { Button } from "@/components/ui/button";
 import { addCredentialAction, deleteCredentialAction, updateTargetAction } from "@/lib/actions/tenant";
 import { getTarget, listCredentials, listWorkflows } from "@/lib/data/tenant";
+import { RowActions } from "@/components/dg/row-actions";
+import { targetDelete } from "../shared";
 import { TARGET_HEALTH, VERSION_STATUS } from "@/lib/labels";
 import { can } from "@/lib/rbac";
 import { requireTenant } from "@/lib/tenant";
@@ -50,6 +52,7 @@ export default async function TargetPage({ params, searchParams }: PageProps<"/t
                 <TextField name="maxConcurrency" label="Ταυτόχρονες εκτελέσεις" required type="number" defaultValue={t.maxConcurrency} />
               </FormDialog>
             )}
+            {canTargets && <RowActions label={`Ενέργειες για ${t.name}`} destroy={targetDelete(tenantId, { id: t.id, name: t.name, workflows: workflows.length, credentials: creds.length })} />}
           </>
         }
       />

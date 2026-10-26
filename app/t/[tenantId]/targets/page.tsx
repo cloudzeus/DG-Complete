@@ -8,7 +8,9 @@ import { fmtDateTime, fmtNum } from "@/components/dg/format";
 import { PageHeader } from "@/components/dg/page-header";
 import { Section } from "@/components/dg/section";
 import { StatusBadge } from "@/components/dg/status-badge";
-import { CreateTargetDialog } from "./shared";
+import { RowActions } from "@/components/dg/row-actions";
+import { can } from "@/lib/rbac";
+import { CreateTargetDialog, targetDelete } from "./shared";
 import { listTargets } from "@/lib/data/tenant";
 import { TARGET_HEALTH } from "@/lib/labels";
 import { requireTenant } from "@/lib/tenant";
@@ -18,7 +20,8 @@ export const metadata: Metadata = { title: "Συστήματα‑στόχοι" }
 export default async function TargetsPage({ params, searchParams }: PageProps<"/t/[tenantId]/targets">) {
   const { tenantId } = await params;
   const { q } = await searchParams;
-  await requireTenant(tenantId);
+  const { user } = await requireTenant(tenantId);
+  const canManage = can(user, "tenant.targets.manage", tenantId);
   const base = `/t/${tenantId}`;
   const rows = await listTargets(tenantId, typeof q === "string" ? q : undefined);
 
@@ -48,6 +51,18 @@ export default async function TargetsPage({ params, searchParams }: PageProps<"/
             { key: "wf", header: "Ροές", align: "right", cell: (t) => t.workflows },
             { key: "cr", header: "Διαπιστευτήρια", align: "right", cell: (t) => t.credentials },
             { key: "last", header: "Τελευταία εκτέλεση", align: "right", cell: (t) => fmtDateTime(t.lastRunAt) },
+            {
+              key: "actions",
+              header: "",
+              align: "right",
+              cell: (t) => (
+                <RowActions
+                  label={`Ενέργειες για ${t.name}`}
+                  open={`${base}/targets/${t.id}`}
+                  destroy={canManage ? targetDelete(tenantId, t) : undefined}
+                />
+              ),
+            },
           ]}
         />
       </Section>

@@ -95,6 +95,64 @@ export async function updateTargetAction(tenantId: string, id: string, _p: FormS
   return done(tenantId, `/targets/${id}`, "Οι αλλαγές αποθηκεύτηκαν.");
 }
 
+/** Deletes workflows with their versions, methods, jobs and runs (one RLS transaction). */
+async function purgeWorkflows(tenantId: string, workflowIds: string[]) {
+  if (!workflowIds.length) return;
+  await withTenantTx(
+    tenantId,
+    async (tx) => {
+      const versions = (await tx.workflowVersion.findMany({ where: { tenantId, workflowId: { in: workflowIds } }, select: { id: true } })).map((v) => v.id);
+      const methods = (await tx.method.findMany({ where: { tenantId, workflowVersionId: { in: versions } }, select: { id: true } })).map((m) => m.id);
+      const runs = (await tx.run.findMany({ where: { tenantId, workflowVersionId: { in: versions } }, select: { id: true } })).map((r) => r.id);
+      if (runs.length) await tx.runLog.deleteMany({ where: { tenantId, runId: { in: runs } } });
+      if (methods.length) await tx.job.deleteMany({ where: { tenantId, methodId: { in: methods } } });
+      await tx.run.deleteMany({ where: { tenantId, workflowVersionId: { in: versions } } });
+      if (methods.length) await tx.method.deleteMany({ where: { tenantId, id: { in: methods } } });
+      await tx.recording.updateMany({ where: { tenantId, workflowId: { in: workflowIds } }, data: { workflowId: null } });
+      await tx.workflow.deleteMany({ where: { tenantId, id: { in: workflowIds } } });
+    },
+    { timeout: 60_000 },
+  );
+}
+
+const DELETE_FAILED = "Η διαγραφή δεν ολοκληρώθηκε: υπάρχουν ακόμη στοιχεία που εξαρτώνται από αυτό (π.χ. εξαγωγές ή incidents). Δοκιμάστε ξανά ή επικοινωνήστε με την υποστήριξη.";
+
+export async function deleteTargetAction(tenantId: string, id: string): Result {
+  const user = await guard(tenantId, "tenant.targets.manage");
+  const db = tenantDb(tenantId);
+  const target = await db.targetSystem.findUnique({ where: { id }, select: { id: true, name: true } });
+  if (!target) return { ok: false, message: "Το σύστημα δεν βρέθηκε." };
+  const workflows = (await db.workflow.findMany({ where: { targetSystemId: id }, select: { id: true } })).map((w) => w.id);
+  try {
+    await purgeWorkflows(tenantId, workflows);
+    await withTenantTx(tenantId, async (tx) => {
+      await tx.recording.deleteMany({ where: { tenantId, targetSystemId: id } });
+      await tx.targetSystem.deleteMany({ where: { tenantId, id } });
+    });
+  } catch (err) {
+    console.error("[targets] delete", id, (err as Error).message);
+    return { ok: false, message: DELETE_FAILED };
+  }
+  await audit({ actorId: user.id, action: "target.delete", entity: "TargetSystem", entityId: id, tenantId, meta: { name: target.name, workflows: workflows.length } });
+  revalidatePath(`/t/${tenantId}`, "layout");
+  redirect(`/t/${tenantId}/targets`);
+}
+
+export async function deleteWorkflowAction(tenantId: string, id: string): Result {
+  const user = await guard(tenantId, "tenant.workflows.edit");
+  const wf = await tenantDb(tenantId).workflow.findUnique({ where: { id }, select: { id: true, name: true } });
+  if (!wf) return { ok: false, message: "Η ροή δεν βρέθηκε." };
+  try {
+    await purgeWorkflows(tenantId, [id]);
+  } catch (err) {
+    console.error("[workflows] delete", id, (err as Error).message);
+    return { ok: false, message: DELETE_FAILED };
+  }
+  await audit({ actorId: user.id, action: "workflow.delete", entity: "Workflow", entityId: id, tenantId, meta: { name: wf.name } });
+  revalidatePath(`/t/${tenantId}`, "layout");
+  redirect(`/t/${tenantId}/workflows`);
+}
+
 export async function addCredentialAction(tenantId: string, targetSystemId: string, _p: FormState, fd: FormData): Result {
   const user = await guard(tenantId, "tenant.credentials.manage");
   const v = validate(z.object({ label: req("Περιγραφή"), username: req("Όνομα χρήστη"), password: req("Κωδικός"), totpSecret: opt }), fd);
@@ -185,15 +243,24 @@ export async function newWorkflowAction(tenantId: string, _p: FormState, fd: For
 }
 
 /** Starts a live recording in the app's own browser (docs/04 §10) and opens it. */
+export async function deleteRecordingAction(tenantId: string, id: string): Result {
+  const user = await guard(tenantId, "tenant.workflows.edit");
+  const r = await withTenantTx(tenantId, (tx) => tx.recording.deleteMany({ where: { tenantId, id } }));
+  if (!r.count) return { ok: false, message: "Η καταγραφή δεν βρέθηκε." };
+  await audit({ actorId: user.id, action: "recording.delete", entity: "Recording", entityId: id, tenantId });
+  return done(tenantId, "/recordings", "Η καταγραφή διαγράφηκε.");
+}
+
 export async function startLiveRecordingAction(tenantId: string, _p: FormState, fd: FormData): Result {
   const user = await guard(tenantId, "tenant.workflows.edit");
-  const v = validate(z.object({ name: req("Όνομα"), targetId: req("Σύστημα‑στόχος") }), fd);
+  const v = validate(z.object({ name: req("Όνομα"), targetId: req("Σύστημα‑στόχος"), workflowId: opt }), fd);
   if ("state" in v) return v.state;
   const target = await tenantDb(tenantId).targetSystem.findUnique({ where: { id: v.data.targetId }, select: { id: true, baseUrl: true, allowedOrigins: true } });
   if (!target) return { ok: false, errors: { targetId: "Το σύστημα δεν βρέθηκε" } };
+  if (v.data.workflowId && !(await tenantDb(tenantId).workflow.findUnique({ where: { id: v.data.workflowId }, select: { id: true } }))) return { ok: false, message: "Η ροή δεν βρέθηκε." };
   let id: string;
   try {
-    id = await startSession({ tenantId, userId: user.id, targetId: target.id, baseUrl: target.baseUrl, allowedOrigins: target.allowedOrigins, name: v.data.name });
+    id = await startSession({ tenantId, userId: user.id, targetId: target.id, baseUrl: target.baseUrl, allowedOrigins: target.allowedOrigins, name: v.data.name, workflowId: v.data.workflowId });
   } catch (err) {
     return { ok: false, message: err instanceof RecorderError ? err.message : "Ο browser καταγραφής δεν ξεκίνησε. Δοκιμάστε ξανά." };
   }
@@ -209,11 +276,42 @@ export async function finishLiveRecordingAction(tenantId: string, sessionId: str
   const name = String(fd.get("name") ?? "").trim() || s.name;
   const inputSchema = {
     type: "object",
-    properties: Object.fromEntries(s.inputs.map((i) => [i.key, { type: "string", title: i.label, ...(i.enum ? { enum: i.enum } : {}) }])),
+    properties: Object.fromEntries(
+      s.inputs.map((i) => [
+        i.key,
+        i.type === "array"
+          ? { type: "array", title: i.label, items: { type: "object", properties: Object.fromEntries((i.items ?? []).map((f) => [f.key, { type: "string", title: f.label, ...(f.enum ? { enum: f.enum } : {}) }])), required: (i.items ?? []).map((f) => f.key) } }
+          : { type: "string", title: i.label, ...(i.enum ? { enum: i.enum } : {}) },
+      ]),
+    ),
     required: s.inputs.filter((i) => i.required).map((i) => i.key),
   };
   const outputs = s.steps.filter((x) => x.type === "extract").map((x) => String(x.into).replace(/^output\./, ""));
   const outputSchema = { type: "object", properties: Object.fromEntries(outputs.map((k) => [k, { type: "string" }])), required: [] as string[] };
+  if (s.workflowId) {
+    // Into the existing workflow's draft: append after its steps, merge inputs/outputs/forms.
+    const draft = await draftOf(tenantId, s.workflowId, user.id);
+    if (!draft) return { ok: false, message: "Η ροή δεν βρέθηκε." };
+    const def = (draft.definition ?? {}) as Definition & { forms?: Record<string, unknown> };
+    const existing = def.steps ?? [];
+    const prefix = existing.length ? `r${randomBytes(2).toString("hex")}` : "";
+    const steps = [...existing, ...s.steps.map((x) => ({ ...x, id: prefix ? `${prefix}${x.id}` : x.id, ...(x.form && prefix ? { form: `${prefix}${x.form}` } : {}) }))];
+    const forms = { ...(def.forms ?? {}), ...Object.fromEntries(Object.entries(s.forms).map(([k, f]) => [prefix ? `${prefix}${k}` : k, f])) };
+    const oldIn = (draft.inputSchema ?? EMPTY_SCHEMA) as { properties?: Record<string, unknown>; required?: string[] };
+    const oldOut = (draft.outputSchema ?? EMPTY_SCHEMA) as { properties?: Record<string, unknown> };
+    await tenantDb(tenantId).workflowVersion.update({
+      where: { id: draft.id },
+      data: {
+        definition: { ...def, dslVersion: 1, steps, forms } as never,
+        inputSchema: { type: "object", properties: { ...(oldIn.properties ?? {}), ...inputSchema.properties }, required: [...new Set([...(oldIn.required ?? []), ...inputSchema.required])] } as never,
+        outputSchema: { type: "object", properties: { ...(oldOut.properties ?? {}), ...outputSchema.properties }, required: [] } as never,
+      },
+    });
+    await closeSession(sessionId);
+    await audit({ actorId: user.id, action: "workflow.record", entity: "Workflow", entityId: s.workflowId, tenantId, meta: { steps: s.steps.length, appended: existing.length > 0 } });
+    revalidatePath(`/t/${tenantId}/workflows/${s.workflowId}`);
+    redirect(`/t/${tenantId}/workflows/${s.workflowId}?view=canvas`);
+  }
   const wf = await tenantDb(tenantId).workflow.create({
     data: {
       name,
@@ -354,11 +452,29 @@ export async function addInputAction(tenantId: string, workflowId: string, _p: F
 export async function testRunAction(tenantId: string, workflowVersionId: string, _p: FormState, fd: FormData): Result {
   const user = await guard(tenantId, "tenant.runs.execute");
   const entries = [...fd.entries()].filter(([k]) => !k.startsWith("$")).map(([k, v]) => [k, String(v)] as const);
-  const input: Record<string, unknown> = Object.fromEntries(entries.filter(([k]) => !k.startsWith("secret__")));
+  // Lists (e.g. document lines) are typed as JSON in the test dialog.
+  const input: Record<string, unknown> = Object.fromEntries(
+    entries
+      .filter(([k]) => !k.startsWith("secret__"))
+      .map(([k, v]) => {
+        if (/^\s*[[{]/.test(v)) {
+          try {
+            return [k, JSON.parse(v)];
+          } catch {
+            return [k, v];
+          }
+        }
+        return [k, v];
+      }),
+  );
   // One-off login details for this test only: travel encrypted with the run input, used by the worker
   // instead of the stored credential, never shown (previewInput masks the key).
   const secrets = Object.fromEntries(entries.filter(([k, v]) => k.startsWith("secret__") && v).map(([k, v]) => [k.slice(8), v]));
   if (Object.keys(secrets).length) input.__secrets = secrets;
+  const version = await tenantDb(tenantId).workflowVersion.findUnique({ where: { id: workflowVersionId }, select: { definition: true } });
+  if (!((version?.definition as Definition | undefined)?.steps ?? []).length) {
+    return { ok: false, message: "Η ροή δεν έχει βήματα ακόμα. Καταγράψτε τα με «Καταγραφή στην εφαρμογή» στη σελίδα της ροής." };
+  }
   let runId: string;
   try {
     const run = await createRun({ tenantId, workflowVersionId, input, trigger: "UI_TEST", userId: user.id });

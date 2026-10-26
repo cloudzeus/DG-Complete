@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   AlertTriangle,
+  Disc3,
   FlaskConical,
   KeyRound,
   History,
@@ -32,6 +33,8 @@ import { STEP_TYPES, VERSION_STATUS } from "@/lib/labels";
 import {
   addCredentialAction,
   addInputAction,
+  deleteWorkflowAction,
+  startLiveRecordingAction,
   addStepAction,
   deleteStepAction,
   editStepAction,
@@ -43,6 +46,7 @@ import { WorkflowCanvas, type CanvasForm, type StepRunStatus } from "@/component
 import type { CapturedForm } from "@/lib/dsl/graph";
 import { getStorage } from "@/lib/storage";
 import { LiveRun } from "@/components/dg/live-run";
+import { RowActions } from "@/components/dg/row-actions";
 import { StepTree } from "@/components/workflow-editor/step-tree";
 import { getWorkflow, listCredentials, workflowRuns } from "@/lib/data/tenant";
 import { RunLogPanel } from "@/components/workflow-editor/run-log-panel";
@@ -161,6 +165,17 @@ export default async function WorkflowEditor({
                 <History aria-hidden /> Εκδόσεις
               </Link>
             </Button>
+            {canEdit && (
+              <RowActions
+                label={`Ενέργειες για ${wf.name}`}
+                destroy={{
+                  title: `Διαγραφή «${wf.name}»`,
+                  description: "Θα διαγραφούν όλες οι εκδόσεις, οι μέθοδοι API και οι εκτελέσεις της ροής. Η ενέργεια δεν αναιρείται.",
+                  action: deleteWorkflowAction.bind(null, tenantId, wf.id),
+                  submitLabel: "Οριστική διαγραφή",
+                }}
+              />
+            )}
             <FormDialog
               title="Δοκιμαστική εκτέλεση"
               description="Εκτελείται στο σύστημα‑στόχο με δείγμα εισόδου· δεν χρεώνεται."
@@ -187,15 +202,22 @@ export default async function WorkflowEditor({
                   </FormRow>
                 </fieldset>
               )}
-              {wf.inputs.map((i) => (
-                <TextField
-                  key={i.key}
-                  name={i.key}
-                  label={i.label}
-                  required={i.required}
-                  hint={i.type}
-                />
-              ))}
+              {wf.inputs.map((i) =>
+                i.type === "array" || i.type === "object" ? (
+                  <TextareaField
+                    key={i.key}
+                    name={i.key}
+                    label={i.label}
+                    required={i.required}
+                    rows={4}
+                    mono
+                    placeholder={i.type === "array" ? '[{"...": "..."}, {"...": "..."}]' : '{"...": "..."}'}
+                    hint={i.type === "array" ? "Λίστα σε JSON — μία εγγραφή ανά γραμμή (π.χ. γραμμές παραστατικού)." : "JSON"}
+                  />
+                ) : (
+                  <TextField key={i.key} name={i.key} label={i.label} required={i.required} hint={i.type} />
+                ),
+              )}
             </FormDialog>
             {latest.status === "DRAFT" && canEdit && (
               <FormDialog
@@ -315,7 +337,32 @@ export default async function WorkflowEditor({
               )
             }
           >
-            {view === "canvas" ? (
+            {!(latest.definition.steps ?? []).length ? (
+              <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-8 text-center">
+                <Disc3 aria-hidden className="size-6 text-sisyphus-600" />
+                <div>
+                  <p className="font-semibold">Η ροή δεν έχει βήματα ακόμα</p>
+                  <p className="mt-1 max-w-prose text-sm text-muted-foreground">Ανοίξτε το {wf.target.name} μέσα στην εφαρμογή και κάντε την καταχώριση μία φορά. Κάθε ενέργεια γίνεται βήμα αυτής της ροής· με «Capture πεδίων» οι φόρμες γίνονται είσοδοι του API.</p>
+                </div>
+                {canEdit && (
+                  <FormDialog
+                    title="Καταγραφή στην εφαρμογή"
+                    description={`Τα βήματα θα γραφτούν στη ροή «${wf.name}».`}
+                    action={startLiveRecordingAction.bind(null, tenantId)}
+                    submitLabel="Έναρξη καταγραφής"
+                    trigger={
+                      <Button size="sm">
+                        <Disc3 aria-hidden /> Καταγραφή στην εφαρμογή
+                      </Button>
+                    }
+                  >
+                    <TextField name="name" label="Όνομα" required defaultValue={wf.name} />
+                    <input type="hidden" name="targetId" value={wf.target.id} />
+                    <input type="hidden" name="workflowId" value={wf.id} />
+                  </FormDialog>
+                )}
+              </div>
+            ) : view === "canvas" ? (
               <WorkflowCanvas
                                 tenantId={tenantId}
                 workflowId={wf.id}

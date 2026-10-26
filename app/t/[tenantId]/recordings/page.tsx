@@ -9,7 +9,8 @@ import { PageHeader } from "@/components/dg/page-header";
 import { Section } from "@/components/dg/section";
 import { StatusBadge } from "@/components/dg/status-badge";
 import { Button } from "@/components/ui/button";
-import { importChromeRecordingAction, newRecordingAction, startLiveRecordingAction } from "@/lib/actions/tenant";
+import { deleteRecordingAction, importChromeRecordingAction, newRecordingAction, startLiveRecordingAction } from "@/lib/actions/tenant";
+import { RowActions } from "@/components/dg/row-actions";
 import { listRecordings, targetOptions } from "@/lib/data/tenant";
 import { RECORDING_STATUS } from "@/lib/labels";
 import { EmptyState } from "@/components/dg/empty-state";
@@ -120,6 +121,22 @@ export default async function RecordingsPage({ params }: PageProps<"/t/[tenantId
                     <Link href={`${base}/workflows?from=${r.id}`}>Μετατροπή σε ροή</Link>
                   </Button>
                 ) : null,
+            },
+            {
+              key: "actions",
+              header: "",
+              align: "right",
+              cell: (r) => (
+                <RowActions
+                  label={`Ενέργειες για ${r.name}`}
+                  open={r.workflowId ? `${base}/workflows/${r.workflowId}` : undefined}
+                  destroy={{
+                    title: `Διαγραφή «${r.name}»`,
+                    description: r.workflowId ? "Διαγράφεται μόνο η καταγραφή· η ροή που δημιουργήθηκε από αυτήν μένει." : "Η καταγραφή θα διαγραφεί οριστικά.",
+                    action: deleteRecordingAction.bind(null, tenantId, r.id),
+                  }}
+                />
+              ),
             },
           ]}
         />
