@@ -87,7 +87,7 @@ describe("dsl", () => {
   });
 
   it("flags step types the engine does not support yet", () => {
-    const r = parseDefinition({ steps: [{ id: "x", type: "extractTable" }] });
+    const r = parseDefinition({ steps: [{ id: "x", type: "choose" }] });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.issues[0].code).toBe("STEP_TYPE_UNSUPPORTED");
   });
