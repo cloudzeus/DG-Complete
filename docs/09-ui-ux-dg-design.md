@@ -4,7 +4,7 @@
 
 - **Product interior** του DG Design System: canvas `#F3F2F1`, λευκές κάρτες, **Sisyphus Blue `#0078D4`** για active nav, links, focus σε data οθόνες. **DG crimson `#E31E2A`** μόνο για λογότυπο, brand στιγμές (login), destructive ενέργειες και highlight σφάλματος στα screenshots. Ποτέ και τα δύο ως primary στην ίδια επιφάνεια.
 - Σοβαρή, corporate αισθητική — **όχι** gradient heroes, glow ή φανταχτερά χρώματα μέσα στο προϊόν.
-- Τυπογραφία: Segoe UI Variable → Inter. Ramp 11/12/14/16/18/20/24/32. Τίτλοι σελίδων 24/600, section titles 18/600, eyebrows 11/600 UPPERCASE tracking 0.08em. Body 14/400. Αριθμοί σε KPI 32/600 tabular‑nums — όχι τεράστιοι.
+- Τυπογραφία: Segoe UI Variable → Inter. **Βασικό μέγεθος 14px:** `html { font-size: 87.5% }`, οπότε όλα τα rem (και οι αποστάσεις, τα ύψη των controls) μετρούν σε 14px· τα tokens `--fs-*` (`scripts/fluid-type.mjs`, `ROOT = 14`) κρατούν τον ramp σε px. Ramp 11/12/13/14/16/18/20/24/32. Τίτλοι σελίδων 24/600, section titles 18/600, eyebrows 11/600 UPPERCASE tracking 0.08em. Body 14/400. Αριθμοί σε KPI 32/600 tabular‑nums — όχι τεράστιοι.
 - Radii 4 (controls) / 8 (cards) / 12 (modals). Διπλές σκιές (`--elev-*`).
 - Acrylic topbar, Mica sidebar. Icons **lucide** όπως στο dgsmartbi (αποδεκτή εναλλακτική του DG για τα Fluent icons). Χωρίς emoji.
 - Motion: 80/150/240/400 ms, `cubic-bezier(0.33,0,0.67,1)`. GSAP μόνο για: είσοδο λίστας βημάτων (stagger 30ms, y:4→0), progress των jobs, μετάβαση στο highlight του screenshot. Springs μόνο σε drawers.

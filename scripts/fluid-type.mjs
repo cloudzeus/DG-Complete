@@ -9,6 +9,8 @@ import { join } from "node:path";
 const PHONE = 360;
 const DESKTOP = 1280;
 const DG_RAMP = [11, 12, 13, 14, 16, 18, 20, 24, 32, 40, 56];
+// Root font size (html { font-size: 87.5% } in app/globals.css): tokens are px / ROOT rem.
+const ROOT = 14;
 const SCAN_DIRS = ["app", "components", "lib"];
 const SKIP = new Set(["node_modules", ".next", "generated"]);
 
@@ -23,13 +25,13 @@ const r = (n) => Math.round(n * 10000) / 10000;
 function token(d) {
   const m = phoneSize(d);
   const name = `--fs-${String(d).replace(".", "-")}`;
-  if (m === d) return `  ${name}: ${r(d / 16)}rem;`;
+  if (m === d) return `  ${name}: ${r(d / ROOT)}rem;`;
   const slope = (d - m) / (DESKTOP - PHONE);
   const intercept = m - slope * PHONE;
   const sign = slope >= 0 ? "+" : "-";
-  const lo = Math.min(m, d) / 16;
-  const hi = Math.max(m, d) / 16;
-  return `  ${name}: clamp(${r(lo)}rem, ${r(intercept / 16)}rem ${sign} ${r(Math.abs(slope) * 100)}vw, ${r(hi)}rem);`;
+  const lo = Math.min(m, d) / ROOT;
+  const hi = Math.max(m, d) / ROOT;
+  return `  ${name}: clamp(${r(lo)}rem, ${r(intercept / ROOT)}rem ${sign} ${r(Math.abs(slope) * 100)}vw, ${r(hi)}rem);`;
 }
 
 function walk(dir, out) {
