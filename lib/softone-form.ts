@@ -51,7 +51,10 @@ export function resolveSoftOneIds(
   input: SoftOneIds,
   objs: SoftOneLoginObj[],
 ): { ok: true; ids: SoftOneIds; auto: boolean } | { ok: false; error: string } {
-  if (input.company) return { ok: true, ids: input, auto: false };
+  // Only the four ids — callers spread `ids` into the database row (the full input carries the password).
+  if (input.company) {
+    return { ok: true, ids: { company: input.company, branch: input.branch, module: input.module, refId: input.refId }, auto: false };
+  }
   const companies = [...new Set(objs.map((o) => String(o.COMPANY)))];
   if (companies.length === 0) return { ok: false, error: "Ο λογαριασμός δεν επέστρεψε εταιρείες — συμπληρώστε το Company." };
   if (companies.length > 1) {
@@ -180,7 +183,10 @@ export async function saveSoftOneDraft(formData: FormData, owner: Owner, name: s
     name,
     baseUrl: draft.baseUrl,
     appId: draft.appId,
-    ...ids,
+    company: ids.company,
+    branch: ids.branch,
+    module: ids.module,
+    refId: ids.refId,
     credentialsEnc: sealSoftOneCredentials(id, { username: draft.username, password }),
     // Settings changed → drop the cached clientID.
     sessionEnc: null,
