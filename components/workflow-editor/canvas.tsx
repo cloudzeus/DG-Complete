@@ -165,7 +165,7 @@ export function WorkflowCanvas(props: {
   );
 
   return (
-    <div ref={box} className="relative h-[clamp(14rem,38dvh,22rem)] w-full overflow-hidden rounded-lg border border-border/70 bg-muted/30">
+    <div ref={box} className="relative h-56 w-full overflow-hidden rounded-lg border border-border/70 bg-muted/30">
       {positions.size === 0 && (
         <div className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">
           <Loader2 aria-label="Διάταξη" className="size-5 animate-spin" />
@@ -177,7 +177,7 @@ export function WorkflowCanvas(props: {
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
-        fitViewOptions={{ padding: 0.12, maxZoom: 1, minZoom: 0.7 }}
+        fitViewOptions={{ padding: { top: 0.1, bottom: 0.3, left: 0.05, right: 0.05 }, maxZoom: 1, minZoom: 0.6 }}
         minZoom={0.2}
         nodesConnectable={false}
         onNodeClick={(_, n) => {
@@ -188,8 +188,8 @@ export function WorkflowCanvas(props: {
         aria-label="Καμβάς ροής"
       >
         <Background gap={16} size={1} />
-        <MiniMap pannable zoomable nodeClassName="fill-sisyphus-200! stroke-sisyphus-500!" nodeBorderRadius={4} maskColor="rgb(243 242 241 / 0.6)" className="hidden! md:block!" />
-        <Controls showInteractive={false} />
+        <MiniMap pannable zoomable nodeClassName="fill-sisyphus-200! stroke-sisyphus-500!" nodeBorderRadius={4} maskColor="rgb(243 242 241 / 0.6)" style={{ width: 120, height: 48 }} className="m-2! hidden! md:block!" />
+        <Controls showInteractive={false} orientation="horizontal" position="bottom-left" className="m-2!" />
       </ReactFlow>}
       {saving && <span className="absolute top-2 right-2 rounded-sm bg-card px-2 py-1 text-2xs text-muted-foreground shadow-fluent-2">Αποθήκευση…</span>}
     </div>
