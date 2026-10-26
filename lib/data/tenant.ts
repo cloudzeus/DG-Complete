@@ -565,3 +565,29 @@ async function methodNames(tenantId: string, ids: (string | null)[]) {
   const rows = await tenantDb(tenantId).method.findMany({ where: { id: { in: unique } }, select: { id: true, name: true, slug: true } });
   return new Map(rows.map((m) => [m.id, { name: m.name, key: m.slug }]));
 }
+
+/** Latest runs of a workflow (all versions) with their logs, for the panel under the editor. */
+export async function workflowRuns(tenantId: string, workflowId: string, take = 10) {
+  return withTenantTx(tenantId, async (tx) => {
+    const runs = await tx.run.findMany({
+      where: { workflowVersion: { workflowId } },
+      orderBy: { queuedAt: "desc" },
+      take,
+      select: { id: true, status: true, trigger: true, externalRef: true, queuedAt: true, durationMs: true, errorCode: true, errorMessage: true, workflowVersion: { select: { versionNo: true } } },
+    });
+    const logs = runs.length
+      ? await tx.runLog.findMany({ where: { runId: { in: runs.map((r) => r.id) } }, orderBy: { ts: "asc" }, take: 50 * runs.length })
+      : [];
+    return runs.map((r) => ({
+      id: r.id,
+      status: r.status,
+      trigger: r.trigger,
+      externalRef: r.externalRef,
+      version: r.workflowVersion.versionNo,
+      createdAt: iso(r.queuedAt)!,
+      durationMs: r.durationMs,
+      error: r.errorCode ? `${r.errorCode}: ${r.errorMessage ?? ""}` : null,
+      logs: logs.filter((l) => l.runId === r.id).slice(-50).map((l) => ({ at: iso(l.ts)!, level: l.level.toLowerCase(), message: l.message })),
+    }));
+  });
+}

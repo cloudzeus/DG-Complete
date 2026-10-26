@@ -1,7 +1,9 @@
 "use client";
 
 import "@xyflow/react/dist/style.css";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
 import { useRouter } from "next/navigation";
 import {
   Background, BaseEdge, Controls, EdgeLabelRenderer, Handle, MiniMap, Position, ReactFlow, getSmoothStepPath,
@@ -26,8 +28,9 @@ const ICON: Record<NodeKind, LucideIcon> = {
   input: FileInput, navigate: Navigation, form: FormInput, action: MousePointerClick, check: CheckSquare, read: ScanText,
   loop: Repeat, condition: Split, human: Hand, helper: Wrench, output: FileOutput,
 };
-const W = 240;
-const H = 88; // card height (h-22) — ELK lays out with it
+// Compact horizontal cards (11rem × 3.5rem at the 14px root) — ELK lays out with these sizes.
+const W = 154;
+const H = 49;
 const elk = new ELK();
 
 type StepNodeData = GraphNode & { selected: boolean };
@@ -39,32 +42,29 @@ function StepNode({ data }: NodeProps<Node<StepNodeData>>) {
   return (
     <div
       className={cn(
-        "h-22 w-60 overflow-hidden rounded-lg border bg-card px-3 py-2 text-left shadow-fluent-2 transition-shadow duration-150 hover:shadow-fluent-8",
+        "h-14 w-44 overflow-hidden rounded-md border bg-card px-2 py-1.5 text-left shadow-fluent-2 transition-shadow duration-150 hover:shadow-fluent-8",
         data.selected ? "border-sisyphus-500 ring-2 ring-sisyphus-500/25" : "border-border/80",
         terminal && "bg-muted/60",
       )}
     >
-      <Handle type="target" position={Position.Top} className="opacity-0" isConnectable={false} />
-      <div className="flex items-center gap-2">
-        <span className={cn("grid size-6 shrink-0 place-items-center rounded-sm", terminal ? "bg-card text-muted-foreground" : "bg-sisyphus-50 text-sisyphus-600")}>
-          <Icon aria-hidden className="size-3.5" />
+      <Handle type="target" position={Position.Left} className="opacity-0" isConnectable={false} />
+      <div className="flex items-center gap-1.5">
+        <span className={cn("grid size-5 shrink-0 place-items-center rounded-xs", terminal ? "bg-card text-muted-foreground" : "bg-sisyphus-50 text-sisyphus-600")}>
+          <Icon aria-hidden className="size-3" />
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="eyebrow block truncate">{data.no ? `${data.no} · ${data.type ? (STEP_TYPES[data.type] ?? data.type) : data.kind}` : data.label}</span>
-          {!terminal && <span className="block truncate text-sm font-medium">{data.label}</span>}
+        <span className="min-w-0 flex-1 truncate text-2xs font-semibold tracking-[0.08em] text-muted-foreground uppercase">
+          {data.no ? `${data.no} · ${data.type ? (STEP_TYPES[data.type] ?? data.type) : data.kind}` : data.label}
         </span>
       </div>
-      {data.bindings.length > 0 && (
-        <div className="mt-1.5 flex flex-wrap gap-1">
-          {data.bindings.slice(0, 3).map((b) => (
-            <span key={b} className="rounded-xs bg-muted px-1 font-mono text-2xs">
-              {b.replace(/^input\./, "")}
-            </span>
-          ))}
-          {data.bindings.length > 3 && <span className="text-2xs text-muted-foreground">+{data.bindings.length - 3}</span>}
-        </div>
+      {terminal ? (
+        <span className="mt-0.5 block truncate font-mono text-2xs text-muted-foreground">{data.bindings.map((b) => b.replace(/^input\./, "")).join(" · ") || "—"}</span>
+      ) : (
+        <span className="mt-0.5 block truncate text-xs font-medium" title={data.label}>
+          {data.label}
+          {data.bindings.length > 0 && <span className="ml-1 font-mono text-2xs font-normal text-muted-foreground">{data.bindings.map((b) => b.replace(/^input\./, "")).join(", ")}</span>}
+        </span>
       )}
-      <Handle type="source" position={Position.Bottom} className="opacity-0" isConnectable={false} />
+      <Handle type="source" position={Position.Right} className="opacity-0" isConnectable={false} />
     </div>
   );
 }
@@ -72,17 +72,17 @@ function StepNode({ data }: NodeProps<Node<StepNodeData>>) {
 const INSERT_TYPES = ["goto", "fill", "select", "click", "waitFor", "assert", "extract", "forEach", "if", "humanTask"];
 
 function InsertEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data }: EdgeProps<Edge<InsertEdgeData>>) {
-  const [path, x, y] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 8 });
+  const [path, x, y] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 6 });
   return (
     <>
-      <BaseEdge id={id} path={path} className="stroke-border!" style={{ strokeWidth: 1.5 }} />
+      <BaseEdge id={id} path={path} className="stroke-sisyphus-300! motion-reduce:[animation:none]!" style={{ strokeWidth: 1.25 }} />
       {data?.canEdit && (
         <EdgeLabelRenderer>
           <div className="nodrag nopan pointer-events-auto absolute" style={{ transform: `translate(-50%, -50%) translate(${x}px, ${y}px)` }}>
             <Popover>
               <PopoverTrigger asChild>
-                <button type="button" aria-label="Προσθήκη βήματος εδώ" className="grid size-5 place-items-center rounded-full border border-border bg-card text-muted-foreground shadow-fluent-2 transition-colors duration-150 hover:border-sisyphus-500 hover:text-sisyphus-600 focus-visible:outline-2 focus-visible:outline-sisyphus-500">
-                  <Plus aria-hidden className="size-3" />
+                <button type="button" aria-label="Προσθήκη βήματος εδώ" className="grid size-4 place-items-center rounded-full border border-border bg-card text-muted-foreground shadow-fluent-2 transition-colors duration-150 hover:border-sisyphus-500 hover:text-sisyphus-600 focus-visible:outline-2 focus-visible:outline-sisyphus-500">
+                  <Plus aria-hidden className="size-2.5" />
                 </button>
               </PopoverTrigger>
               <PopoverContent className="w-56 p-1" align="center">
@@ -125,12 +125,12 @@ export function WorkflowCanvas(props: {
     elk
       .layout({
         id: "root",
-        layoutOptions: { "elk.algorithm": "layered", "elk.direction": "DOWN", "elk.spacing.nodeNode": "28", "elk.layered.spacing.nodeNodeBetweenLayers": "36" },
+        layoutOptions: { "elk.algorithm": "layered", "elk.direction": "RIGHT", "elk.spacing.nodeNode": "20", "elk.layered.spacing.nodeNodeBetweenLayers": "40" },
         children: graph.nodes.map((n) => ({ id: n.id, width: W, height: H })),
         edges: graph.edges.map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] })),
       })
       .then((r) => {
-        if (!cancelled) setPositions(new Map((r.children ?? []).map((c) => [c.id, { x: (c.x ?? 0) + (graph.nodes.find((n) => n.id === c.id)?.parentId ? 40 : 0), y: c.y ?? 0 }])));
+        if (!cancelled) setPositions(new Map((r.children ?? []).map((c) => [c.id, { x: c.x ?? 0, y: (c.y ?? 0) + (graph.nodes.find((n) => n.id === c.id)?.parentId ? 12 : 0) }])));
       });
     return () => {
       cancelled = true;
@@ -152,10 +152,20 @@ export function WorkflowCanvas(props: {
     connectable: false,
     selectable: n.stepIds.length > 0,
   }));
-  const edges: Edge<InsertEdgeData>[] = graph.edges.map((e) => ({ id: e.id, source: e.source, target: e.target, type: "insert", data: { insertAfter: e.insertAfter, canEdit: props.canEdit, onInsert } }));
+  const edges: Edge<InsertEdgeData>[] = graph.edges.map((e) => ({ id: e.id, source: e.source, target: e.target, type: "insert", animated: true, data: { insertAfter: e.insertAfter, canEdit: props.canEdit, onInsert } }));
+
+  // Discreet entrance of the nodes (GSAP, 240 ms, 30 ms stagger) — skipped with prefers-reduced-motion.
+  const box = useRef<HTMLDivElement>(null);
+  useGSAP(
+    () => {
+      if (!positions.size || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      gsap.from(".react-flow__node", { opacity: 0, x: -6, duration: 0.24, ease: "power1.out", stagger: 0.03 });
+    },
+    { scope: box, dependencies: [positions.size > 0] },
+  );
 
   return (
-    <div className="relative h-[min(70dvh,40rem)] min-h-96 w-full overflow-hidden rounded-lg border border-border/70 bg-muted/30">
+    <div ref={box} className="relative h-[clamp(14rem,38dvh,22rem)] w-full overflow-hidden rounded-lg border border-border/70 bg-muted/30">
       {positions.size === 0 && (
         <div className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">
           <Loader2 aria-label="Διάταξη" className="size-5 animate-spin" />
@@ -167,7 +177,7 @@ export function WorkflowCanvas(props: {
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
-        fitViewOptions={{ padding: 0.15, maxZoom: 1, minZoom: 0.8 }}
+        fitViewOptions={{ padding: 0.12, maxZoom: 1, minZoom: 0.7 }}
         minZoom={0.2}
         nodesConnectable={false}
         onNodeClick={(_, n) => {

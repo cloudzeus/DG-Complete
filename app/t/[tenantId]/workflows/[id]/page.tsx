@@ -39,7 +39,8 @@ import {
 } from "@/lib/actions/tenant";
 import { WorkflowCanvas } from "@/components/workflow-editor/canvas";
 import { StepTree } from "@/components/workflow-editor/step-tree";
-import { getWorkflow } from "@/lib/data/tenant";
+import { getWorkflow, workflowRuns } from "@/lib/data/tenant";
+import { RunLogPanel } from "@/components/workflow-editor/run-log-panel";
 import { can } from "@/lib/rbac";
 import { requireTenant } from "@/lib/tenant";
 import type { StepDef } from "@/lib/data/tenant";
@@ -97,6 +98,7 @@ export default async function WorkflowEditor({
   const view = sp.view === "list" || sp.view === "json" ? sp.view : "canvas";
   const all = flat(steps);
   const selected = all.find((s) => s.id === sp.step) ?? all[1] ?? all[0];
+  const runs = await workflowRuns(tenantId, wf.id);
   const warnings = lint(latest.definition.steps ?? [], wf.inputs);
   const stepHref = `${base}?${new URLSearchParams({ view })}&step=`;
   const href = (q: Record<string, string>) =>
@@ -196,7 +198,7 @@ export default async function WorkflowEditor({
           <Section
             title="Βήματα"
             className={
-              view === "canvas" ? "lg:col-span-2 xl:col-span-2" : undefined
+              view === "canvas" ? "lg:col-span-2 xl:col-span-3" : undefined
             }
             bodyClassName="p-2 sm:p-3"
             actions={
@@ -405,7 +407,7 @@ export default async function WorkflowEditor({
             </Section>
           )}
 
-          <div className="space-y-4 lg:col-span-2 xl:col-span-1">
+          <div className={cn("space-y-4", view === "canvas" ? "lg:col-span-1 xl:col-span-2 xl:grid xl:grid-cols-3 xl:gap-4 xl:space-y-0 xl:*:min-w-0" : "lg:col-span-2 xl:col-span-1")}>
             <Section
               title="Είσοδοι"
               bodyClassName="p-3"
@@ -551,6 +553,10 @@ export default async function WorkflowEditor({
             <TextareaField name="note" label="Σημείωση έκδοσης" rows={3} />
           </FormDialog>
         )}
+      </Section>
+
+      <Section className="mt-4" title="Εκτελέσεις & logs" description="Οι τελευταίες εκτελέσεις της ροής (όλες οι εκδόσεις), με τα logs κάθε καταχώρισης.">
+        <RunLogPanel runs={runs} runsHref={`/t/${tenantId}/runs`} />
       </Section>
     </>
   );
