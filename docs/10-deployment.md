@@ -45,7 +45,7 @@ flowchart LR
 DATABASE_URL=postgresql://dgcomplete_app:…@100.70.50.43:6432/DG_COMPLETE   # μέσω PgBouncer
 BETTER_AUTH_SECRET=…            BETTER_AUTH_URL=https://complete.dgsmart.gr
 DATA_ENCRYPTION_KEYS=k1:…       # AES-256-GCM keyring (rotation: νέο κλειδί πρώτο)
-SEED_ADMIN_EMAIL=… SEED_ADMIN_PASSWORD=… SEED_ADMIN_NAME=…
+SEED_ADMIN_EMAIL=… SEED_ADMIN_PASSWORD=… SEED_ADMIN_NAME=…   # στην εκκίνηση του web δημιουργείται ο πρώτος SUPER_ADMIN αν δεν υπάρχει κανένας (lib/bootstrap-admin.ts)· δεν αλλάζει ποτέ υπάρχοντα κωδικό
 CRON_SECRET=…                   SCHEDULER=          # off μόνο για debugging· οι εργασίες ορίζονται στο lib/jobs/registry.ts, ΟΧΙ στο Coolify
 # Mailgun / SoftOne DGsoft (χρεώσεις, συγχρονισμοί): όπως στο dgsmartbi (ρυθμίζονται και από το /admin/settings)
 
