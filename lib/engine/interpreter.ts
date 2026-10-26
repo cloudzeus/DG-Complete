@@ -49,6 +49,10 @@ export type RunOptions = {
   env?: Record<string, unknown>;
   errorDetectors?: ErrorDetector[];
   hooks?: Hooks;
+  /** Numbering continues after an earlier interpreter on the same run (login flow). */
+  seqStart?: number;
+  /** Prefix of step paths, e.g. "login". */
+  pathPrefix?: string;
 };
 
 export type RunResult = { output: Record<string, unknown>; vars: Record<string, unknown>; committed: boolean };
@@ -71,6 +75,7 @@ export class Interpreter {
     private opts: RunOptions,
   ) {
     this.vars = { ...def.vars };
+    this.seq = opts.seqStart ?? 0;
     this.page = opts.page;
     this.sensitiveInputs = new Set(def.inputs.filter((i) => i.sensitive || SENSITIVE_KEY.test(i.key)).map((i) => i.key));
     this.page.on("dialog", (d) => void this.handleDialog(d));
@@ -92,7 +97,7 @@ export class Interpreter {
     this.page.setDefaultTimeout(this.def.settings.defaultTimeoutMs);
     this.page.setDefaultNavigationTimeout(this.def.settings.navigationTimeoutMs);
     try {
-      await this.runSteps(this.def.steps, "", {});
+      await this.runSteps(this.def.steps, this.opts.pathPrefix ?? "", {});
     } catch (err) {
       if (this.def.onError.length) {
         try {
@@ -104,6 +109,11 @@ export class Interpreter {
       throw err;
     }
     return { output: this.output, vars: this.vars, committed: this.committed };
+  }
+
+  /** Last step number used (for a following interpreter on the same run). */
+  get lastSeq() {
+    return this.seq;
   }
 
   /** Was a commitPoint step completed before the failure (docs/06 §5)? */
@@ -141,8 +151,13 @@ export class Interpreter {
         await end({ status: "SUCCEEDED", ...info }, attempt);
         return;
       } catch (raw) {
-        const err = classify(raw);
+        let err = classify(raw);
         if (err.code === "E_CANCELLED") throw err;
+        // The element is missing because the system showed an error? Report the system's message.
+        if (["E_LOCATOR_NOT_FOUND", "E_TIMEOUT", "E_ASSERTION_FAILED", "E_ELEMENT_NOT_ACTIONABLE"].includes(err.code)) {
+          const target = await this.checkTargetErrors().then(() => null, (e: unknown) => (e instanceof EngineError ? e : null));
+          if (target) err = target;
+        }
         if (attempt < attempts && err.retryable) {
           this.opts.hooks?.log?.("WARN", `Νέα προσπάθεια βήματος (${attempt + 1}/${attempts}): ${err.message}`, { code: err.code }, step.id);
           await this.page.waitForTimeout(step.retry?.delayMs ?? 1000);

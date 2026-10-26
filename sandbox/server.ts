@@ -27,7 +27,7 @@ const page = (title: string, body: ReturnType<typeof html>) => html`<!doctype ht
     <body><main>${body}</main></body>
   </html>`;
 
-app.get("/", (c) => c.redirect("/login"));
+app.get("/", (c) => c.redirect(c.req.header("cookie")?.includes("sandbox_session=1") ? "/entries/new" : "/login"));
 
 app.get("/login", (c) =>
   c.html(
@@ -56,7 +56,8 @@ app.get("/entries/new", (c) => {
   return c.html(
     page(
       "Νέα καταχώριση",
-      html`<h1>Νέα καταχώριση</h1>
+      html`<p data-testid="user-menu">Συνδεδεμένος: demo</p>
+        <h1>Νέα καταχώριση</h1>
         <form method="post" action="/entries">
           <label for="afm">ΑΦΜ</label><input id="afm" name="afm" inputmode="numeric" />
           <label for="name">Επωνυμία</label><input id="name" name="name" />

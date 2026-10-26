@@ -10,6 +10,22 @@ export function isPrivateHost(host: string) {
   return PRIVATE.some((r) => r.test(h));
 }
 
+/** The UI stores hosts ("erp.example.gr", "localhost:4100"); a host gets the scheme of the base URL. */
+export function normalizeOrigins(list: string[], baseUrl: string): string[] {
+  const proto = new URL(baseUrl).protocol;
+  const out = new Set<string>([new URL(baseUrl).origin]);
+  for (const raw of list) {
+    const v = raw.trim();
+    if (!v) continue;
+    try {
+      out.add(new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(v) ? v : `${proto}//${v}`).origin);
+    } catch {
+      // ignore malformed entries
+    }
+  }
+  return [...out];
+}
+
 export async function installGuard(context: BrowserContext, allowedOrigins: string[], onBlock: (url: string, reason: string) => void) {
   const allowed = new Set(allowedOrigins.map((o) => new URL(o).origin));
   await context.route("**/*", (route) => {

@@ -33,6 +33,21 @@ RUN npm init -y >/dev/null && npm install --omit=dev --no-audit --no-fund prisma
 COPY prisma ./prisma
 COPY prisma.config.ts ./
 
+# ── worker (docs/06, docs/10 §2): Playwright image with the same version as package.json ─────
+# Coolify: a second application from this repo with Docker target `worker` (no domain).
+FROM mcr.microsoft.com/playwright:v1.64.1-noble AS worker
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=build --chown=pwuser:pwuser /app/node_modules ./node_modules
+COPY --from=build --chown=pwuser:pwuser /app/package.json /app/tsconfig.json ./
+COPY --from=build --chown=pwuser:pwuser /app/lib ./lib
+COPY --from=build --chown=pwuser:pwuser /app/worker ./worker
+USER pwuser
+EXPOSE 9100
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=5 \
+  CMD node -e "fetch('http://127.0.0.1:9100').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+CMD ["node", "--conditions=react-server", "--import", "tsx", "worker/index.ts"]
+
 # ── runtime ───────────────────────────────────────────────────────────
 FROM node:${NODE_VERSION} AS runner
 WORKDIR /app

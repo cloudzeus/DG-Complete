@@ -45,6 +45,17 @@ const DEFINITION = {
     { id: "s6", type: "extract", label: "Αριθμός καταχώρισης", locator: { strategy: "testid", value: "entry-id" }, output: "entryId" },
   ],
 };
+const LOGIN_DEFINITION = {
+  dslVersion: 1,
+  login: { mode: "none", sessionCheck: { candidates: [{ kind: "testId", value: "user-menu" }] } },
+  steps: [
+    { id: "l1", type: "navigate", label: "Σελίδα σύνδεσης", url: "/login" },
+    { id: "l2", type: "fill", label: "Χρήστης", locator: { candidates: [{ kind: "label", value: "Όνομα χρήστη" }] }, value: "{{secrets.username}}" },
+    { id: "l3", type: "fill", label: "Κωδικός", locator: { candidates: [{ kind: "label", value: "Κωδικός" }] }, value: "{{secrets.password}}" },
+    { id: "l4", type: "click", label: "Είσοδος", locator: { candidates: [{ kind: "role", role: "button", name: "Είσοδος" }] } },
+  ],
+};
+
 const INPUT_SCHEMA = {
   type: "object",
   required: ["afm", "name"],
@@ -105,6 +116,18 @@ async function main() {
     const c = await tx.credential.create({ data: { tenantId: tenant.id, targetSystemId: target.id, label: "Demo χρήστης", kind: "USERNAME_PASSWORD", payloadEnc: "pending" } as never });
     await tx.credential.update({ where: { id: c.id }, data: { payloadEnc: encryptJson({ username: "demo", password: "demo1234" }, `${tenant.id}:${c.id}`) } });
   });
+
+  // Login flow of the sandbox (docs/06 §6): the engine runs it when there is no valid session.
+  const login =
+    (await db.workflow.findFirst({ where: { slug: "sandbox-login" } })) ??
+    (await db.workflow.create({ data: { name: "Σύνδεση Sandbox", slug: "sandbox-login", isLoginFlow: true, targetSystemId: target.id, tags: ["demo"], createdById: owner.id } as never }));
+  if (!(await db.workflowVersion.findFirst({ where: { workflowId: login.id } }))) {
+    const v = await db.workflowVersion.create({
+      data: { workflowId: login.id, versionNo: 1, status: "PUBLISHED", definition: LOGIN_DEFINITION, inputSchema: { type: "object", properties: {} }, outputSchema: { type: "object", properties: {} }, changelog: "Αρχική έκδοση", createdById: owner.id, approvedById: owner.id, approvedAt: new Date(), publishedAt: new Date() } as never,
+    });
+    await db.workflow.updateMany({ where: { id: login.id }, data: { latestVersionNo: 1, publishedVersionId: v.id } });
+  }
+  await db.targetSystem.updateMany({ where: { id: target.id, loginWorkflowId: null }, data: { loginWorkflowId: login.id } });
 
   const workflow =
     (await db.workflow.findFirst({ where: { slug: "create-customer" } })) ??
