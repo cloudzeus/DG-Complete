@@ -119,8 +119,8 @@ function evalNode(n: Node, scope: Scope): unknown {
       const b = evalNode(n.right as Node, scope);
       switch (op) {
         // Loose equality on purpose: `x == null` must also match undefined (docs/05 example).
-        case "==": return a == b; // eslint-disable-line eqeqeq
-        case "!=": return a != b; // eslint-disable-line eqeqeq
+        case "==": return a == b;
+        case "!=": return a != b;
         case "===": return a === b;
         case "!==": return a !== b;
         case ">": return (a as number) > (b as number);
