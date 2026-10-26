@@ -352,7 +352,7 @@ export async function getRun(tenantId: string, id: string) {
       where: { id },
       include: {
         steps: { orderBy: { seq: "asc" } },
-        artifacts: { where: { deletedAt: null }, orderBy: { createdAt: "asc" }, select: { id: true, kind: true, runStepId: true } },
+        artifacts: { where: { deletedAt: null }, orderBy: { createdAt: "asc" }, select: { id: true, kind: true, runStepId: true, storagePath: true, contentType: true, sizeBytes: true } },
         workflowVersion: { select: { versionNo: true, workflow: { select: { name: true } } } },
       },
     });

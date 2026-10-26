@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ImageOff, RotateCcw, XCircle } from "lucide-react";
+import { AutoRefresh } from "@/components/dg/auto-refresh";
 import { fmtDateTime, fmtDuration } from "@/components/dg/format";
 import { FormDialog } from "@/components/dg/form-dialog";
 import { TextareaField } from "@/components/dg/fields";
@@ -18,10 +19,20 @@ import { RUN_STATUS, RUN_TRIGGER } from "@/lib/labels";
 import { can } from "@/lib/rbac";
 import { requireTenant } from "@/lib/tenant";
 import { cn } from "@/lib/utils";
+import { getStorage } from "@/lib/storage";
 
 export const metadata: Metadata = { title: "Εκτέλεση" };
 
 const LEVEL: Record<string, string> = { debug: "text-muted-foreground", info: "text-muted-foreground", warn: "text-warning-500", error: "text-danger-500" };
+
+const ARTIFACT_LABEL: Record<string, string> = {
+  SCREENSHOT_FULL: "Ολόκληρη σελίδα",
+  SCREENSHOT_VIEWPORT: "Ορατό τμήμα",
+  SCREENSHOT_ELEMENT: "Στοιχείο",
+  DOM_SNAPSHOT: "DOM (χωρίς τιμές πεδίων)",
+  CONSOLE_LOG: "Console",
+  PLAYWRIGHT_TRACE: "Trace",
+};
 
 export default async function RunPage({ params, searchParams }: PageProps<"/t/[tenantId]/runs/[id]">) {
   const { tenantId, id } = await params;
@@ -32,10 +43,14 @@ export default async function RunPage({ params, searchParams }: PageProps<"/t/[t
   const base = `/t/${tenantId}/runs/${run.id}`;
   const active = ["QUEUED", "RUNNING", "RETRY_SCHEDULED", "NEEDS_ATTENTION", "HELD"].includes(run.status);
   const canRetry = can(user, "tenant.runs.retry", tenantId);
-  const shot = run.artifacts.find((a) => a.kind.startsWith("SCREENSHOT"));
+  const shot = run.artifacts.find((a) => a.kind === "SCREENSHOT_VIEWPORT") ?? run.artifacts.find((a) => a.kind.startsWith("SCREENSHOT"));
+  const storage = run.artifacts.length ? await getStorage() : null;
+  const files = storage ? await Promise.all(run.artifacts.map(async (a) => ({ ...a, url: await storage.signedUrl(a.storagePath, 600) }))) : [];
+  const shotUrl = shot ? files.find((f) => f.id === shot.id)?.url : undefined;
 
   return (
     <>
+      {active && run.status !== "NEEDS_ATTENTION" && run.status !== "HELD" && <AutoRefresh />}
       <PageHeader
         crumbs={[{ href: `/t/${tenantId}/runs`, label: "Εκτελέσεις" }]}
         title={run.methodName}
@@ -76,7 +91,18 @@ export default async function RunPage({ params, searchParams }: PageProps<"/t/[t
           </Section>
           <Section title={run.error ? `Στιγμιότυπο${run.error.step ? ` — βήμα ${run.error.step}` : ""}` : "Τελικό στιγμιότυπο"} description="Τα πεδία κωδικών και OTP είναι μασκαρισμένα. Τα αρχεία ανοίγουν με χρονικά περιορισμένο σύνδεσμο.">
             {shot ? (
-              <Screenshot alt={run.error ? `Στιγμιότυπο σφάλματος στο βήμα ${run.error.step}` : "Τελικό στιγμιότυπο της εκτέλεσης"} highlight={!!run.error} />
+              <>
+                <Screenshot src={shotUrl} alt={run.error ? `Στιγμιότυπο σφάλματος στο βήμα ${run.error.step}` : "Τελικό στιγμιότυπο της εκτέλεσης"} highlight={!!run.error} />
+                <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                  {files.map((f) => (
+                    <li key={f.id}>
+                      <a href={f.url} target="_blank" rel="noreferrer" className="text-sisyphus-600 underline-offset-2 hover:underline">
+                        {ARTIFACT_LABEL[f.kind] ?? f.kind}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </>
             ) : (
               <p className="flex items-center gap-2 text-sm text-muted-foreground"><ImageOff aria-hidden className="size-4" /> Χωρίς στιγμιότυπο.</p>
             )}

@@ -132,3 +132,10 @@ Retry policy: `Method.maxAttempts`, exponential backoff `retryBackoffSec * 2^(at
 ## 8. Live progress
 
 Ο worker κάνει publish σε `run:{id}` γεγονότα `{ type: "step.started", stepId, iteration? }`, `{ type: "step", stepId, status, durationMs, attempt, iteration?, errorCode?, thumbKey? }`, `{ type: "log", … }`, `{ type: "status", … }`. Το web τα προωθεί με SSE. Στο test run του editor ο σχεδιαστής βλέπει τα βήματα να «ανάβουν» και το τελευταίο screenshot (προαιρετικά `screenshotPolicy=EVERY_STEP` σε test runs). Τα γεγονότα τροφοδοτούν τον **οπτικό καμβά** (docs/19 §4): κάθε κόμβος αλλάζει κατάσταση ζωντανά και δείχνει τη μικρογραφία `STEP_THUMB` ή το στιγμιότυπο σφάλματος.
+
+## 9. Υλοποίηση (P08 — πρώτη έκδοση)
+
+- `lib/engine`: `Interpreter`, `resolveLocator`, `classify`, `installGuard`/`normalizeOrigins` (τα `allowedOrigins` του UI είναι hosts· παίρνουν το scheme του `baseUrl`).
+- Όταν ένα βήμα αποτυγχάνει με `E_LOCATOR_NOT_FOUND` / `E_TIMEOUT` / `E_ASSERTION_FAILED` / `E_ELEMENT_NOT_ACTIONABLE`, ελέγχονται πρώτα τα `errorDetectors` του συστήματος· αν φαίνεται μήνυμα, το σφάλμα γίνεται `E_TARGET_VALIDATION` / `E_DUPLICATE` με `targetMessage`.
+- `worker/`: consumer της `runs`, ατομικό claim (`updateMany where status in (QUEUED, RETRY_SCHEDULED)`), semaphores tenant/target/credential στο `concurrency_lease`, session reuse + ροή σύνδεσης του `TargetSystem.loginWorkflowId`, στιγμιότυπα/DOM/console στο σφάλμα, retries με backoff (όχι μετά από `commitPoint`), χρέωση `usage:<runId>` μόνο σε SUCCEEDED (δοκιμές δωρεάν έως `Plan.freeTestRunsDaily`), sweeper για runs χωρίς job και orphan reaper.
+- Εκκρεμούν: SSE `/api/stream/runs/[id]` (η σελίδα εκτέλεσης ανανεώνεται ανά 2,5″ όσο τρέχει), Playwright trace, `humanTask`/live assist (P09b), `choose` (docs/25), `/metrics` Prometheus (σήμερα JSON στη θύρα 9100).

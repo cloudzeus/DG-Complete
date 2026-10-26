@@ -1,5 +1,5 @@
 import "server-only";
-import { createHash, createHmac } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { bunnyDelete, bunnyGet, bunnyPut, bunnySignedUrl } from "./bunny";
@@ -21,6 +21,16 @@ const safe = (p: string) => {
   if (!full.startsWith(LOCAL_ROOT + path.sep)) throw new Error("Μη έγκυρη διαδρομή αρχείου.");
   return full;
 };
+
+const localSig = (p: string, exp: number) => createHmac("sha256", process.env.BETTER_AUTH_SECRET ?? "dev").update(`${p}:${exp}`).digest("base64url");
+
+/** Checks a URL signed by the local driver (route /api/artifacts/local). */
+export function verifyLocalSignature(p: string, exp: number, sig: string) {
+  if (!p || !Number.isFinite(exp) || exp < Date.now() / 1000) return false;
+  const want = Buffer.from(localSig(p, exp));
+  const got = Buffer.from(sig);
+  return want.length === got.length && timingSafeEqual(want, got);
+}
 
 export async function getStorage(): Promise<Storage> {
   const cfg = await storageConfig();
@@ -44,7 +54,7 @@ export async function getStorage(): Promise<Storage> {
     delete: (p) => rm(safe(p), { force: true }),
     async signedUrl(p, ttl) {
       const exp = Math.floor(Date.now() / 1000) + (ttl ?? cfg.ttlSec);
-      const sig = createHmac("sha256", process.env.BETTER_AUTH_SECRET ?? "dev").update(`${p}:${exp}`).digest("base64url");
+      const sig = localSig(p, exp);
       return `/api/artifacts/local?${new URLSearchParams({ path: p, exp: String(exp), sig })}`;
     },
   };

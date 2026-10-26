@@ -176,3 +176,7 @@ Templates επιτρέπονται και μέσα σε locators: `{ kind: "text
 - για την παραγωγή OpenAPI (docs/07),
 - για τη φόρμα «Χειροκίνητη εκτέλεση» στο UI (auto‑form από schema),
 - για την αντιστοίχιση στηλών CSV/XLSX.
+
+## 8. Συμβατότητα με τον editor (υλοποίηση P05)
+
+Ο editor (P07) γράφει ακόμη απλούστερη μορφή: `goto` με το URL στο `value`, locator ως μία γραμμή κειμένου (`label "ΑΦΜ"`, `role button "Αποθήκευση"`, `testid entry-id`, αλλιώς CSS· εναλλακτικοί υποψήφιοι με ` || ` ή σε νέα γραμμή) ή `{ strategy, value }`, `extract.output: "x"` και inputs/outputs μόνο ως JSON Schema της έκδοσης. Το `normalizeDefinition()` (`lib/dsl/normalize.ts`) τα μετατρέπει στη μορφή των §1–§3 πριν το zod· η μορφή των §1–§3 περνά αμετάβλητη. Τύποι βημάτων που η μηχανή δεν υποστηρίζει ακόμη (`choose`, `extractTable`, `extractFields`, `callWorkflow`) επιστρέφουν `STEP_TYPE_UNSUPPORTED`.

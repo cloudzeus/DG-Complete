@@ -1,8 +1,16 @@
 import { cn } from "@/lib/utils";
 
-// Placeholder for an artifact screenshot (real images come from signed Bunny URLs — never public).
-// Draws a schematic page with the failing element highlighted in DG red (docs/09 §1).
-export function Screenshot({ alt, highlight = true, className }: { alt: string; highlight?: boolean; className?: string }) {
+// Artifact screenshot from a short-lived signed URL (never public). Without `src` it draws a
+// schematic page with the failing element highlighted in DG red (docs/09 §1).
+export function Screenshot({ alt, highlight = true, className, src }: { alt: string; highlight?: boolean; className?: string; src?: string }) {
+  if (src) {
+    return (
+      <a href={src} target="_blank" rel="noreferrer" className="block">
+        {/* eslint-disable-next-line @next/next/no-img-element -- signed, short-lived URL: no image optimizer */}
+        <img src={src} alt={alt} className={cn("w-full rounded-lg border border-border/70 bg-muted/40", className)} />
+      </a>
+    );
+  }
   return (
     <svg viewBox="0 0 160 100" role="img" aria-label={alt} className={cn("w-full rounded-lg border border-border/70 bg-muted/40", className)}>
       <rect x="0" y="0" width="160" height="10" className="fill-muted" />
