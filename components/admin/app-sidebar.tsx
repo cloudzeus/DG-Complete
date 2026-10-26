@@ -23,6 +23,7 @@ import {
   ShieldCheck,
   Users,
   type LucideIcon,
+ Library,
 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { DgLogo } from "@/components/brand/dg-logo";
@@ -59,6 +60,7 @@ const MAIN: { label: string; items: Item[] }[] = [
     label: "Γενικά",
     items: [
       { href: "/admin", label: "Επισκόπηση", icon: LayoutDashboard, exact: true },
+      { href: "/admin/library", label: "Βιβλιοθήκη ροών", icon: Library, superAdminOnly: true },
     ],
   },
   {

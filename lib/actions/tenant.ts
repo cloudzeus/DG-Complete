@@ -10,10 +10,11 @@ import { encrypt, encryptJson } from "@/lib/crypto";
 import { importChromeRecording } from "@/lib/dsl/import/chromeRecorder";
 import { closeSession, getSession, RecorderError, startSession } from "@/lib/recorder/live";
 import { ensureMethodForVersion } from "@/lib/methods";
+import { shareTarget } from "@/lib/library";
 import { sendWelcomeEmail } from "@/lib/email";
 import { validate, type FormState } from "@/lib/forms";
 import { prisma } from "@/lib/prisma";
-import { requirePermission, type Permission } from "@/lib/rbac";
+import { requirePermission, requireUser, type Permission } from "@/lib/rbac";
 import { createRun, enqueueRun, RunError } from "@/lib/runs/create";
 import { tenantDb, withTenantTx } from "@/lib/tenant-db";
 import type { Definition, StepDef } from "@/lib/data/tenant";
@@ -118,6 +119,25 @@ async function purgeWorkflows(tenantId: string, workflowIds: string[]) {
 }
 
 const DELETE_FAILED = "Η διαγραφή δεν ολοκληρώθηκε: υπάρχουν ακόμη στοιχεία που εξαρτώνται από αυτό (π.χ. εξαγωγές ή incidents). Δοκιμάστε ξανά ή επικοινωνήστε με την υποστήριξη.";
+
+/** Platform library → customers (docs/27): super admin only. */
+export async function shareTargetAction(libraryTenantId: string, targetId: string, _p: FormState, fd: FormData): Result {
+  const user = await requireUser();
+  if (user.platformRole !== "SUPER_ADMIN") return { ok: false, message: "Μόνο ο διαχειριστής πλατφόρμας μοιράζεται από τη βιβλιοθήκη." };
+  const lib = await prisma.tenant.findUnique({ where: { id: libraryTenantId }, select: { isLibrary: true } });
+  if (!lib?.isLibrary) return { ok: false, message: "Η κοινοποίηση γίνεται μόνο από τη βιβλιοθήκη." };
+  const tenantIds = fd.getAll("tenants").map(String).filter(Boolean);
+  if (!tenantIds.length) return { ok: false, errors: { tenants: "Επιλέξτε τουλάχιστον έναν πελάτη." } };
+  const published = await tenantDb(libraryTenantId).workflow.count({ where: { targetSystemId: targetId, publishedVersionId: { not: null } } });
+  if (!published) return { ok: false, message: "Το σύστημα δεν έχει δημοσιευμένες ροές ακόμα — δοκιμάστε και δημοσιεύστε πρώτα." };
+  const reports = await shareTarget(libraryTenantId, targetId, tenantIds, user.id);
+  for (const r of reports) {
+    await audit({ actorId: user.id, action: "library.share", entity: "TargetSystem", entityId: targetId, tenantId: r.tenantId, meta: { created: r.created, added: r.flowsAdded, updated: r.flowsUpdated } });
+  }
+  revalidatePath(`/t/${libraryTenantId}/targets/${targetId}`);
+  const lines = reports.map((r) => `${r.tenantName}: ${r.created ? "νέο σύστημα, " : ""}${r.flowsAdded} νέες ροές, ${r.flowsUpdated} ενημερώσεις`);
+  return { ok: true, message: `Κοινοποιήθηκε. ${lines.join(" · ")}. Κάθε πελάτης πρέπει να βάλει τα δικά του στοιχεία σύνδεσης.` };
+}
 
 export async function deleteTargetAction(tenantId: string, id: string): Result {
   const user = await guard(tenantId, "tenant.targets.manage");

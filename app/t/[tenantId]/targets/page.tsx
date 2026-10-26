@@ -41,7 +41,10 @@ export default async function TargetsPage({ params, searchParams }: PageProps<"/
               header: "Σύστημα",
               cell: (t) => (
                 <Link href={`${base}/targets/${t.id}`} className="group block min-w-0">
-                  <span className="block truncate font-medium group-hover:text-primary group-hover:underline">{t.name}</span>
+                  <span className="block truncate font-medium group-hover:text-primary group-hover:underline">
+                    {t.name}
+                    {t.fromLibrary && <span className="ml-2 rounded-xs bg-sisyphus-50 px-1.5 py-0.5 text-2xs font-medium text-sisyphus-700">Από τη βιβλιοθήκη DG</span>}
+                  </span>
                   <span className="block truncate font-mono text-2xs text-muted-foreground">{t.baseUrl}</span>
                 </Link>
               ),

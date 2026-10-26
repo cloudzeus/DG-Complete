@@ -1,19 +1,20 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Disc3, KeyRound, Pencil, Plus, Trash2 } from "lucide-react";
+import { Disc3, KeyRound, Pencil, Plus, Share2, Trash2 } from "lucide-react";
 import { DataTable } from "@/components/dg/data-table";
 import { EmptyState } from "@/components/dg/empty-state";
 import { fmtDateTime, fmtNum } from "@/components/dg/format";
 import { FormDialog } from "@/components/dg/form-dialog";
-import { FormRow, TextareaField, TextField } from "@/components/dg/fields";
+import { CheckboxGroup, FormRow, TextareaField, TextField } from "@/components/dg/fields";
 import { KpiTile } from "@/components/dg/kpi-tile";
 import { LinkTabs } from "@/components/dg/link-tabs";
 import { PageHeader } from "@/components/dg/page-header";
 import { Grid, Section } from "@/components/dg/section";
 import { StatusBadge, Tag } from "@/components/dg/status-badge";
 import { Button } from "@/components/ui/button";
-import { addCredentialAction, deleteCredentialAction, startLiveRecordingAction, updateTargetAction } from "@/lib/actions/tenant";
+import { addCredentialAction, deleteCredentialAction, shareTargetAction, startLiveRecordingAction, updateTargetAction } from "@/lib/actions/tenant";
+import { shareCandidates } from "@/lib/library";
 import { getTarget, listCredentials, listWorkflows } from "@/lib/data/tenant";
 import { RowActions } from "@/components/dg/row-actions";
 import { targetDelete } from "../shared";
@@ -26,7 +27,8 @@ export const metadata: Metadata = { title: "Σύστημα‑στόχος" };
 export default async function TargetPage({ params, searchParams }: PageProps<"/t/[tenantId]/targets/[id]">) {
   const { tenantId, id } = await params;
   const { tab = "general" } = await searchParams;
-  const { user } = await requireTenant(tenantId);
+  const { user, tenant } = await requireTenant(tenantId);
+  const candidates = tenant.isLibrary && user.platformRole === "SUPER_ADMIN" ? await shareCandidates(id) : [];
   const t = await getTarget(tenantId, id);
   if (!t) notFound();
   const base = `/t/${tenantId}`;
@@ -51,6 +53,27 @@ export default async function TargetPage({ params, searchParams }: PageProps<"/t
                 <TextField name="baseUrl" label="Διεύθυνση" required type="url" defaultValue={t.baseUrl} />
                 <TextareaField name="origins" label="Επιτρεπτά origins" rows={3} mono defaultValue={t.origins.join("\n")} />
                 <TextField name="maxConcurrency" label="Ταυτόχρονες εκτελέσεις" required type="number" defaultValue={t.maxConcurrency} />
+              </FormDialog>
+            )}
+            {tenant.isLibrary && user.platformRole === "SUPER_ADMIN" && (
+              <FormDialog
+                title={`Κοινοποίηση «${t.name}» σε πελάτες`}
+                description="Κάθε πελάτης παίρνει το σύστημα και τις δημοσιευμένες ροές του (με τις μεθόδους API τους). Τα στοιχεία σύνδεσης δεν μεταφέρονται — ο πελάτης βάζει τα δικά του. Νέα κοινοποίηση ενημερώνει όσους το έχουν ήδη."
+                action={shareTargetAction.bind(null, tenantId, t.id)}
+                submitLabel="Κοινοποίηση"
+                trigger={
+                  <Button size="sm">
+                    <Share2 aria-hidden /> Κοινοποίηση σε πελάτες
+                  </Button>
+                }
+              >
+                <CheckboxGroup
+                  name="tenants"
+                  label="Πελάτες"
+                  required
+                  columns={2}
+                  options={candidates.map((c) => ({ value: c.id, label: c.name, hint: c.shared ? "το έχει ήδη — θα ενημερωθεί" : undefined }))}
+                />
               </FormDialog>
             )}
             {canTargets && <RowActions label={`Ενέργειες για ${t.name}`} destroy={targetDelete(tenantId, { id: t.id, name: t.name, workflows: workflows.length, credentials: creds.length })} />}

@@ -101,15 +101,17 @@ enum TenantRole {
 }
 
 model Tenant {
-  id     String       @id @default(cuid())
-  name   String
-  afm    String?
-  s1Trdr Int?         @unique // TRDR του πελάτη στο SoftOne της DGsoft
-  s1Code String?
-  email  String?
-  status TenantStatus @default(PENDING)
+  id        String       @id @default(cuid())
+  name      String
+  afm       String?
+  s1Trdr    Int?         @unique // TRDR του πελάτη στο SoftOne της DGsoft
+  s1Code    String?
+  email     String?
+  status    TenantStatus @default(PENDING)
   // Demo tenant: always has access, never needs a subscription (for building/testing)
-  isDemo Boolean      @default(false)
+  isDemo    Boolean      @default(false)
+  // Platform library (docs/27): the super admin builds systems and flows here and shares them.
+  isLibrary Boolean      @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -864,6 +866,7 @@ model TargetSystem {
   healthCredentialRef String? // δοκιμαστικός δικαιούχος
   healthSchedule      String? // cron έκφραση, default ωριαία 07–22 + νυχτερινή
   ownerIds            String[]  @default([])
+  sourceTargetId      String? // copied from the platform library (docs/27)
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
@@ -963,6 +966,7 @@ model Workflow {
   resourceSlug       String? // π.χ. "aitima-katavolis"
   latestVersionNo    Int          @default(0)
   publishedVersionId String?
+  sourceWorkflowId   String? // copied from the platform library (docs/27)
   createdById        String
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
@@ -977,28 +981,29 @@ model Workflow {
 }
 
 model WorkflowVersion {
-  id             String                @id @default(cuid())
-  tenantId       String
-  workflowId     String
-  workflow       Workflow              @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  versionNo      Int
-  status         WorkflowVersionStatus @default(DRAFT)
-  definition     Json // WorkflowDefinition (docs/05) — αμετάβλητο όταν PUBLISHED (DB trigger)
-  inputSchema    Json
-  outputSchema   Json
-  checksum       String?
-  dslVersion     Int                   @default(1)
-  changelog      String?
-  createdById    String
-  submittedById  String?
-  submittedAt    DateTime?
-  approvedById   String? // TENANT_ADMIN που ενέκρινε
-  approvedAt     DateTime?
-  rejectedReason String?
-  lastTestRunId  String? // απαιτείται επιτυχημένο test run για έγκριση
-  publishedAt    DateTime?
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
+  id              String                @id @default(cuid())
+  tenantId        String
+  workflowId      String
+  workflow        Workflow              @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  versionNo       Int
+  status          WorkflowVersionStatus @default(DRAFT)
+  definition      Json // WorkflowDefinition (docs/05) — αμετάβλητο όταν PUBLISHED (DB trigger)
+  inputSchema     Json
+  outputSchema    Json
+  checksum        String?
+  dslVersion      Int                   @default(1)
+  changelog       String?
+  createdById     String
+  submittedById   String?
+  submittedAt     DateTime?
+  approvedById    String? // TENANT_ADMIN που ενέκρινε
+  approvedAt      DateTime?
+  rejectedReason  String?
+  lastTestRunId   String? // απαιτείται επιτυχημένο test run για έγκριση
+  sourceVersionId String? // library version this one was shared from (docs/27)
+  publishedAt     DateTime?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 
   methods Method[]
   runs    Run[]

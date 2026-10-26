@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bell, Search, ShieldCheck } from "lucide-react";
+import { Bell, Library, Search, ShieldCheck } from "lucide-react";
 import { TenantSidebar } from "@/components/tenant/tenant-sidebar";
 import { TenantSwitcher, UserMenu } from "@/components/tenant/topbar-menus";
 import { NAV } from "@/components/tenant/nav";
@@ -58,7 +58,15 @@ export default async function TenantLayout({ children, params }: LayoutProps<"/t
             <UserMenu name={user.name} email={user.email} staff={staff} />
           </div>
         </header>
-        {staff && !role && (
+        {tenant.isLibrary && (
+          <div role="note" className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-warning-500/30 bg-warning-50 px-4 py-2 text-sm">
+            <Library aria-hidden className="size-4 shrink-0 text-warning-500" />
+            <span className="min-w-0 flex-1">
+              <strong>Βιβλιοθήκη πλατφόρμας.</strong> Τα συστήματα και οι ροές που φτιάχνετε εδώ τα μοιράζεστε σε πελάτες από τη σελίδα του συστήματος («Κοινοποίηση σε πελάτες»). Τα στοιχεία σύνδεσης δεν μεταφέρονται ποτέ.
+            </span>
+          </div>
+        )}
+        {staff && !role && !tenant.isLibrary && (
           <div role="note" className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-sisyphus-200 bg-sisyphus-50 px-4 py-2 text-sm">
             <ShieldCheck aria-hidden className="size-4 shrink-0 text-sisyphus-600" />
             <span className="min-w-0 flex-1">

@@ -56,6 +56,7 @@ export async function listTargets(tenantId: string, q?: string) {
       maxConcurrency: t.maxConcurrency,
       errorDetectors: (t.errorDetectors ?? []) as { name?: string; css?: string; kind?: string }[],
       workflows: t._count.workflows,
+      fromLibrary: !!t.sourceTargetId,
       credentials: credCount.get(t.id) ?? 0,
       successRate: rate,
       lastRunAt: iso(s?.last),

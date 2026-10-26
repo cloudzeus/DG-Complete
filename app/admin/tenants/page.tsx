@@ -13,6 +13,7 @@ export const metadata: Metadata = { title: "Tenants" };
 export default async function TenantsPage() {
   const user = await requirePermission("tenants.read");
   const tenants = await prisma.tenant.findMany({
+    where: { isLibrary: false },
     orderBy: { name: "asc" },
     include: { _count: { select: { memberships: true } } },
   });

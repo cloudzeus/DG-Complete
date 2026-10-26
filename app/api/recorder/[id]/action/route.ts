@@ -22,6 +22,7 @@ const ActionSchema = z.discriminatedUnion("type", [
     repeat: z.object({ list: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,39}$/), label: z.string().max(80).optional(), addButtonCss: z.string().max(500).optional(), firstRowExists: z.boolean() }).optional(),
   }),
   z.object({ type: z.literal("undo") }),
+  z.object({ type: z.literal("deleteStep"), id: z.string().min(1).max(40) }),
   z.object({ type: z.literal("back") }),
 ]);
 const Body = z.object({ tenantId: z.string().min(1), action: ActionSchema });

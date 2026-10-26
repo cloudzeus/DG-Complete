@@ -27,7 +27,7 @@ export const requireTenant = cache(async (tenantId: string) => {
   if (!can(user, "tenant.dashboards.view", tenantId)) forbidden();
   const tenant = await prisma.tenant.findUnique({
     where: { id: tenantId },
-    select: { id: true, name: true, isDemo: true, status: true },
+    select: { id: true, name: true, isDemo: true, isLibrary: true, status: true },
   });
   if (!tenant) notFound();
   const access = await tenantAccess(tenantId);
