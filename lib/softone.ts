@@ -67,6 +67,9 @@ export async function s1Fetch(baseUrl: string, body: object): Promise<SoftOneRes
   try {
     return JSON.parse(text) as SoftOneResponse;
   } catch {
+    if (res.status === 404) {
+      throw new SoftOneError(`Δεν βρέθηκε η υπηρεσία στη διεύθυνση ${baseUrl} (HTTP 404). Ελέγξτε ότι τελειώνει σε /s1services.`);
+    }
     throw new SoftOneError(`Μη αναμενόμενη απάντηση (HTTP ${res.status}): ${text.slice(0, 200)}`);
   }
 }

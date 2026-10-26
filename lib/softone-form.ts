@@ -12,6 +12,8 @@ export const softOneSchema = z.object({
     .string()
     .trim()
     .transform((v) => (/^https?:\/\//.test(v) ? v : `https://${v}.oncloud.gr/s1services`).replace(/\/+$/, ""))
+    // The Web Services endpoint is always /s1services; a bare host (https://xxxx.oncloud.gr) answers 404.
+    .transform((v) => (/^https?:\/\/[^/]+$/.test(v) ? `${v}/s1services` : v))
     .pipe(z.url("Μη έγκυρη διεύθυνση").refine((u) => u.startsWith("https://"), "Απαιτείται https://")),
   appId: z.string().trim().regex(/^\d+$/, "Αριθμητικό AppID"),
   username: z.string().trim().min(1, "Δώστε χρήστη"),
