@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import {
   AlertTriangle,
   FlaskConical,
+  KeyRound,
   History,
   Pencil,
   Plus,
@@ -29,6 +30,7 @@ import { numberSteps, type Step } from "@/components/dg/step-list";
 import { Button } from "@/components/ui/button";
 import { STEP_TYPES, VERSION_STATUS } from "@/lib/labels";
 import {
+  addCredentialAction,
   addInputAction,
   addStepAction,
   deleteStepAction,
@@ -40,7 +42,7 @@ import {
 import { WorkflowCanvas, type StepRunStatus } from "@/components/workflow-editor/canvas";
 import { LiveRun } from "@/components/dg/live-run";
 import { StepTree } from "@/components/workflow-editor/step-tree";
-import { getWorkflow, workflowRuns } from "@/lib/data/tenant";
+import { getWorkflow, listCredentials, workflowRuns } from "@/lib/data/tenant";
 import { RunLogPanel } from "@/components/workflow-editor/run-log-panel";
 import { can } from "@/lib/rbac";
 import { requireTenant } from "@/lib/tenant";
@@ -99,7 +101,10 @@ export default async function WorkflowEditor({
   const view = sp.view === "list" || sp.view === "json" ? sp.view : "canvas";
   const all = flat(steps);
   const selected = all.find((s) => s.id === sp.step) ?? all[1] ?? all[0];
-  const runs = await workflowRuns(tenantId, wf.id);
+  const [runs, creds] = await Promise.all([workflowRuns(tenantId, wf.id), listCredentials(tenantId, wf.target.id)]);
+  // The flow types a username / password: they come from a credential of the target system.
+  const needsLogin = JSON.stringify(latest.definition).includes("{{secrets.");
+  const canCreds = can(user, "tenant.credentials.manage", tenantId);
   const warnings = lint(latest.definition.steps ?? [], wf.inputs);
   const stepHref = `${base}?${new URLSearchParams({ view })}&step=`;
   const href = (q: Record<string, string>) =>
@@ -159,7 +164,21 @@ export default async function WorkflowEditor({
                 </Button>
               }
             >
-              {wf.inputs.length === 0 && <p className="text-sm text-muted-foreground">Η ροή δεν έχει εισόδους — πατήστε «Εκτέλεση».</p>}
+              {wf.inputs.length === 0 && !needsLogin && <p className="text-sm text-muted-foreground">Η ροή δεν έχει εισόδους — πατήστε «Εκτέλεση».</p>}
+              {needsLogin && (
+                <fieldset className="space-y-3 rounded-lg border border-border/70 p-3">
+                  <legend className="eyebrow px-1">Στοιχεία σύνδεσης</legend>
+                  <p className="text-sm text-muted-foreground">
+                    {creds.length
+                      ? `Χρησιμοποιείται το «${creds[0].label}». Συμπληρώστε μόνο για να δοκιμάσετε με άλλα στοιχεία.`
+                      : "Δεν υπάρχει αποθηκευμένο διαπιστευτήριο: δώστε τα στοιχεία για αυτή τη δοκιμή. Δεν αποθηκεύονται."}
+                  </p>
+                  <FormRow>
+                    <TextField name="secret__username" label="Όνομα χρήστη" required={!creds.length} autoComplete="off" />
+                    <TextField name="secret__password" label="Κωδικός" type="password" required={!creds.length} autoComplete="new-password" />
+                  </FormRow>
+                </fieldset>
+              )}
               {wf.inputs.map((i) => (
                 <TextField
                   key={i.key}
@@ -192,6 +211,55 @@ export default async function WorkflowEditor({
           </>
         }
       />
+
+      {needsLogin && (
+        <div
+          role={creds.length ? undefined : "alert"}
+          className={cn(
+            "mb-4 flex flex-wrap items-center gap-3 rounded-lg border p-3 text-sm",
+            creds.length ? "border-border/70 bg-card" : "border-warning-500/40 bg-warning-50",
+          )}
+        >
+          <KeyRound aria-hidden className={cn("size-4 shrink-0", creds.length ? "text-sisyphus-600" : "text-warning-500")} />
+          <p className="min-w-0 flex-1">
+            {creds.length ? (
+              <>
+                <span className="font-semibold">Σύνδεση στο {wf.target.name}:</span> με το διαπιστευτήριο «{creds[0].label}» ({creds[0].username}).
+                {creds.length > 1 && ` Υπάρχουν ${creds.length} διαπιστευτήρια.`}
+              </>
+            ) : (
+              <>
+                <span className="font-semibold">Λείπουν τα στοιχεία σύνδεσης.</span> Η ροή συμπληρώνει όνομα χρήστη και κωδικό στο {wf.target.name}, αλλά δεν έχουν οριστεί ακόμη. Αποθηκεύονται κρυπτογραφημένα και δεν εμφανίζονται ποτέ ξανά.
+              </>
+            )}
+          </p>
+          {canCreds && (
+            <FormDialog
+              title="Στοιχεία σύνδεσης"
+              description={`Το όνομα χρήστη και ο κωδικός για το ${wf.target.name}. Αποθηκεύονται κρυπτογραφημένα· η ροή τα χρησιμοποιεί ως {{secrets.username}} και {{secrets.password}}.`}
+              action={addCredentialAction.bind(null, tenantId, wf.target.id)}
+              submitLabel="Αποθήκευση"
+              trigger={
+                <Button size="sm" variant={creds.length ? "outline" : "default"}>
+                  <KeyRound aria-hidden /> {creds.length ? "Νέα στοιχεία" : "Προσθήκη στοιχείων σύνδεσης"}
+                </Button>
+              }
+            >
+              <TextField name="label" label="Περιγραφή" required defaultValue={creds.length ? "" : "Κύριος λογαριασμός"} />
+              <FormRow>
+                <TextField name="username" label="Όνομα χρήστη" required autoComplete="off" />
+                <TextField name="password" label="Κωδικός" required type="password" autoComplete="new-password" />
+              </FormRow>
+              <TextField name="totpSecret" label="Μυστικό TOTP (προαιρετικό)" type="password" autoComplete="off" hint="Μόνο αν το σύστημα ζητά κωδικό μίας χρήσης από εφαρμογή (Authenticator)." />
+            </FormDialog>
+          )}
+          {creds.length > 0 && (
+            <Button asChild size="sm" variant="ghost">
+              <Link href={`/t/${tenantId}/targets/${wf.target.id}?tab=credentials`}>Διαχείριση</Link>
+            </Button>
+          )}
+        </div>
+      )}
 
       {view === "json" ? (
         <Section title="DSL (μόνο ανάγνωση)">

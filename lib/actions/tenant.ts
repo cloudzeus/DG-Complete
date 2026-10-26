@@ -111,6 +111,7 @@ export async function addCredentialAction(tenantId: string, targetSystemId: stri
     return c.id;
   });
   await audit({ actorId: user.id, action: "credential.create", entity: "Credential", entityId: id, tenantId, meta: { name: label } });
+  revalidatePath(`/t/${tenantId}/workflows`, "layout");
   return done(tenantId, `/targets/${targetSystemId}`, "Το διαπιστευτήριο αποθηκεύτηκε κρυπτογραφημένο.");
 }
 
@@ -297,7 +298,12 @@ export async function addInputAction(tenantId: string, workflowId: string, _p: F
 
 export async function testRunAction(tenantId: string, workflowVersionId: string, _p: FormState, fd: FormData): Result {
   const user = await guard(tenantId, "tenant.runs.execute");
-  const input = Object.fromEntries([...fd.entries()].filter(([k]) => !k.startsWith("$")).map(([k, v]) => [k, String(v)]));
+  const entries = [...fd.entries()].filter(([k]) => !k.startsWith("$")).map(([k, v]) => [k, String(v)] as const);
+  const input: Record<string, unknown> = Object.fromEntries(entries.filter(([k]) => !k.startsWith("secret__")));
+  // One-off login details for this test only: travel encrypted with the run input, used by the worker
+  // instead of the stored credential, never shown (previewInput masks the key).
+  const secrets = Object.fromEntries(entries.filter(([k, v]) => k.startsWith("secret__") && v).map(([k, v]) => [k.slice(8), v]));
+  if (Object.keys(secrets).length) input.__secrets = secrets;
   let runId: string;
   try {
     const run = await createRun({ tenantId, workflowVersionId, input, trigger: "UI_TEST", userId: user.id });
