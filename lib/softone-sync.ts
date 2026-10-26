@@ -199,18 +199,21 @@ async function applyTableRows(job: SyncJob, rows: Row[]): Promise<Applied> {
   let maxUpdated: Date | null = null;
   let upserted = 0;
 
-  for (let i = 0; i < rows.length; i += BATCH) {
-    const batch = rows
-      .slice(i, i + BATCH)
-      .map((r) => {
-        const parts = keyFields.map((k) => str(r[k]));
-        if (parts.some((p) => !p)) return null;
-        const key = parts.join("|");
-        const upd = updField ? parseS1Date(r[updField]) : null;
-        maxUpdated = maxDate(maxUpdated, upd);
-        return { key, data: r, upd: upd?.toISOString() ?? null };
-      })
-      .filter((r) => r !== null);
+  // SoftOne can return the same key more than once (e.g. one row per company when the table has no
+  // COMPANY filter); one INSERT … ON CONFLICT may not touch a row twice, so keep the last per key.
+  const byKey = new Map<string, { key: string; data: Row; upd: string | null }>();
+  for (const r of rows) {
+    const parts = keyFields.map((k) => str(r[k]));
+    if (parts.some((p) => !p)) continue;
+    const key = parts.join("|");
+    const upd = updField ? parseS1Date(r[updField]) : null;
+    maxUpdated = maxDate(maxUpdated, upd);
+    byKey.set(key, { key, data: r, upd: upd?.toISOString() ?? null });
+  }
+  const unique = [...byKey.values()];
+
+  for (let i = 0; i < unique.length; i += BATCH) {
+    const batch = unique.slice(i, i + BATCH);
     if (!batch.length) continue;
     upserted += await prisma.$executeRaw`
       INSERT INTO "s1_record" ("id", "jobId", "key", "data", "s1UpdatedAt", "syncedAt")
