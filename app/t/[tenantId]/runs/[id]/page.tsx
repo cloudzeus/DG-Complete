@@ -43,6 +43,7 @@ export default async function RunPage({ params, searchParams }: PageProps<"/t/[t
   const base = `/t/${tenantId}/runs/${run.id}`;
   const active = ["QUEUED", "RUNNING", "RETRY_SCHEDULED", "NEEDS_ATTENTION", "HELD"].includes(run.status);
   const canRetry = can(user, "tenant.runs.retry", tenantId);
+  const stalled = run.stalled;
   const shot = run.artifacts.find((a) => a.kind === "SCREENSHOT_VIEWPORT") ?? run.artifacts.find((a) => a.kind.startsWith("SCREENSHOT"));
   const storage = run.artifacts.length ? await getStorage() : null;
   const files = storage ? await Promise.all(run.artifacts.map(async (a) => ({ ...a, url: await storage.signedUrl(a.storagePath, 600) }))) : [];
@@ -50,7 +51,7 @@ export default async function RunPage({ params, searchParams }: PageProps<"/t/[t
 
   return (
     <>
-      {active && run.status !== "NEEDS_ATTENTION" && run.status !== "HELD" && <LiveRun tenantId={tenantId} runId={run.id} />}
+      {active && run.status !== "NEEDS_ATTENTION" && run.status !== "HELD" && <LiveRun tenantId={tenantId} runId={run.id} refreshAt={run.status === "QUEUED" && !stalled ? new Date(run.createdAt).getTime() + 60_000 : undefined} />}
       <PageHeader
         crumbs={[{ href: `/t/${tenantId}/runs`, label: "Εκτελέσεις" }]}
         title={run.methodName}
@@ -73,6 +74,14 @@ export default async function RunPage({ params, searchParams }: PageProps<"/t/[t
         <div><dt className="eyebrow">Μέθοδος</dt><dd><code className="font-mono text-xs">{run.methodKey}</code> · v{run.version}</dd></div>
         <div><dt className="eyebrow">Προέλευση</dt><dd>{RUN_TRIGGER[run.trigger] ?? run.trigger}</dd></div>
       </dl>
+      {stalled && (
+        <div role="status" className="mb-4 rounded-lg border border-warning-500/30 bg-warning-50 p-4 text-sm">
+          <p className="font-semibold">Η εκτέλεση δεν έχει ξεκινήσει ακόμα</p>
+          <p className="mt-1 text-muted-foreground">
+            Περιμένει στην ουρά πάνω από ένα λεπτό. Συνήθως σημαίνει ότι δεν τρέχει ο worker (στο Coolify: εφαρμογή με Docker target «worker») ή ότι όλες οι θέσεις του συστήματος‑στόχου είναι κατειλημμένες. Θα ξεκινήσει αυτόματα μόλις υπάρξει διαθέσιμος worker.
+          </p>
+        </div>
+      )}
       {run.error && (
         <div role="alert" className="mb-4 rounded-lg border border-danger-500/30 bg-danger-50 p-4">
           <p className="font-mono text-xs font-semibold text-danger-500">

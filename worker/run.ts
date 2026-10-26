@@ -162,6 +162,11 @@ export async function processRun(runId: string, tenantId: string, workerId: stri
     });
     const result = await interpreter.run();
     if (tracing) await context.tracing.stop().catch(() => undefined);
+    // Test runs: keep the final page so the designer sees the result (sensitive fields masked).
+    if (run.trigger === "UI_TEST") {
+      const buf = await interpreter.currentPage.screenshot({ mask: interpreter.sensitiveLocators, timeout: 10_000 }).catch(() => null);
+      if (buf) await saveArtifact(artifactCtx, "SCREENSHOT_VIEWPORT", buf, "image/png", { meta: { final: true } }).catch(() => undefined);
+    }
     await finish({ tenantId, run, status: "SUCCEEDED", started, output: result.output, tenant });
     log("INFO", "Η εκτέλεση ολοκληρώθηκε επιτυχώς.", undefined, undefined, "system");
     return "succeeded";

@@ -154,11 +154,12 @@ export default async function WorkflowEditor({
               action={testRunAction.bind(null, tenantId, latest.id)}
               submitLabel="Εκτέλεση"
               trigger={
-                <Button variant="outline" size="sm">
-                  <FlaskConical aria-hidden /> Δοκιμή
+                <Button size="sm">
+                  <FlaskConical aria-hidden /> Δοκιμαστική εκτέλεση
                 </Button>
               }
             >
+              {wf.inputs.length === 0 && <p className="text-sm text-muted-foreground">Η ροή δεν έχει εισόδους — πατήστε «Εκτέλεση».</p>}
               {wf.inputs.map((i) => (
                 <TextField
                   key={i.key}

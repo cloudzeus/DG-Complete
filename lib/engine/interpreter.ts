@@ -111,6 +111,16 @@ export class Interpreter {
     return { output: this.output, vars: this.vars, committed: this.committed };
   }
 
+  /** Current page (switchTab may have moved to another tab). */
+  get currentPage() {
+    return this.page;
+  }
+
+  /** Fields that received a sensitive value (for screenshot masks). */
+  get sensitiveLocators() {
+    return this.sensitive;
+  }
+
   /** A sensitive value (secret / sensitive input) was typed — traces must not be kept. */
   get filledSensitive() {
     return this.sensitive.length > 0;

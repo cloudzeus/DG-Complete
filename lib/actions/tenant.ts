@@ -298,16 +298,18 @@ export async function addInputAction(tenantId: string, workflowId: string, _p: F
 export async function testRunAction(tenantId: string, workflowVersionId: string, _p: FormState, fd: FormData): Result {
   const user = await guard(tenantId, "tenant.runs.execute");
   const input = Object.fromEntries([...fd.entries()].filter(([k]) => !k.startsWith("$")).map(([k, v]) => [k, String(v)]));
+  let runId: string;
   try {
     const run = await createRun({ tenantId, workflowVersionId, input, trigger: "UI_TEST", userId: user.id });
     await tenantDb(tenantId).workflowVersion.updateMany({ where: { id: workflowVersionId }, data: { lastTestRunId: run.id } });
-    // The editor shows the run live on the canvas (SSE): re-render it too.
     const v = await tenantDb(tenantId).workflowVersion.findUnique({ where: { id: workflowVersionId }, select: { workflowId: true } });
     if (v) revalidatePath(`/t/${tenantId}/workflows/${v.workflowId}`);
-    return done(tenantId, "/runs", `Η δοκιμαστική εκτέλεση μπήκε στην ουρά (${run.id}).`);
+    runId = run.id;
   } catch (err) {
     return fail(err);
   }
+  // Straight to the run: steps, logs and screenshots appear live there.
+  redirect(`/t/${tenantId}/runs/${runId}`);
 }
 
 export async function submitVersionAction(tenantId: string, versionId: string, _p: FormState, fd: FormData): Result {

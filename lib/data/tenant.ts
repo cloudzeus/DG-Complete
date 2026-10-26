@@ -369,6 +369,8 @@ export async function getRun(tenantId: string, id: string) {
       externalRef: r.externalRef,
       trigger: r.trigger,
       createdAt: iso(r.queuedAt)!,
+      // Still QUEUED after a minute: no worker running or no free slot (shown on the run page).
+      stalled: r.status === "QUEUED" && Date.now() - r.queuedAt.getTime() > 60_000,
       durationMs: r.durationMs,
       inputPreview: r.inputPreview,
       output: r.output,
