@@ -10,7 +10,8 @@ import { PageHeader } from "@/components/dg/page-header";
 import { Grid, Section } from "@/components/dg/section";
 import { Tag } from "@/components/dg/status-badge";
 import { Button } from "@/components/ui/button";
-import { manualRunAction, methodSettingsAction, upgradeMethodAction } from "@/lib/actions/tenant";
+import { deleteMethodAction, manualRunAction, methodSettingsAction, upgradeMethodAction } from "@/lib/actions/tenant";
+import { RowActions } from "@/components/dg/row-actions";
 import { getCollection, getVersionSchemas, getWorkflow, listMethods } from "@/lib/data/tenant";
 import { IntentBadge } from "@/components/dg/intent-badge";
 import type { CapturedForm } from "@/lib/dsl/graph";
@@ -66,6 +67,12 @@ export default async function MethodPage({ params }: PageProps<"/t/[tenantId]/co
         actions={
           <>
             {method.status === "PAUSED" && <Tag tone="warning">Σε παύση — νέες κλήσεις γίνονται HELD</Tag>}
+            {manage && (
+              <RowActions
+                label={`Ενέργειες για ${method.name}`}
+                destroy={{ title: `Διαγραφή μεθόδου «${method.name}»`, description: "Οι κλήσεις στο API θα παίρνουν 404. Η ροή και το ιστορικό εκτελέσεων μένουν· δημιουργείται ξανά με νέα δημοσίευση της ροής.", action: deleteMethodAction.bind(null, tenantId, method.id) }}
+              />
+            )}
             {can(user, "tenant.runs.execute", tenantId) && (
               <FormDialog title="Χειροκίνητη εκτέλεση" description="Φόρμα από το σχήμα εισόδου της ροής." action={manualRunAction.bind(null, tenantId, method.id)} submitLabel="Εκτέλεση" trigger={<Button size="sm"><Play aria-hidden /> Εκτέλεση</Button>}>
                 {inputs.map((i) => (

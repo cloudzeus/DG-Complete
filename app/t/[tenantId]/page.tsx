@@ -11,7 +11,8 @@ import { Grid, Section } from "@/components/dg/section";
 import { StatusBadge } from "@/components/dg/status-badge";
 import { Button } from "@/components/ui/button";
 import { RUN_STATUS } from "@/lib/labels";
-import { dashboardStats, listMethods, listRuns } from "@/lib/data/tenant";
+import { dashboardStats, listMethods, listRuns, onboarding } from "@/lib/data/tenant";
+import { GettingStarted } from "@/components/tenant/getting-started";
 import { requireTenant } from "@/lib/tenant";
 
 export const metadata: Metadata = { title: "Πίνακας ελέγχου" };
@@ -20,7 +21,8 @@ export default async function TenantDashboard({ params }: PageProps<"/t/[tenantI
   const { tenantId } = await params;
   const { tenant, access } = await requireTenant(tenantId);
   const base = `/t/${tenant.id}`;
-  const [dashboard, methods, runs, failed] = await Promise.all([
+  const [guide, dashboard, methods, runs, failed] = await Promise.all([
+    onboarding(tenant.id),
     dashboardStats(tenant.id),
     listMethods(tenant.id),
     listRuns(tenant.id, { take: 6 }),
@@ -40,6 +42,9 @@ export default async function TenantDashboard({ params }: PageProps<"/t/[tenantI
           </Button>
         }
       />
+      <GettingStarted tenantId={tenant.id} s={guide} />
+      {/* A new account sees only the guide — no empty charts. */}
+      {(guide.testedId || runs.length > 0) && (<>
       <Grid cols={4}>
         <KpiTile label="Εκτελέσεις σήμερα" value={fmtNum(dashboard.today)} hint="από 00:00" icon={Activity} />
         <KpiTile label="Ποσοστό επιτυχίας" value={dashboard.successRate === null ? "—" : `${fmtNum(dashboard.successRate, 1)}%`} hint="τελευταίες 24 ώρες" icon={CircleCheck} />
@@ -97,6 +102,7 @@ export default async function TenantDashboard({ params }: PageProps<"/t/[tenantI
           ]}
         />
       </Section>
+      </>)}
     </>
   );
 }

@@ -7,30 +7,35 @@ export type NavIcon =
 export type NavItem = { href: string; label: string; icon: NavIcon; service?: string; adminOnly?: boolean; badge?: "attention" | "approvals"; exact?: boolean };
 
 export const NAV: { label: string; items: NavItem[] }[] = [
-  { label: "Επισκόπηση", items: [{ href: "", label: "Πίνακας ελέγχου", icon: "dashboard", exact: true }] },
+  { label: "Αρχική", items: [{ href: "", label: "Ξεκινήστε / Επισκόπηση", icon: "dashboard", exact: true }] },
   {
-    label: "Σχεδιασμός",
+    label: "Αυτοματισμοί",
     items: [
-      { href: "/targets", label: "Συστήματα‑στόχοι", icon: "targets", service: "workflows" },
-      { href: "/recordings", label: "Καταγραφές", icon: "recordings", service: "recorder" },
+      { href: "/targets", label: "Συστήματα", icon: "targets", service: "workflows" },
       { href: "/workflows", label: "Ροές", icon: "workflows", service: "workflows" },
+      { href: "/recordings", label: "Καταγραφές", icon: "recordings", service: "recorder" },
     ],
   },
   {
-    label: "Εκτέλεση",
+    label: "API",
     items: [
-      { href: "/collections", label: "Συλλογές μεθόδων", icon: "collections", service: "api" },
-      { href: "/jobs", label: "Μαζικές εργασίες", icon: "jobs", service: "bulk" },
+      { href: "/collections", label: "Μέθοδοι API", icon: "collections", service: "api" },
+      { href: "/settings/api-keys", label: "Κλειδιά API", icon: "keys", service: "api", adminOnly: true },
+      { href: "/settings/webhooks", label: "Webhooks", icon: "webhooks", service: "webhooks", adminOnly: true },
+    ],
+  },
+  {
+    label: "Παρακολούθηση",
+    items: [
       { href: "/runs", label: "Εκτελέσεις", icon: "runs", service: "workflows" },
       { href: "/attention", label: "Προς ενέργεια", icon: "attention", service: "workflows", badge: "attention" },
       { href: "/approvals", label: "Εγκρίσεις", icon: "approvals", adminOnly: true, badge: "approvals" },
+      { href: "/jobs", label: "Μαζικές εργασίες", icon: "jobs", service: "bulk" },
     ],
   },
   {
     label: "Διαχείριση",
     items: [
-      { href: "/settings/api-keys", label: "Κλειδιά API", icon: "keys", service: "api", adminOnly: true },
-      { href: "/settings/webhooks", label: "Webhooks", icon: "webhooks", service: "webhooks", adminOnly: true },
       { href: "/settings/members", label: "Μέλη & ρόλοι", icon: "members", adminOnly: true },
       { href: "/settings/audit", label: "Αρχείο ενεργειών", icon: "audit", adminOnly: true },
       { href: "/usage", label: "Χρήση & πακέτο", icon: "usage" },

@@ -450,6 +450,18 @@ export async function editStepAction(tenantId: string, workflowId: string, stepI
   return done(tenantId, `/workflows/${workflowId}`, `Το βήμα αποθηκεύτηκε στην έκδοση v${draft.versionNo}.`);
 }
 
+export async function deleteInputAction(tenantId: string, workflowId: string, key: string): Result {
+  const user = await guard(tenantId, "tenant.workflows.edit");
+  const draft = await draftOf(tenantId, workflowId, user.id);
+  if (!draft) return { ok: false, message: "Η ροή δεν βρέθηκε." };
+  const schema = (draft.inputSchema ?? EMPTY_SCHEMA) as { properties?: Record<string, unknown>; required?: string[] };
+  const { [key]: _removed, ...properties } = schema.properties ?? {};
+  void _removed;
+  await tenantDb(tenantId).workflowVersion.update({ where: { id: draft.id }, data: { inputSchema: { type: "object", properties, required: (schema.required ?? []).filter((k) => k !== key) } as never } });
+  const used = JSON.stringify(draft.definition ?? {}).includes(`input.${key}`);
+  return done(tenantId, `/workflows/${workflowId}`, used ? `Η είσοδος «${key}» αφαιρέθηκε. Κάποια βήματα τη χρησιμοποιούν ακόμη — διορθώστε τα ή διαγράψτε τα.` : `Η είσοδος «${key}» αφαιρέθηκε.`);
+}
+
 export async function addInputAction(tenantId: string, workflowId: string, _p: FormState, fd: FormData): Result {
   const user = await guard(tenantId, "tenant.workflows.edit");
   const v = validate(
@@ -593,6 +605,40 @@ export async function newMethodAction(tenantId: string, collectionId: string, _p
   });
   await audit({ actorId: user.id, action: "method.create", entity: "Method", entityId: m.id, tenantId, meta: { name: v.data.name } });
   return done(tenantId, `/collections/${collectionId}`, "Η μέθοδος δημιουργήθηκε.");
+}
+
+export async function deleteMethodAction(tenantId: string, methodId: string): Result {
+  const user = await guard(tenantId, "tenant.methods.manage");
+  const db = tenantDb(tenantId);
+  const m = await db.method.findUnique({ where: { id: methodId }, select: { id: true, name: true, collectionId: true } });
+  if (!m) return { ok: false, message: "Η μέθοδος δεν βρέθηκε." };
+  // Runs keep their history (methodId cleared); jobs of the method go with it.
+  await withTenantTx(tenantId, async (tx) => {
+    await tx.job.deleteMany({ where: { tenantId, methodId } });
+    await tx.run.updateMany({ where: { tenantId, methodId }, data: { methodId: null } });
+    await tx.method.deleteMany({ where: { tenantId, id: methodId } });
+  });
+  await audit({ actorId: user.id, action: "method.delete", entity: "Method", entityId: methodId, tenantId, meta: { name: m.name } });
+  revalidatePath(`/t/${tenantId}/collections`, "layout");
+  redirect(`/t/${tenantId}/collections/${m.collectionId}`);
+}
+
+export async function deleteCollectionAction(tenantId: string, collectionId: string): Result {
+  const user = await guard(tenantId, "tenant.methods.manage");
+  const db = tenantDb(tenantId);
+  const c = await db.methodCollection.findUnique({ where: { id: collectionId }, select: { id: true, name: true } });
+  if (!c) return { ok: false, message: "Η συλλογή δεν βρέθηκε." };
+  const methods = (await db.method.findMany({ where: { collectionId }, select: { id: true } })).map((m) => m.id);
+  await withTenantTx(tenantId, async (tx) => {
+    if (methods.length) {
+      await tx.job.deleteMany({ where: { tenantId, methodId: { in: methods } } });
+      await tx.run.updateMany({ where: { tenantId, methodId: { in: methods } }, data: { methodId: null } });
+    }
+    await tx.methodCollection.deleteMany({ where: { tenantId, id: collectionId } });
+  });
+  await audit({ actorId: user.id, action: "collection.delete", entity: "MethodCollection", entityId: collectionId, tenantId, meta: { name: c.name, methods: methods.length } });
+  revalidatePath(`/t/${tenantId}/collections`, "layout");
+  redirect(`/t/${tenantId}/collections`);
 }
 
 export async function methodSettingsAction(tenantId: string, methodId: string, _p: FormState, fd: FormData): Result {

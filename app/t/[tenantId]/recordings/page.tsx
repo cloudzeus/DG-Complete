@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Disc3, FileUp, Plus, Puzzle } from "lucide-react";
+import { Disc3, FileUp, Puzzle } from "lucide-react";
 import { DataTable } from "@/components/dg/data-table";
 import { fmtDateTime } from "@/components/dg/format";
 import { FormDialog } from "@/components/dg/form-dialog";
@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/dg/page-header";
 import { Section } from "@/components/dg/section";
 import { StatusBadge } from "@/components/dg/status-badge";
 import { Button } from "@/components/ui/button";
-import { deleteRecordingAction, importChromeRecordingAction, newRecordingAction, startLiveRecordingAction } from "@/lib/actions/tenant";
+import { deleteRecordingAction, importChromeRecordingAction, startLiveRecordingAction } from "@/lib/actions/tenant";
 import { RowActions } from "@/components/dg/row-actions";
 import { listRecordings, targetOptions } from "@/lib/data/tenant";
 import { INTENT_OPTIONS, RECORDING_STATUS } from "@/lib/labels";
@@ -29,7 +29,7 @@ export default async function RecordingsPage({ params }: PageProps<"/t/[tenantId
       <PageHeader
         eyebrow="Σχεδιασμός"
         title="Καταγραφές"
-        description="Τα βήματα που καταγράφει το extension στον browser σας, έτοιμα να γίνουν ροές."
+        description="Καταγράψτε μια καταχώριση μέσα στην εφαρμογή· κάθε κίνηση γίνεται βήμα μιας ροής."
         actions={
           <>
           <FormDialog
@@ -67,25 +67,7 @@ export default async function RecordingsPage({ params }: PageProps<"/t/[tenantId
             <TextField name="name" label="Όνομα ροής" placeholder="Από τον τίτλο της καταγραφής" />
             <FileField name="file" label="Αρχείο JSON" required accept="application/json,.json" hint="Οι κωδικοί δεν αποθηκεύονται· γίνονται μεταβλητές {{secrets.…}} από το διαπιστευτήριο του συστήματος." />
           </FormDialog>
-          <FormDialog
-            title="Νέα καταγραφή"
-            description="Δημιουργεί κωδικό σύνδεσης για το extension. Η καταγραφή γίνεται στον δικό σας browser."
-            action={newRecordingAction.bind(null, tenantId)}
-            submitLabel="Δημιουργία κωδικού"
-            trigger={
-              <Button size="sm" variant="outline">
-                <Plus aria-hidden /> Με extension
-              </Button>
-            }
-          >
-            <TextField name="name" label="Όνομα" required placeholder="π.χ. Καταχώριση πελάτη" />
-            <SelectField name="targetId" label="Σύστημα‑στόχος" required placeholder="Επιλέξτε…" options={targets} />
-            <ol className="list-decimal space-y-1 rounded-lg bg-muted/50 p-3 pl-7 text-sm text-muted-foreground">
-              <li>Εγκαταστήστε το extension «DG Complete Recorder» (Chrome / Edge).</li>
-              <li>Ανοίξτε το και πληκτρολογήστε τον κωδικό σύνδεσης που θα εμφανιστεί.</li>
-              <li>Κάντε την καταχώριση κανονικά και πατήστε «Ολοκληρώθηκε».</li>
-            </ol>
-          </FormDialog>
+          {/* The extension recorder (P06) is not available yet: no dead end in the UI. */}
           </>
         }
       />

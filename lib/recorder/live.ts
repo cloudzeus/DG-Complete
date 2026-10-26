@@ -193,6 +193,7 @@ export type Action =
       repeat?: { list: string; label?: string; addButtonCss?: string; firstRowExists: boolean };
     }
   | { type: "undo" }
+  | { type: "deleteStep"; id: string }
   | { type: "back" };
 
 export type ActionResult = { element?: ElementInfo | null; select?: ElementInfo; fields?: ElementInfo[]; buttons?: ElementInfo[]; message?: string; blocked?: { origin: string; url: string } };
@@ -207,7 +208,7 @@ export async function act(s: Session, a: Action): Promise<ActionResult> {
     return {} as ActionResult;
   });
   if (s.blocked) await s.page.waitForTimeout(100);
-  if (!["capture", "captureApply", "undo", "inspect"].includes(a.type)) await afterAction(s).catch(() => undefined);
+  if (!["capture", "captureApply", "undo", "inspect", "deleteStep"].includes(a.type)) await afterAction(s).catch(() => undefined);
   return s.blocked ? { ...r, blocked: s.blocked, message: undefined } : r;
 }
 
@@ -359,6 +360,14 @@ async function actInner(s: Session, a: Action): Promise<ActionResult> {
       const mapped = new Set(fields.map((f) => f.label));
       s.forms[formId] = { title: prev?.title, url: rel(s, page.url()), image: path, fields: [...fields, ...(prev?.fields ?? []).filter((f) => !mapped.has(f.label) && f.kind === "unmapped")] };
       return { message: `Η φόρμα καταγράφηκε με ${fields.length} πεδία.` };
+    }
+    case "deleteStep": {
+      const i = s.steps.findIndex((x) => x.id === a.id);
+      if (i < 1) return { message: i === 0 ? "Το πρώτο βήμα (άνοιγμα σελίδας) δεν διαγράφεται." : undefined };
+      const [removed] = s.steps.splice(i, 1);
+      const used = JSON.stringify(s.steps);
+      s.inputs = s.inputs.filter((x) => used.includes(`input.${x.key}`));
+      return { message: `Αφαιρέθηκε: ${removed.label}` };
     }
     case "undo": {
       const removed = s.steps.pop();

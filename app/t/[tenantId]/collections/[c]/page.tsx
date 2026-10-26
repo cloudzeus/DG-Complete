@@ -12,7 +12,9 @@ import { PageHeader } from "@/components/dg/page-header";
 import { Section } from "@/components/dg/section";
 import { StatusBadge, Tag } from "@/components/dg/status-badge";
 import { Button } from "@/components/ui/button";
-import { newMethodAction } from "@/lib/actions/tenant";
+import { newMethodAction, deleteCollectionAction, deleteMethodAction } from "@/lib/actions/tenant";
+import { RowActions } from "@/components/dg/row-actions";
+import { can } from "@/lib/rbac";
 import { getCollection, listApiKeys, listMethods, publishedWorkflowOptions } from "@/lib/data/tenant";
 import { EmptyState } from "@/components/dg/empty-state";
 import { Boxes } from "lucide-react";
@@ -25,7 +27,8 @@ const METHOD_STATUS = { ACTIVE: { label: "Ενεργή", tone: "success" as cons
 export default async function CollectionPage({ params, searchParams }: PageProps<"/t/[tenantId]/collections/[c]">) {
   const { tenantId, c } = await params;
   const { tab = "methods" } = await searchParams;
-  await requireTenant(tenantId);
+  const { user } = await requireTenant(tenantId);
+  const manage = can(user, "tenant.methods.manage", tenantId);
   const col = await getCollection(tenantId, c);
   if (!col) notFound();
   const base = `/t/${tenantId}/collections/${col.id}`;
@@ -39,12 +42,20 @@ export default async function CollectionPage({ params, searchParams }: PageProps
         title={col.name}
         description={col.description}
         actions={
+          <>
           <FormDialog title="Νέα μέθοδος" action={newMethodAction.bind(null, tenantId, col.id)} submitLabel="Δημιουργία" trigger={<Button size="sm"><Plus aria-hidden /> Νέα μέθοδος</Button>}>
             <TextField name="name" label="Όνομα" required />
             <TextField name="key" label="Κλειδί API" required placeholder="π.χ. createCustomer" hint="POST /api/v1/collections/{συλλογή}/methods/{κλειδί}/runs" />
             <SelectField name="workflowId" label="Ροή" required placeholder="Επιλέξτε…" options={versions} hint="Μόνο δημοσιευμένες εκδόσεις ροών." />
             <RadioCards name="mode" label="Τρόπος" defaultValue="async" options={[{ value: "async", label: "Ασύγχρονα", hint: "202 + webhook / polling" }, { value: "sync", label: "Σύγχρονα", hint: "Περιμένει έως 120″" }]} />
           </FormDialog>
+          {manage && (
+            <RowActions
+              label={`Ενέργειες για ${col.name}`}
+              destroy={{ title: `Διαγραφή «${col.name}»`, description: `Θα διαγραφούν οι ${list.length} μέθοδοι της συλλογής. Οι ροές και το ιστορικό εκτελέσεων μένουν. Οι κλήσεις στο API θα παίρνουν 404.`, action: deleteCollectionAction.bind(null, tenantId, col.id), submitLabel: "Οριστική διαγραφή" }}
+            />
+          )}
+          </>
         }
       />
       <LinkTabs base={base} active={String(tab)} tabs={[{ key: "methods", label: "Μέθοδοι", count: list.length }, { key: "docs", label: "Τεκμηρίωση API" }, { key: "keys", label: "Κλειδιά με πρόσβαση", count: keys.length }]} />
@@ -62,6 +73,18 @@ export default async function CollectionPage({ params, searchParams }: PageProps
               { key: "mode", header: "Τρόπος", cell: (m) => (m.mode === "sync" ? "Σύγχρονα" : "Ασύγχρονα") },
               { key: "c", header: "Κλήσεις 7 ημ.", align: "right", cell: (m) => fmtNum(m.calls7d) },
               { key: "e", header: "Σφάλματα", align: "right", cell: (m) => <span className={m.errorRate > 5 ? "font-semibold text-danger-500" : ""}>{fmtNum(m.errorRate, 1)}%</span> },
+              {
+                key: "actions",
+                header: "",
+                align: "right",
+                cell: (m) => (
+                  <RowActions
+                    label={`Ενέργειες για ${m.name}`}
+                    open={`${base}/methods/${m.id}`}
+                    destroy={manage ? { title: `Διαγραφή μεθόδου «${m.name}»`, description: "Οι κλήσεις στο API θα παίρνουν 404. Η ροή και το ιστορικό εκτελέσεων μένουν· μπορείτε να τη δημιουργήσετε ξανά δημοσιεύοντας τη ροή.", action: deleteMethodAction.bind(null, tenantId, m.id) } : undefined}
+                  />
+                ),
+              },
             ]}
           />
         </Section>

@@ -607,3 +607,38 @@ export async function workflowRuns(tenantId: string, workflowId: string, take = 
 export async function getVersionSchemas(tenantId: string, versionId: string) {
   return tenantDb(tenantId).workflowVersion.findUnique({ where: { id: versionId }, select: { inputSchema: true, outputSchema: true, versionNo: true } });
 }
+
+/** Where the tenant is on the path system → login → recording → test → publish → API (dashboard guide). */
+export async function onboarding(tenantId: string) {
+  const db = tenantDb(tenantId);
+  const [targets, workflows, methods, keys] = await Promise.all([
+    db.targetSystem.findMany({ select: { id: true, name: true }, orderBy: { createdAt: "asc" } }),
+    db.workflow.findMany({ where: { archivedAt: null }, orderBy: { updatedAt: "desc" }, select: { id: true, name: true, publishedVersionId: true, versions: { orderBy: { versionNo: "desc" }, take: 1, select: { definition: true, lastTestRunId: true } } } }),
+    db.method.findMany({ orderBy: { createdAt: "asc" }, take: 1, select: { id: true, collectionId: true, httpMethod: true, resource: true, slug: true, collection: { select: { slug: true } } } }),
+    db.apiKey.count({ where: { revokedAt: null } }),
+  ]);
+  const [credentials, tested, apiRuns] = await withTenantTx(tenantId, async (tx) => [
+    await tx.credential.count(),
+    await tx.run.findFirst({ where: { trigger: "UI_TEST", status: "SUCCEEDED" }, select: { workflowVersion: { select: { workflowId: true } } } }),
+    await tx.run.count({ where: { trigger: "API" } }),
+  ] as const);
+  const recorded = workflows.find((w) => ((w.versions[0]?.definition as { steps?: unknown[] } | null)?.steps ?? []).length > 0) ?? null;
+  const published = workflows.find((w) => w.publishedVersionId) ?? null;
+  const m = methods[0];
+  return {
+    targets,
+    credentials,
+    recorded: recorded && { id: recorded.id, name: recorded.name },
+    testedId: tested?.workflowVersion.workflowId ?? null,
+    published: published && { id: published.id, name: published.name },
+    method: m ? { id: m.id, collectionId: m.collectionId, endpoint: `${m.httpMethod} /api/v1/${m.collection.slug}/${m.resource ?? m.slug}` } : null,
+    keys,
+    apiRuns,
+  };
+}
+
+/** API method made from a workflow (if published). */
+export async function methodOfWorkflow(tenantId: string, workflowId: string) {
+  const m = await tenantDb(tenantId).method.findFirst({ where: { workflowVersion: { workflowId } }, select: { id: true, collectionId: true, httpMethod: true, resource: true, slug: true, collection: { select: { slug: true } } } });
+  return m && { id: m.id, collectionId: m.collectionId, endpoint: `${m.httpMethod} /api/v1/${m.collection.slug}/${m.resource ?? m.slug}` };
+}

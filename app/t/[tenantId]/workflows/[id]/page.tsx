@@ -34,6 +34,7 @@ import { IntentBadge } from "@/components/dg/intent-badge";
 import {
   addCredentialAction,
   addInputAction,
+  deleteInputAction,
   deleteWorkflowAction,
   startLiveRecordingAction,
   addStepAction,
@@ -49,7 +50,8 @@ import { getStorage } from "@/lib/storage";
 import { LiveRun } from "@/components/dg/live-run";
 import { RowActions } from "@/components/dg/row-actions";
 import { StepTree } from "@/components/workflow-editor/step-tree";
-import { getWorkflow, listCredentials, workflowRuns } from "@/lib/data/tenant";
+import { getWorkflow, listCredentials, methodOfWorkflow, workflowRuns } from "@/lib/data/tenant";
+import { FlowProgress, type ProgressStep } from "@/components/workflow-editor/flow-progress";
 import { RunLogPanel } from "@/components/workflow-editor/run-log-panel";
 import { can } from "@/lib/rbac";
 import { requireTenant } from "@/lib/tenant";
@@ -108,7 +110,7 @@ export default async function WorkflowEditor({
   const view = sp.view === "list" || sp.view === "json" ? sp.view : "canvas";
   const all = flat(steps);
   const selected = all.find((s) => s.id === sp.step) ?? all[1] ?? all[0];
-  const [runs, creds] = await Promise.all([workflowRuns(tenantId, wf.id), listCredentials(tenantId, wf.target.id)]);
+  const [runs, creds, apiMethod] = await Promise.all([workflowRuns(tenantId, wf.id), listCredentials(tenantId, wf.target.id), methodOfWorkflow(tenantId, wf.id)]);
   // The flow types a username / password: they come from a credential of the target system.
   const needsLogin = JSON.stringify(latest.definition).includes("{{secrets.");
   const canCreds = can(user, "tenant.credentials.manage", tenantId);
@@ -123,6 +125,90 @@ export default async function WorkflowEditor({
   const href = (q: Record<string, string>) =>
     `${base}?${new URLSearchParams({ view, ...(selected ? { step: selected.id } : {}), ...q })}`;
 
+  const publishDialog = (
+    <FormDialog
+            title="Δημοσίευση"
+            description="Η δημοσιευμένη έκδοση είναι αμετάβλητη· αλλαγές = νέα έκδοση. Απαιτείται επιτυχημένη δοκιμή."
+            action={publishVersionAction.bind(null, tenantId, latest.id)}
+            submitLabel="Δημοσίευση"
+            trigger={
+              <Button size="sm">
+                <Upload aria-hidden /> Δημοσίευση
+              </Button>
+            }
+          >
+            <TextareaField name="note" label="Σημείωση έκδοσης" rows={3} />
+          </FormDialog>
+  );
+  // Same dialog from the header and from the progress bar.
+  const testDialog = (trigger: React.ReactNode) => (
+    <FormDialog
+      title="Δοκιμαστική εκτέλεση"
+      description="Εκτελείται στο σύστημα‑στόχο με δείγμα εισόδου· δεν χρεώνεται."
+      action={testRunAction.bind(null, tenantId, latest.id)}
+      submitLabel="Εκτέλεση"
+      trigger={trigger}
+    >
+      {wf.inputs.length === 0 && !needsLogin && <p className="text-sm text-muted-foreground">Η ροή δεν έχει εισόδους — πατήστε «Εκτέλεση».</p>}
+      {needsLogin && (
+        <fieldset className="space-y-3 rounded-lg border border-border/70 p-3">
+          <legend className="eyebrow px-1">Στοιχεία σύνδεσης</legend>
+          <p className="text-sm text-muted-foreground">
+            {creds.length
+              ? `Χρησιμοποιείται το «${creds[0].label}». Συμπληρώστε μόνο για να δοκιμάσετε με άλλα στοιχεία.`
+              : "Δεν υπάρχει αποθηκευμένο διαπιστευτήριο: δώστε τα στοιχεία για αυτή τη δοκιμή. Δεν αποθηκεύονται."}
+          </p>
+          <FormRow>
+            <TextField name="secret__username" label="Όνομα χρήστη" required={!creds.length} autoComplete="off" />
+            <TextField name="secret__password" label="Κωδικός" type="password" required={!creds.length} autoComplete="new-password" />
+          </FormRow>
+        </fieldset>
+      )}
+      {wf.inputs.map((i) =>
+        i.type === "array" || i.type === "object" ? (
+          <TextareaField
+            key={i.key}
+            name={i.key}
+            label={i.label}
+            required={i.required}
+            rows={4}
+            mono
+            placeholder={i.type === "array" ? '[{"...": "..."}, {"...": "..."}]' : '{"...": "..."}'}
+            hint={i.type === "array" ? "Λίστα σε JSON — μία εγγραφή ανά γραμμή (π.χ. γραμμές παραστατικού)." : "JSON"}
+          />
+        ) : (
+          <TextField key={i.key} name={i.key} label={i.label} required={i.required} hint={i.type} />
+        ),
+      )}
+    </FormDialog>
+  );
+  const stepCount = flat(steps).length;
+  const lastTest = runs.find((r) => r.trigger === "UI_TEST");
+  const isPublished = !!wf.publishedId;
+  const progress: ProgressStep[] = [
+    { key: "steps", label: "Βήματα", detail: stepCount ? `${stepCount} βήματα` : "καμία καταγραφή", state: stepCount ? "done" : "todo" },
+    { key: "login", label: "Σύνδεση", detail: !needsLogin ? "δεν χρειάζεται" : creds.length ? creds[0].label : "λείπουν στοιχεία", state: !needsLogin || creds.length ? "done" : "warn" },
+    {
+      key: "test",
+      label: "Δοκιμή",
+      detail: !lastTest ? "καμία δοκιμή" : lastTest.status === "SUCCEEDED" ? "πέτυχε" : lastTest.status === "FAILED" ? "απέτυχε" : "σε εξέλιξη",
+      state: lastTest?.status === "SUCCEEDED" ? "done" : lastTest?.status === "FAILED" ? "warn" : "todo",
+      href: lastTest ? `/t/${tenantId}/runs/${lastTest.id}` : undefined,
+    },
+    { key: "publish", label: "Δημοσίευση", detail: isPublished ? `v${wf.versions.find((v) => v.id === wf.publishedId)?.version ?? ""} σε λειτουργία` : "πρόχειρο", state: isPublished ? "done" : "todo" },
+    { key: "api", label: "API", detail: apiMethod ? apiMethod.endpoint : "μετά τη δημοσίευση", state: apiMethod ? "done" : "todo", href: apiMethod ? `/t/${tenantId}/collections/${apiMethod.collectionId}/methods/${apiMethod.id}` : undefined },
+  ];
+  const next = !stepCount
+    ? undefined // the empty state below offers the recording
+    : needsLogin && !creds.length
+      ? { text: `Δώστε τα στοιχεία σύνδεσης για το ${wf.target.name} (πάνω, «Προσθήκη στοιχείων σύνδεσης»).`, action: null }
+      : lastTest?.status !== "SUCCEEDED" && !isPublished
+        ? { text: lastTest?.status === "FAILED" ? "Η τελευταία δοκιμή απέτυχε — δείτε το σφάλμα, διορθώστε το βήμα και δοκιμάστε ξανά." : "Τρέξτε μια δοκιμαστική εκτέλεση με δείγμα δεδομένων.", action: testDialog(<Button size="sm"><FlaskConical aria-hidden /> Δοκιμαστική εκτέλεση</Button>) }
+        : latest.status !== "PUBLISHED" && canApprove
+          ? { text: "Η δοκιμή πέτυχε. Δημοσιεύστε για να γίνει μέθοδος του API.", action: publishDialog }
+          : apiMethod
+            ? { text: `Η μέθοδος ${apiMethod.endpoint} είναι έτοιμη.`, action: <Button size="sm" asChild><Link href={`/t/${tenantId}/collections/${apiMethod.collectionId}/methods/${apiMethod.id}`}>Τεκμηρίωση API</Link></Button> }
+            : undefined;
   const liveRun = runs.find((r) => ["QUEUED", "RUNNING", "RETRY_SCHEDULED"].includes(r.status));
   return (
     <>
@@ -178,50 +264,12 @@ export default async function WorkflowEditor({
                 }}
               />
             )}
-            <FormDialog
-              title="Δοκιμαστική εκτέλεση"
-              description="Εκτελείται στο σύστημα‑στόχο με δείγμα εισόδου· δεν χρεώνεται."
-              action={testRunAction.bind(null, tenantId, latest.id)}
-              submitLabel="Εκτέλεση"
-              trigger={
-                <Button size="sm">
-                  <FlaskConical aria-hidden /> Δοκιμαστική εκτέλεση
-                </Button>
-              }
-            >
-              {wf.inputs.length === 0 && !needsLogin && <p className="text-sm text-muted-foreground">Η ροή δεν έχει εισόδους — πατήστε «Εκτέλεση».</p>}
-              {needsLogin && (
-                <fieldset className="space-y-3 rounded-lg border border-border/70 p-3">
-                  <legend className="eyebrow px-1">Στοιχεία σύνδεσης</legend>
-                  <p className="text-sm text-muted-foreground">
-                    {creds.length
-                      ? `Χρησιμοποιείται το «${creds[0].label}». Συμπληρώστε μόνο για να δοκιμάσετε με άλλα στοιχεία.`
-                      : "Δεν υπάρχει αποθηκευμένο διαπιστευτήριο: δώστε τα στοιχεία για αυτή τη δοκιμή. Δεν αποθηκεύονται."}
-                  </p>
-                  <FormRow>
-                    <TextField name="secret__username" label="Όνομα χρήστη" required={!creds.length} autoComplete="off" />
-                    <TextField name="secret__password" label="Κωδικός" type="password" required={!creds.length} autoComplete="new-password" />
-                  </FormRow>
-                </fieldset>
-              )}
-              {wf.inputs.map((i) =>
-                i.type === "array" || i.type === "object" ? (
-                  <TextareaField
-                    key={i.key}
-                    name={i.key}
-                    label={i.label}
-                    required={i.required}
-                    rows={4}
-                    mono
-                    placeholder={i.type === "array" ? '[{"...": "..."}, {"...": "..."}]' : '{"...": "..."}'}
-                    hint={i.type === "array" ? "Λίστα σε JSON — μία εγγραφή ανά γραμμή (π.χ. γραμμές παραστατικού)." : "JSON"}
-                  />
-                ) : (
-                  <TextField key={i.key} name={i.key} label={i.label} required={i.required} hint={i.type} />
-                ),
-              )}
-            </FormDialog>
-            {latest.status === "DRAFT" && canEdit && (
+            {testDialog(
+              <Button size="sm">
+                <FlaskConical aria-hidden /> Δοκιμαστική εκτέλεση
+              </Button>,
+            )}
+            {latest.status === "DRAFT" && canEdit && !canApprove && (
               <FormDialog
                 title="Υποβολή για έγκριση"
                 description="Ο διαχειριστής θα δει το diff και την τελευταία δοκιμή."
@@ -243,6 +291,8 @@ export default async function WorkflowEditor({
           </>
         }
       />
+
+      <FlowProgress steps={progress} next={next ?? undefined} />
 
       {needsLogin && (
         <div
@@ -608,6 +658,21 @@ export default async function WorkflowEditor({
                     <Tag tone={i.required ? "neutral" : "muted"}>
                       {i.required ? i.type : "προαιρ."}
                     </Tag>
+                    {canEdit && (
+                      <FormDialog
+                        title={`Διαγραφή εισόδου «${i.key}»`}
+                        description="Αφαιρείται από τις παραμέτρους της ροής. Αν κάποιο βήμα τη χρησιμοποιεί, θα σας ενημερώσουμε."
+                        action={deleteInputAction.bind(null, tenantId, wf.id, i.key)}
+                        destructive
+                        submitLabel="Διαγραφή"
+                        size="sm"
+                        trigger={
+                          <Button size="icon" variant="ghost" className="size-7 text-muted-foreground hover:text-danger-500" aria-label={`Διαγραφή εισόδου ${i.key}`}>
+                            <Trash2 aria-hidden className="size-3.5" />
+                          </Button>
+                        }
+                      />
+                    )}
                   </li>
                 ))}
               </ul>
@@ -670,21 +735,7 @@ export default async function WorkflowEditor({
             </span>
           )}
         </p>
-        {canApprove && latest.status !== "PUBLISHED" && (
-          <FormDialog
-            title="Δημοσίευση"
-            description="Η δημοσιευμένη έκδοση είναι αμετάβλητη· αλλαγές = νέα έκδοση. Απαιτείται επιτυχημένη δοκιμή."
-            action={publishVersionAction.bind(null, tenantId, latest.id)}
-            submitLabel="Δημοσίευση"
-            trigger={
-              <Button size="sm" variant="outline">
-                <Upload aria-hidden /> Δημοσίευση
-              </Button>
-            }
-          >
-            <TextareaField name="note" label="Σημείωση έκδοσης" rows={3} />
-          </FormDialog>
-        )}
+        {canApprove && latest.status !== "PUBLISHED" && publishDialog}
       </Section>
 
       <Section className="mt-4" title="Εκτελέσεις & logs" description="Οι τελευταίες εκτελέσεις της ροής (όλες οι εκδόσεις), με τα logs κάθε καταχώρισης.">

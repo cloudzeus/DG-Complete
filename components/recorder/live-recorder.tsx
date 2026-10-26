@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, ClipboardList, Loader2, MousePointerClick, ScanText, Undo2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, ClipboardList, Loader2, MousePointerClick, ScanText, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { STEP_TYPES } from "@/lib/labels";
@@ -198,6 +198,17 @@ export function LiveRecorder({ tenantId, initial, finish, cancel }: { tenantId: 
                   {typeof s.value === "string" && <code className="ml-1 font-mono text-2xs text-muted-foreground">{s.value.replace(/[{}]/g, "")}</code>}
                   {s.into && <code className="ml-1 font-mono text-2xs text-sisyphus-600">→ {s.into}</code>}
                 </span>
+                {i > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => void send({ type: "deleteStep", id: s.id })}
+                    aria-label={`Διαγραφή βήματος ${i + 1}: ${s.label}`}
+                    title="Διαγραφή βήματος"
+                    className="grid size-6 shrink-0 place-items-center rounded-xs text-muted-foreground hover:bg-danger-50 hover:text-danger-500 focus-visible:outline-2 focus-visible:outline-sisyphus-500"
+                  >
+                    <X aria-hidden className="size-3.5" />
+                  </button>
+                )}
                 </div>
               </li>
             ))}
