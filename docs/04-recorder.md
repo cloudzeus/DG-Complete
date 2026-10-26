@@ -117,3 +117,10 @@ export const RecorderEvent = z.object({
 - Σε κάθε βήμα: «Ορισμός ως μεταβλητή», «Διαγραφή», «Αλλαγή στοιχείου» (re‑pick).
 - Κάτω toolbar: **Έλεγχος κειμένου**, **Εξαγωγή δεδομένων** (πίνακας / στοιχεία καρτέλας / μία τιμή / αρχείο της σελίδας, με επιλογέα στηλών, γραμμών και σελίδων και προεπισκόπηση — docs/26), **Αναμονή στοιχείου**, **Σχόλιο**.
 - Highlight overlay: περίγραμμα 2px `--sisyphus-500` + label chip με το locator που θα χρησιμοποιηθεί.
+
+## 9. Εισαγωγή από Chrome DevTools Recorder (διαθέσιμη πριν το extension)
+
+Μέχρι να ολοκληρωθεί το extension (P06), οι καταγραφές γίνονται με τον ενσωματωμένο Recorder του Chrome (F12 → Recorder → Start recording → End recording → Export → JSON) και εισάγονται από **Καταγραφές → Εισαγωγή από Chrome** (`importChromeRecording`, `lib/dsl/import/chromeRecorder.ts`):
+- `navigate` → `navigate` (σχετικό URL όταν ανήκει στο `baseUrl` του συστήματος), `click`/`doubleClick` → `click`, `change` → `fill`, `keyDown` Enter/Tab/Escape → `press`, `waitForElement` → `waitFor`· `setViewport`, `keyUp`, `scroll`, `hover` παραλείπονται.
+- Selectors: `aria/Όνομα[role="button"]` → role, `aria/Ετικέτα` → label, `[data-testid=x]` → testId, `text/` → text, `xpath/` → xpath, υπόλοιπα CSS· ταξινόμηση testId > role > label > text > css > xpath.
+- Κάθε πεδίο γίνεται είσοδος (`{{input.<key>}}`, λατινικό κλειδί από την ετικέτα, π.χ. «Επωνυμία» → `eponymia`). Πεδίο κωδικού → `{{secrets.password}}` και το αμέσως προηγούμενο πεδίο → `{{secrets.username}}`· οι τιμές που καταγράφηκαν **δεν αποθηκεύονται** (ούτε ως παραδείγματα — μπορεί να είναι πραγματικά δεδομένα).

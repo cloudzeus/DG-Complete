@@ -6,3 +6,4 @@ export * from "./schema";
 export * from "./template";
 export * from "./validate";
 export * from "./validators";
+export * from "./import/chromeRecorder";

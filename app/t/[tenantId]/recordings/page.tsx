@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Disc3, Plus, Puzzle } from "lucide-react";
+import { Disc3, FileUp, Plus, Puzzle } from "lucide-react";
 import { DataTable } from "@/components/dg/data-table";
 import { fmtDateTime } from "@/components/dg/format";
 import { FormDialog } from "@/components/dg/form-dialog";
-import { SelectField, TextField } from "@/components/dg/fields";
+import { FileField, SelectField, TextField } from "@/components/dg/fields";
 import { PageHeader } from "@/components/dg/page-header";
 import { Section } from "@/components/dg/section";
 import { StatusBadge } from "@/components/dg/status-badge";
 import { Button } from "@/components/ui/button";
-import { newRecordingAction } from "@/lib/actions/tenant";
+import { importChromeRecordingAction, newRecordingAction } from "@/lib/actions/tenant";
 import { listRecordings, targetOptions } from "@/lib/data/tenant";
 import { RECORDING_STATUS } from "@/lib/labels";
 import { EmptyState } from "@/components/dg/empty-state";
@@ -30,6 +30,27 @@ export default async function RecordingsPage({ params }: PageProps<"/t/[tenantId
         title="Καταγραφές"
         description="Τα βήματα που καταγράφει το extension στον browser σας, έτοιμα να γίνουν ροές."
         actions={
+          <>
+          <FormDialog
+            title="Εισαγωγή από Chrome Recorder"
+            description="Καταγράψτε την καταχώριση με το ενσωματωμένο εργαλείο του Chrome και εισαγάγετε το αρχείο JSON. Δημιουργείται πρόχειρη ροή."
+            action={importChromeRecordingAction.bind(null, tenantId)}
+            submitLabel="Εισαγωγή"
+            trigger={
+              <Button size="sm" variant="outline">
+                <FileUp aria-hidden /> Εισαγωγή από Chrome
+              </Button>
+            }
+          >
+            <ol className="list-decimal space-y-1 rounded-lg bg-muted/50 p-3 pl-7 text-sm text-muted-foreground">
+              <li>Στο Chrome ανοίξτε το σύστημα‑στόχο, πατήστε F12 και επιλέξτε την καρτέλα «Recorder» (⋮ → More tools → Recorder).</li>
+              <li>«Create a new recording» → «Start recording», κάντε την καταχώριση κανονικά, μετά «End recording».</li>
+              <li>Εξαγωγή (εικονίδιο ⤓) → «JSON» και επιλέξτε το αρχείο εδώ.</li>
+            </ol>
+            <SelectField name="targetId" label="Σύστημα‑στόχος" required placeholder="Επιλέξτε…" options={targets} />
+            <TextField name="name" label="Όνομα ροής" placeholder="Από τον τίτλο της καταγραφής" />
+            <FileField name="file" label="Αρχείο JSON" required accept="application/json,.json" hint="Οι κωδικοί δεν αποθηκεύονται· γίνονται μεταβλητές {{secrets.…}} από το διαπιστευτήριο του συστήματος." />
+          </FormDialog>
           <FormDialog
             title="Νέα καταγραφή"
             description="Δημιουργεί κωδικό σύνδεσης για το extension. Η καταγραφή γίνεται στον δικό σας browser."
@@ -49,6 +70,7 @@ export default async function RecordingsPage({ params }: PageProps<"/t/[tenantId
               <li>Κάντε την καταχώριση κανονικά και πατήστε «Ολοκληρώθηκε».</li>
             </ol>
           </FormDialog>
+          </>
         }
       />
       <div className="mb-4 flex items-start gap-3 rounded-lg border border-sisyphus-200 bg-sisyphus-50 p-3 text-sm">

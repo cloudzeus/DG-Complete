@@ -2,10 +2,12 @@
 
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { hashPassword } from "better-auth/crypto";
 import { audit } from "@/lib/audit";
 import { encrypt, encryptJson } from "@/lib/crypto";
+import { importChromeRecording } from "@/lib/dsl/import/chromeRecorder";
 import { sendWelcomeEmail } from "@/lib/email";
 import { validate, type FormState } from "@/lib/forms";
 import { prisma } from "@/lib/prisma";
@@ -178,6 +180,46 @@ export async function newWorkflowAction(tenantId: string, _p: FormState, fd: For
   if (v.data.recordingId) await withTenantTx(tenantId, (tx) => tx.recording.updateMany({ where: { id: v.data.recordingId }, data: { workflowId: wf.id, status: "COMPILED" } }));
   await audit({ actorId: user.id, action: "workflow.create", entity: "Workflow", entityId: wf.id, tenantId, meta: { name: v.data.name } });
   return done(tenantId, "/workflows", "Η ροή δημιουργήθηκε ως πρόχειρο.");
+}
+
+/** Chrome DevTools Recorder JSON → new draft workflow (docs/04 §5). Password values are dropped. */
+export async function importChromeRecordingAction(tenantId: string, _p: FormState, fd: FormData): Result {
+  const user = await guard(tenantId, "tenant.workflows.edit");
+  const v = validate(z.object({ name: opt, targetId: req("Σύστημα‑στόχος") }), fd);
+  if ("state" in v) return v.state;
+  const file = fd.get("file");
+  if (!(file instanceof File) || file.size === 0) return { ok: false, errors: { file: "Επιλέξτε το αρχείο JSON της καταγραφής." } };
+  if (file.size > 1_000_000) return { ok: false, errors: { file: "Το αρχείο ξεπερνά το 1 MB." } };
+  const db = tenantDb(tenantId);
+  const target = await db.targetSystem.findUnique({ where: { id: v.data.targetId }, select: { id: true, baseUrl: true } });
+  if (!target) return { ok: false, errors: { targetId: "Το σύστημα δεν βρέθηκε" } };
+  let imported: ReturnType<typeof importChromeRecording>;
+  try {
+    imported = importChromeRecording(JSON.parse(await file.text()), { baseUrl: target.baseUrl, name: v.data.name });
+  } catch (err) {
+    return { ok: false, errors: { file: err instanceof SyntaxError ? "Το αρχείο δεν είναι έγκυρο JSON." : (err as Error).message } };
+  }
+  // Recorded values are not kept as examples: they may be real customer data.
+  const inputSchema = {
+    type: "object",
+    properties: Object.fromEntries(imported.inputs.map((i) => [i.key, { type: "string", title: i.label }])),
+    required: imported.inputs.map((i) => i.key),
+  };
+  const wf = await db.workflow.create({
+    data: {
+      name: imported.name,
+      slug: `${slugify(imported.name)}-${randomBytes(2).toString("hex")}`,
+      targetSystemId: target.id,
+      createdById: user.id,
+      latestVersionNo: 1,
+      tags: ["chrome-recorder"],
+      versions: { create: { tenantId, versionNo: 1, definition: { dslVersion: 1, steps: imported.steps }, inputSchema, outputSchema: EMPTY_SCHEMA, createdById: user.id, changelog: "Εισαγωγή από Chrome Recorder" } },
+    } as never,
+    select: { id: true },
+  });
+  await audit({ actorId: user.id, action: "workflow.import", entity: "Workflow", entityId: wf.id, tenantId, meta: { source: "chrome-recorder", steps: imported.steps.length, skipped: imported.skipped } });
+  revalidatePath(`/t/${tenantId}/workflows`);
+  redirect(`/t/${tenantId}/workflows/${wf.id}?view=canvas`);
 }
 
 /** The editable version: the latest DRAFT, or a new draft copied from the latest version. */

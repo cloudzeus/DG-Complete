@@ -58,6 +58,22 @@ export function TextField({
   );
 }
 
+export function FileField({ accept, ...base }: Base & { accept?: string }) {
+  return (
+    <Field {...base}>
+      <input
+        id={base.name}
+        name={base.name}
+        type="file"
+        accept={accept}
+        required={base.required}
+        aria-describedby={`${base.name}-hint ${base.name}-error`}
+        className={cn(CONTROL, "h-9 py-1.5 file:mr-3 file:rounded-xs file:border-0 file:bg-muted file:px-2 file:text-sm file:font-medium")}
+      />
+    </Field>
+  );
+}
+
 export function TextareaField({ placeholder, defaultValue, rows = 4, mono, ...base }: Base & { placeholder?: string; defaultValue?: string; rows?: number; mono?: boolean }) {
   return (
     <Field {...base}>
