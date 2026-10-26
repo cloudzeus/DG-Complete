@@ -9,6 +9,7 @@ import {
   ChevronsUpDown,
   Contact,
   CreditCard,
+  HardDrive,
   Landmark,
   LayoutDashboard,
   LogOut,
@@ -79,6 +80,7 @@ const SETTINGS: Item[] = [
   { href: "/admin/settings/billing", label: "Τιμολόγηση", icon: ReceiptText, superAdminOnly: true },
   { href: "/admin/settings/ai", label: "AI · OpenRouter", icon: Bot, superAdminOnly: true },
   { href: "/admin/settings/email", label: "Email · Mailgun", icon: Mail, superAdminOnly: true },
+  { href: "/admin/settings/storage", label: "Αρχεία · Bunny", icon: HardDrive, superAdminOnly: true },
   { href: "/admin/settings/registry", label: "Μητρώο ΑΦΜ", icon: Landmark, superAdminOnly: true },
   { href: "/admin/settings/logs", label: "Αρχεία καταγραφής", icon: ScrollText, superAdminOnly: true },
 ];

@@ -8,7 +8,7 @@
 
 ## Εργασίες
 1. `lib/queue`: queues, zod payloads, producers, pg-boss factory (`QUEUE_DATABASE_URL`, απευθείας 5432, ADR‑022).
-2. `lib/storage`: interface του docs/08 §2 με drivers `bunny` (Storage API με `AccessKey`, signed CDN URLs με Token Authentication — υλοποίησε το token ακριβώς κατά την τεκμηρίωση «Token Authentication» του Bunny και γράψε test σε staging pull zone) και `local` (dev/tests). Επιλογή με `STORAGE_DRIVER`.
+2. `lib/storage`: interface του docs/08 §2 με drivers `bunny` (Storage API με `AccessKey`, signed CDN URLs με Token Authentication — υλοποίησε το token ακριβώς κατά την τεκμηρίωση «Token Authentication» του Bunny και γράψε test σε staging pull zone) και `local` (dev/tests). Ο driver και τα στοιχεία του Bunny διαβάζονται από τις ρυθμίσεις της εφαρμογής (`StorageSettings`, `/admin/settings/storage`, ADR‑024) — όχι από env· ήδη υπάρχουν τα `lib/storage/settings.ts` και `lib/storage/bunny.ts` (put/delete/signedUrl/test).
 3. `lib/engine`:
    - `Interpreter.run(def, { input, secrets, page, hooks })` για όλους τους τύπους βημάτων (docs/05 §3).
    - `LocatorResolver` με fallback logging (docs/06 §4).

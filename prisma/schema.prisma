@@ -1639,3 +1639,24 @@ model ConcurrencyLease {
   @@index([scope, key, expiresAt])
   @@map("concurrency_lease")
 }
+
+/// Files / artifacts storage (ADR-024): set by SUPER_ADMIN in /admin/settings/storage, not in .env.
+model StorageSettings {
+  id              String    @id @default("default")
+  driver          String    @default("local") // bunny | local
+  storageZone     String?
+  region          String? // empty = Falkenstein (storage.bunnycdn.com), else e.g. "uk", "se", "ny"
+  accessKeyEnc    String? // AES-256-GCM, AAD storage:access
+  accessKeyHint   String?
+  pullZoneHost    String? // e.g. dg-complete-artifacts.b-cdn.net
+  tokenKeyEnc     String? // AES-256-GCM, AAD storage:token — Token Authentication security key
+  tokenKeyHint    String?
+  signedUrlTtlSec Int       @default(900)
+  lastTestAt      DateTime?
+  lastTestOk      Boolean?
+  lastTestError   String?
+  updatedById     String?
+  updatedAt       DateTime  @updatedAt
+
+  @@map("storage_settings")
+}

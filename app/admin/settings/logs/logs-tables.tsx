@@ -33,6 +33,8 @@ const ACTIONS: Record<string, { label: string; tone: Tone }> = {
   "user.create": { label: "Νέος χρήστης", tone: "blue" },
   "user.update": { label: "Αλλαγή χρήστη", tone: "blue" },
   "user.activate": { label: "Ενεργοποίηση χρήστη", tone: "green" },
+  "storage.settings": { label: "Ρυθμίσεις αρχείων (Bunny)", tone: "red" },
+  "storage.test": { label: "Δοκιμή Bunny", tone: "slate" },
   "user.deactivate": { label: "Απενεργοποίηση χρήστη", tone: "red" },
   "membership.set": { label: "Πρόσβαση σε tenant", tone: "blue" },
   "membership.remove": { label: "Αφαίρεση πρόσβασης", tone: "amber" },

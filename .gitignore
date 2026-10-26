@@ -49,3 +49,4 @@ next-env.d.ts
 # generated Cube deployment files (from lib/cube-compose.ts)
 cube/cube.js
 cube/dgsmartbi-cube.yml
+/.storage

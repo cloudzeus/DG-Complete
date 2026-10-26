@@ -27,7 +27,7 @@
 
 ### Αποθήκευση στο Bunny (Storage zone + Pull zone)
 
-**Ρύθμιση (μία φορά, στον λογαριασμό Bunny της DGSoft):**
+**Ρύθμιση (μία φορά, στον λογαριασμό Bunny της DGSoft)** — τα στοιχεία (driver, storage zone, περιοχή, access key, pull zone, token key, διάρκεια signed URL) καταχωρίζονται από την εφαρμογή στο **`/admin/settings/storage`** (μόνο SUPER_ADMIN), όχι σε μεταβλητές περιβάλλοντος· τα κλειδιά αποθηκεύονται κρυπτογραφημένα (ADR‑024) και η σελίδα έχει «Δοκιμή σύνδεσης».
 - **Storage zone** `dg-complete` (ή `dg-complete-staging`) σε ευρωπαϊκή κύρια περιοχή, **χωρίς** replication εκτός EU.
 - **Pull zone** `dg-complete-artifacts` με origin το storage zone, **Token Authentication (Advanced / SHA‑256) ενεργό**, «Block root path access», χωρίς cache για `*.html.gz` (DOM) και με cache 1 ώρα για εικόνες (το URL αλλάζει ανά artifact, οπότε δεν υπάρχει πρόβλημα παλιού περιεχομένου).
 - Κανένα αρχείο δεν δίνεται ποτέ με δημόσιο, μόνιμο URL.
@@ -46,7 +46,7 @@
 export interface Storage {
   put(path: string, body: Buffer | Readable, contentType: string): Promise<{ sizeBytes: number; sha256: string }>;
   delete(path: string): Promise<void>;
-  signedUrl(path: string, ttlSec?: number): string;   // default 15′
+  signedUrl(path: string, ttlSec?: number): Promise<string>;   // default από τις ρυθμίσεις (15′)
   get(path: string): Promise<Readable>;               // για εξαγωγές/ZIP tenant
 }
 // bunny.ts: Storage API — PUT/DELETE https://{region}.storage.bunnycdn.com/{zone}/{path} με header AccessKey

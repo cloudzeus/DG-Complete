@@ -90,5 +90,8 @@ Web και worker συνδέονται μέσω PgBouncer (port 6432, `pool_mode
 ## ADR‑023 — Φόρμες με Server Actions, χωρίς react-hook-form
 **Απόφαση (25/10/2026):** όλες οι φόρμες είναι `<form action={serverAction}>`· ο έλεγχος γίνεται στον server με zod και τα σφάλματα πεδίων επιστρέφουν από το action (`useActionState`). Οι φόρμες ανοίγουν σε modals (`FormDialog`)· τα πεδία είναι server components μέσα στο client shell του modal. Δεν χρησιμοποιείται react-hook-form. Περισσότερα στον server, λιγότερο JS στον browser.
 
+## ADR‑024 — Ρυθμίσεις Bunny στην εφαρμογή, όχι στο .env
+**Απόφαση (26/10/2026):** ο driver αρχείων (`bunny` | `local`) και τα στοιχεία του Bunny (storage zone, περιοχή, access key, pull zone host, token key, διάρκεια signed URL) ορίζονται από τον SUPER_ADMIN στο `/admin/settings/storage` και αποθηκεύονται στον πίνακα `storage_settings` (singleton, όπως το `email_settings` του dgsmartbi). Τα δύο κλειδιά κρυπτογραφούνται με `lib/crypto` (AAD `storage:access` / `storage:token`), εμφανίζεται μόνο hint, και κάθε αλλαγή γράφεται στο audit. Web και worker διαβάζουν τις ρυθμίσεις από τη βάση (cache 60″). Στο `.env` μένει μόνο το `DATA_ENCRYPTION_KEYS` που τα αποκρυπτογραφεί.
+
 ## ADR‑021 — Προγραμματισμένες εργασίες στον κώδικα, όχι στο Coolify
 Όλες οι περιοδικές εργασίες (χρεώσεις, συγχρονισμοί SoftOne, retention, health runs κ.λπ.) ορίζονται στο `lib/jobs/registry.ts` και τρέχουν από τον in‑process scheduler του dgsmartbi, με κλείδωμα ανά εργασία στον πίνακα `ScheduledTask`. Δεν χρησιμοποιούνται Scheduled Tasks του Coolify ούτε crontab στον server: τα ωράρια είναι versioned, ελέγχονται σε review/tests και μεταφέρονται αυτούσια σε κάθε περιβάλλον (docs/10 §4β).

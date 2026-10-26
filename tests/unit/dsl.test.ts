@@ -71,3 +71,20 @@ describe("toGraph", () => {
     expect(g.edges).toEqual([{ id: "__input->__output", source: "__input", target: "__output", insertAfter: null }]);
   });
 });
+
+import { createHash } from "node:crypto";
+import { bunnySignedUrl, storageUrl } from "@/lib/storage/bunny";
+
+describe("bunny", () => {
+  it("builds storage URLs per region", () => {
+    expect(storageUrl({ zone: "dg-complete", region: null }, "/tenants/t1/a b.webp")).toBe("https://storage.bunnycdn.com/dg-complete/tenants/t1/a%20b.webp");
+    expect(storageUrl({ zone: "dg-complete", region: "uk" }, "x.webp")).toBe("https://uk.storage.bunnycdn.com/dg-complete/x.webp");
+  });
+  it("signs CDN URLs with sha256(key + path + expires), base64url", () => {
+    const url = new URL(bunnySignedUrl({ pullZoneHost: "cdn.example.net", tokenKey: "secret" }, "tenants/t1/x.webp", 900, 1_700_000_000_000));
+    expect(url.pathname).toBe("/tenants/t1/x.webp");
+    expect(url.searchParams.get("expires")).toBe(String(1_700_000_000 + 900));
+    const expected = createHash("sha256").update(`secret/tenants/t1/x.webp${1_700_000_900}`).digest("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    expect(url.searchParams.get("token")).toBe(expected);
+  });
+});

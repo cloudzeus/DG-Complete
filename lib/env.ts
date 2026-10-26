@@ -32,22 +32,12 @@ const schema = z
     CRON_SECRET: optional,
     SCHEDULER: optional,
 
-    STORAGE_DRIVER: z.enum(["bunny", "local"]).default("local"),
-    BUNNY_STORAGE_ZONE: optional,
-    BUNNY_STORAGE_REGION: optional,
-    BUNNY_STORAGE_ACCESS_KEY: optional,
-    BUNNY_PULLZONE_HOST: optional,
-    BUNNY_TOKEN_KEY: optional,
+    // Files (Bunny) are configured in the app, /admin/settings/storage — not here (ADR-024).
 
     API_KEY_PEPPER: optional,
     RECORDER_JWT_SECRET: optional,
   })
   .superRefine((env, ctx) => {
-    if (env.STORAGE_DRIVER === "bunny") {
-      for (const key of ["BUNNY_STORAGE_ZONE", "BUNNY_STORAGE_ACCESS_KEY", "BUNNY_PULLZONE_HOST", "BUNNY_TOKEN_KEY"] as const) {
-        if (!env[key]) ctx.addIssue({ code: "custom", path: [key], message: `${key}: απαιτείται με STORAGE_DRIVER=bunny` });
-      }
-    }
     if (env.NODE_ENV === "production" && !env.CRON_SECRET) {
       ctx.addIssue({ code: "custom", path: ["CRON_SECRET"], message: "CRON_SECRET: απαιτείται στην παραγωγή" });
     }

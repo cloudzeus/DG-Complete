@@ -57,12 +57,8 @@ QUEUE_POOL_MAX=4                # pool του pg-boss ανά process
 WORKER_ASSIST_URL=…             # εσωτερικό WS του worker για live assist (μόνο ιδιωτικό δίκτυο)
 ASSIST_SHARED_SECRET=…
 MICROSOFT_CLIENT_ID=…  MICROSOFT_CLIENT_SECRET=…  MICROSOFT_TENANT_ID=common
-STORAGE_DRIVER=bunny            # bunny | local
-BUNNY_STORAGE_ZONE=dg-complete
-BUNNY_STORAGE_REGION=           # κενό = Falkenstein (storage.bunnycdn.com), αλλιώς π.χ. "uk", "se"
-BUNNY_STORAGE_ACCESS_KEY=…      # password του storage zone — ΜΟΝΟ server/worker
-BUNNY_PULLZONE_HOST=dg-complete-artifacts.b-cdn.net
-BUNNY_TOKEN_KEY=…               # security key του Token Authentication του pull zone
+# Αρχεία (Bunny Storage + Pull zone): ΔΕΝ ορίζονται εδώ — ρυθμίζονται από την εφαρμογή,
+# /admin/settings/storage (πίνακας storage_settings, κλειδιά κρυπτογραφημένα με DATA_ENCRYPTION_KEYS, ADR-024)
 API_KEY_PEPPER=…                # προαιρετικό, επιπλέον στο SHA-256 των API keys
 RECORDER_JWT_SECRET=…
 WORKER_CONCURRENCY=8
