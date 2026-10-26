@@ -124,3 +124,13 @@ export const RecorderEvent = z.object({
 - `navigate` → `navigate` (σχετικό URL όταν ανήκει στο `baseUrl` του συστήματος), `click`/`doubleClick` → `click`, `change` → `fill`, `keyDown` Enter/Tab/Escape → `press`, `waitForElement` → `waitFor`· `setViewport`, `keyUp`, `scroll`, `hover` παραλείπονται.
 - Selectors: `aria/Όνομα[role="button"]` → role, `aria/Ετικέτα` → label, `[data-testid=x]` → testId, `text/` → text, `xpath/` → xpath, υπόλοιπα CSS· ταξινόμηση testId > role > label > text > css > xpath.
 - Κάθε πεδίο γίνεται είσοδος (`{{input.<key>}}`, λατινικό κλειδί από την ετικέτα, π.χ. «Επωνυμία» → `eponymia`). Πεδίο κωδικού → `{{secrets.password}}` και το αμέσως προηγούμενο πεδίο → `{{secrets.username}}`· οι τιμές που καταγράφηκαν **δεν αποθηκεύονται** (ούτε ως παραδείγματα — μπορεί να είναι πραγματικά δεδομένα).
+
+## 10. Καταγραφή μέσα στην εφαρμογή (χωρίς extension)
+
+**Καταγραφές → Καταγραφή στην εφαρμογή**: ο server ανοίγει Chromium (ο ίδιος με τον ενσωματωμένο worker, ADR‑025) στο `baseUrl` του συστήματος‑στόχου, με το SSRF guard των `allowedOrigins`. Ο χρήστης βλέπει τη σελίδα ως εικόνα (`/api/recorder/[id]/frame`, ~3 fps, δεν αποθηκεύεται) και τα κλικ, τα πλήκτρα, η κύλιση και η γραμμή διεύθυνσης προωθούνται με `/api/recorder/[id]/action` (zod, `tenant.workflows.edit`, μόνο ο χρήστης που ξεκίνησε τη συνεδρία).
+- Κάθε ενέργεια γίνεται βήμα: κλικ σε κουμπί/σύνδεσμο → `click`, πληκτρολόγηση σε πεδίο → `fill` με `{{input.<key>}}` (κλειδί από την ετικέτα), πεδίο κωδικού → `{{secrets.password}}` και το προηγούμενο πεδίο → `{{secrets.username}}`, λίστα → παράθυρο επιλογής → `select`, Enter → `press`, νέα διεύθυνση → `navigate`. Οι τιμές που πληκτρολογούνται πηγαίνουν μόνο στη σελίδα — δεν αποθηκεύονται ούτε γράφονται σε logs.
+- **Capture πεδίων φόρμας**: όλα τα ορατά πεδία της σελίδας (ετικέτα, τύπος, υποχρεωτικό, επιλογές) σε πίνακα· ο χρήστης ορίζει για καθένα «Είσοδος API / Όνομα χρήστη / Κωδικός / Παράλειψη». Γίνονται βήματα με κοινό `form: f<n>` και καταγράφεται `definition.forms[f<n>] = { title, url, image, fields }` — `image` στο `lib/storage` (`tenants/{t}/recordings/{session}/{f}.jpg`, κωδικοί μασκαρισμένοι), `fields` χωρίς τιμές.
+- **Εξαγωγή αποτελέσματος**: κλικ σε στοιχείο → όνομα (π.χ. `protocolNo`) → `extract` σε `output.<key>`.
+- Locators ανά στοιχείο: testId > role+όνομα > label > placeholder > text > `[name=]` > CSS path (`lib/recorder/describe.ts`).
+- **Ολοκλήρωση** → πρόχειρη ροή με `inputSchema`/`outputSchema` και άνοιγμα στον καμβά· οι κόμβοι φόρμας έχουν εικονίδια «Στιγμιότυπο» και «Πεδία». Συνεδρίες στη μνήμη του web process, έως 6, κλείνουν μετά από 20′ αδράνειας.
+- Μηνύματα της καταγραφής σε παράθυρο ενημέρωσης (modal).

@@ -39,7 +39,9 @@ import {
   submitVersionAction,
   testRunAction,
 } from "@/lib/actions/tenant";
-import { WorkflowCanvas, type StepRunStatus } from "@/components/workflow-editor/canvas";
+import { WorkflowCanvas, type CanvasForm, type StepRunStatus } from "@/components/workflow-editor/canvas";
+import type { CapturedForm } from "@/lib/dsl/graph";
+import { getStorage } from "@/lib/storage";
 import { LiveRun } from "@/components/dg/live-run";
 import { StepTree } from "@/components/workflow-editor/step-tree";
 import { getWorkflow, listCredentials, workflowRuns } from "@/lib/data/tenant";
@@ -105,6 +107,12 @@ export default async function WorkflowEditor({
   // The flow types a username / password: they come from a credential of the target system.
   const needsLogin = JSON.stringify(latest.definition).includes("{{secrets.");
   const canCreds = can(user, "tenant.credentials.manage", tenantId);
+  // Captured forms (live recorder): signed, short-lived image URLs for the canvas.
+  const captured = ((latest.definition as { forms?: Record<string, CapturedForm> }).forms ?? {}) as Record<string, CapturedForm>;
+  const storage = Object.values(captured).some((f) => f.image) ? await getStorage() : null;
+  const forms: Record<string, CanvasForm> = Object.fromEntries(
+    await Promise.all(Object.entries(captured).map(async ([k, f]) => [k, { ...f, imageUrl: f.image && storage ? await storage.signedUrl(f.image, 900) : undefined }] as const)),
+  );
   const warnings = lint(latest.definition.steps ?? [], wf.inputs);
   const stepHref = `${base}?${new URLSearchParams({ view })}&step=`;
   const href = (q: Record<string, string>) =>
@@ -319,6 +327,7 @@ export default async function WorkflowEditor({
                 inputs={wf.inputs.map((x) => x.key)}
                 outputs={wf.outputs}
                 runStatus={runs[0]?.stepStatus as Record<string, StepRunStatus> | undefined}
+                forms={forms}
               />
             ) : (
               <StepTree

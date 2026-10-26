@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/dg/page-header";
 import { Section } from "@/components/dg/section";
 import { StatusBadge } from "@/components/dg/status-badge";
 import { Button } from "@/components/ui/button";
-import { importChromeRecordingAction, newRecordingAction } from "@/lib/actions/tenant";
+import { importChromeRecordingAction, newRecordingAction, startLiveRecordingAction } from "@/lib/actions/tenant";
 import { listRecordings, targetOptions } from "@/lib/data/tenant";
 import { RECORDING_STATUS } from "@/lib/labels";
 import { EmptyState } from "@/components/dg/empty-state";
@@ -31,6 +31,20 @@ export default async function RecordingsPage({ params }: PageProps<"/t/[tenantId
         description="Τα βήματα που καταγράφει το extension στον browser σας, έτοιμα να γίνουν ροές."
         actions={
           <>
+          <FormDialog
+            title="Καταγραφή στην εφαρμογή"
+            description="Ανοίγει το σύστημα‑στόχο σε παράθυρο μέσα στην εφαρμογή. Κάνετε την καταχώριση κανονικά· κάθε ενέργεια γίνεται βήμα, με «Capture πεδίων» οι φόρμες γίνονται είσοδοι του API."
+            action={startLiveRecordingAction.bind(null, tenantId)}
+            submitLabel="Έναρξη καταγραφής"
+            trigger={
+              <Button size="sm">
+                <Disc3 aria-hidden /> Καταγραφή στην εφαρμογή
+              </Button>
+            }
+          >
+            <TextField name="name" label="Όνομα" required placeholder="π.χ. Υποβολή αίτησης" />
+            <SelectField name="targetId" label="Σύστημα‑στόχος" required placeholder="Επιλέξτε…" options={targets} />
+          </FormDialog>
           <FormDialog
             title="Εισαγωγή από Chrome Recorder"
             description="Καταγράψτε την καταχώριση με το ενσωματωμένο εργαλείο του Chrome και εισαγάγετε το αρχείο JSON. Δημιουργείται πρόχειρη ροή."
@@ -57,8 +71,8 @@ export default async function RecordingsPage({ params }: PageProps<"/t/[tenantId
             action={newRecordingAction.bind(null, tenantId)}
             submitLabel="Δημιουργία κωδικού"
             trigger={
-              <Button size="sm">
-                <Plus aria-hidden /> Νέα καταγραφή
+              <Button size="sm" variant="outline">
+                <Plus aria-hidden /> Με extension
               </Button>
             }
           >

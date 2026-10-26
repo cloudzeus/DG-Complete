@@ -8,6 +8,13 @@ export type RunStep = { no: string; label: string; status: "ok" | "failed" | "sk
 const show = (v: unknown): string | undefined => {
   if (v === undefined || v === null) return undefined;
   if (typeof v === "string") return v;
+  // docs/05 locator → one line per candidate joined with " || " (the editor parses it back).
+  const cands = (v as { candidates?: { kind: string; value?: string; role?: string; name?: string }[] }).candidates;
+  if (Array.isArray(cands)) {
+    return cands
+      .map((c) => (c.kind === "role" ? `role ${c.role ?? ""}${c.name ? ` "${c.name}"` : ""}` : c.kind === "css" || c.kind === "xpath" ? `${c.kind} ${c.value ?? ""}` : `${c.kind === "testId" ? "testid" : c.kind} "${c.value ?? ""}"`))
+      .join(" || ");
+  }
   const l = v as { strategy?: string; value?: string; role?: string; name?: string };
   if (l.strategy === "role") return `role ${l.role ?? ""} "${l.name ?? ""}"`.trim();
   if (l.strategy) return `${l.strategy} "${l.value ?? ""}"`;

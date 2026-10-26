@@ -11,11 +11,12 @@ import {
 } from "@xyflow/react";
 import ELK from "elkjs/lib/elk.bundled.js";
 import {
-  CheckSquare, CircleDot, FileInput, FileOutput, FormInput, Hand, Loader2, MousePointerClick, Navigation, Plus, Repeat, ScanText, Split, Wrench, type LucideIcon,
+  Camera, CheckSquare, CircleDot, ListChecks, FileInput, FileOutput, FormInput, Hand, Loader2, MousePointerClick, Navigation, Plus, Repeat, ScanText, Split, Wrench, type LucideIcon,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { insertAfter, type DslDefinition } from "@/lib/dsl/commands";
-import { toGraph, type GraphNode, type NodeKind } from "@/lib/dsl/graph";
+import { toGraph, type CapturedForm, type GraphNode, type NodeKind } from "@/lib/dsl/graph";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { STEP_TYPES } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { newStepId, useDefinition } from "./use-definition";
@@ -34,7 +35,10 @@ const H = 49;
 const elk = new ELK();
 
 export type StepRunStatus = "RUNNING" | "SUCCEEDED" | "FAILED" | "SKIPPED";
-type StepNodeData = GraphNode & { selected: boolean; run?: StepRunStatus };
+type StepNodeData = GraphNode & { selected: boolean; run?: StepRunStatus; onForm?: (formId: string, view: "image" | "fields") => void; hasImage?: boolean };
+export type CanvasForm = CapturedForm & { imageUrl?: string };
+
+const KIND_LABEL: Record<string, string> = { input: "Είσοδος API", username: "Χρήστης (διαπιστευτήριο)", password: "Κωδικός (διαπιστευτήριο)" };
 
 const RUN_LABEL: Record<StepRunStatus, string> = { RUNNING: "Εκτελείται", SUCCEEDED: "Ολοκληρώθηκε", FAILED: "Απέτυχε", SKIPPED: "Παραλείφθηκε" };
 
@@ -73,6 +77,18 @@ function StepNode({ data }: NodeProps<Node<StepNodeData>>) {
         <span className="min-w-0 flex-1 truncate text-2xs font-semibold tracking-[0.08em] text-muted-foreground uppercase">
           {data.no ? `${data.no} · ${data.type ? (STEP_TYPES[data.type] ?? data.type) : data.kind}` : data.label}
         </span>
+        {data.formId && data.onForm && (
+          <span className="nodrag nopan flex shrink-0 gap-0.5" data-form-btn>
+            {data.hasImage && (
+              <button type="button" aria-label="Στιγμιότυπο της φόρμας" title="Στιγμιότυπο της φόρμας" onClick={(e) => (e.stopPropagation(), data.onForm!(data.formId!, "image"))} className="grid size-5 place-items-center rounded-xs text-muted-foreground hover:bg-sisyphus-50 hover:text-sisyphus-600 focus-visible:outline-2 focus-visible:outline-sisyphus-500">
+                <Camera aria-hidden className="size-3" />
+              </button>
+            )}
+            <button type="button" aria-label="Πεδία της φόρμας" title="Πεδία της φόρμας" onClick={(e) => (e.stopPropagation(), data.onForm!(data.formId!, "fields"))} className="grid size-5 place-items-center rounded-xs text-muted-foreground hover:bg-sisyphus-50 hover:text-sisyphus-600 focus-visible:outline-2 focus-visible:outline-sisyphus-500">
+              <ListChecks aria-hidden className="size-3" />
+            </button>
+          </span>
+        )}
       </div>
       {terminal ? (
         <span className="mt-0.5 block truncate font-mono text-2xs text-muted-foreground">{data.bindings.map((b) => b.replace(/^input\./, "")).join(" · ") || "—"}</span>
@@ -134,7 +150,10 @@ export function WorkflowCanvas(props: {
   outputs: string[];
   /** Step statuses of the latest run (live while it runs). */
   runStatus?: Record<string, StepRunStatus>;
+  /** Forms captured by the live recorder, with a signed image URL. */
+  forms?: Record<string, CanvasForm>;
 }) {
+  const [openForm, setOpenForm] = useState<{ id: string; view: "image" | "fields" } | null>(null);
   const router = useRouter();
   const { definition, apply, saving } = useDefinition(props);
   const graph = useMemo(() => toGraph(definition, { collapseForms: false, inputs: props.inputs, outputs: props.outputs }), [definition, props.inputs, props.outputs]);
@@ -167,7 +186,7 @@ export function WorkflowCanvas(props: {
     // Controlled nodes without onNodesChange are never "measured": give React Flow the size we laid out.
     width: W,
     height: H,
-    data: { ...n, selected: n.stepIds.includes(props.selected ?? ""), run: nodeStatus(n.stepIds, props.runStatus) },
+    data: { ...n, selected: n.stepIds.includes(props.selected ?? ""), run: nodeStatus(n.stepIds, props.runStatus), onForm: (id, view) => setOpenForm({ id, view }), hasImage: !!(n.formId && props.forms?.[n.formId]?.imageUrl) },
     draggable: false,
     connectable: false,
     selectable: n.stepIds.length > 0,
@@ -200,7 +219,8 @@ export function WorkflowCanvas(props: {
         fitViewOptions={{ padding: { top: 0.1, bottom: 0.3, left: 0.05, right: 0.05 }, maxZoom: 1, minZoom: 0.6 }}
         minZoom={0.2}
         nodesConnectable={false}
-        onNodeClick={(_, n) => {
+        onNodeClick={(e, n) => {
+          if ((e.target as HTMLElement).closest("[data-form-btn]")) return;
           const step = (n.data as StepNodeData).stepIds[0];
           if (step) router.push(`${props.hrefBase}${step}`, { scroll: false });
         }}
@@ -212,6 +232,49 @@ export function WorkflowCanvas(props: {
         <Controls showInteractive={false} orientation="horizontal" position="bottom-left" className="m-2!" />
       </ReactFlow>}
       {saving && <span className="absolute top-2 right-2 rounded-sm bg-card px-2 py-1 text-2xs text-muted-foreground shadow-fluent-2">Αποθήκευση…</span>}
+      <FormDialog form={openForm ? props.forms?.[openForm.id] : undefined} view={openForm?.view} onClose={() => setOpenForm(null)} />
     </div>
+  );
+}
+
+/** Captured form: page image (passwords masked) or its fields and the API inputs they map to. */
+function FormDialog({ form, view, onClose }: { form?: CanvasForm; view?: "image" | "fields"; onClose: () => void }) {
+  return (
+    <Dialog open={!!form} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className={view === "image" ? "sm:max-w-5xl" : "sm:max-w-2xl"}>
+        <DialogHeader>
+          <DialogTitle>{form?.title ?? "Φόρμα"}</DialogTitle>
+          <DialogDescription>{form?.url ? <span className="font-mono text-xs">{form.url}</span> : null} {view === "image" ? "· η σελίδα τη στιγμή του capture, με μασκαρισμένους κωδικούς" : `· ${form?.fields.length ?? 0} πεδία`}</DialogDescription>
+        </DialogHeader>
+        {view === "image" && form?.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- signed, short-lived URL
+          <img src={form.imageUrl} alt={`Στιγμιότυπο της φόρμας ${form.title ?? ""}`} className="w-full rounded-md border border-border/70" />
+        ) : (
+          <div className="max-h-[60dvh] overflow-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs text-muted-foreground">
+                  <th className="py-1.5 pr-3 font-medium">Πεδίο</th>
+                  <th className="py-1.5 pr-3 font-medium">Τύπος</th>
+                  <th className="py-1.5 pr-3 font-medium">Στο API</th>
+                </tr>
+              </thead>
+              <tbody>
+                {form?.fields.map((f, i) => (
+                  <tr key={i} className="border-b border-border/50 last:border-0">
+                    <td className="py-1.5 pr-3">
+                      {f.label}
+                      {f.required && <span className="ml-1 text-danger-500" aria-label="υποχρεωτικό">*</span>}
+                    </td>
+                    <td className="py-1.5 pr-3 text-muted-foreground">{f.type}{f.options ? ` · ${f.options} επιλογές` : ""}</td>
+                    <td className="py-1.5 pr-3">{f.key ? <code className="font-mono text-xs">{f.key}</code> : <span className="text-muted-foreground">{KIND_LABEL[f.kind] ?? f.kind}</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

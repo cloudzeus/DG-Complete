@@ -5,7 +5,10 @@ import { CONTAINER_TYPES, type DslDefinition, type DslStep } from "./commands";
 
 export type NodeKind = "input" | "navigate" | "form" | "action" | "check" | "read" | "loop" | "condition" | "human" | "helper" | "output";
 
-export type GraphNode = { id: string; kind: NodeKind; label: string; no: string; parentId?: string; stepIds: string[]; bindings: string[]; type?: string };
+export type GraphNode = { id: string; kind: NodeKind; label: string; no: string; parentId?: string; stepIds: string[]; bindings: string[]; type?: string; formId?: string };
+
+/** A form captured by the live recorder (docs/04 §10): page image + fields, no values. */
+export type CapturedForm = { title?: string; url?: string; image?: string; fields: { label: string; type: string; key?: string; kind: string; required?: boolean; options?: number }[] };
 export type GraphEdge = { id: string; source: string; target: string; label?: string; insertAfter: string | null; parentId?: string };
 
 const FORM = new Set(["fill", "select", "choose", "check", "upload"]);
@@ -28,7 +31,16 @@ export function toGraph(def: DslDefinition, opts: { collapseForms?: boolean; inp
       const no = prefix ? `${prefix}${String.fromCharCode(97 + i)}` : String(i + 1).padStart(2, "0");
       let node: GraphNode;
       let consumed = 1;
-      if (opts.collapseForms && FORM.has(s.type)) {
+      const formId = typeof s.form === "string" ? s.form : undefined;
+      if (formId) {
+        // Steps of one captured form: one node, whatever their type.
+        let j = i;
+        while (j < steps.length && steps[j].form === formId) j++;
+        const group = steps.slice(i, j);
+        consumed = group.length;
+        const f = (def.forms as Record<string, CapturedForm> | undefined)?.[formId];
+        node = { id: `form:${formId}`, kind: "form", label: `${f?.title ? `${f.title} · ` : "Φόρμα · "}${group.length} πεδία`, no, parentId, stepIds: group.map((g) => g.id), bindings: group.flatMap(bindingsOf), formId };
+      } else if (opts.collapseForms && FORM.has(s.type)) {
         let j = i;
         while (j < steps.length && FORM.has(steps[j].type)) j++;
         const group = steps.slice(i, j);

@@ -3,7 +3,7 @@ import { getStorage, verifyLocalSignature } from "@/lib/storage";
 
 // Serves artifacts of the local storage driver (dev / single-host) behind a short-lived HMAC
 // signature, like Bunny's token URLs. Never cached.
-const TYPES: Record<string, string> = { png: "image/png", html: "text/plain; charset=utf-8", json: "application/json", zip: "application/zip" };
+const TYPES: Record<string, string> = { png: "image/png", html: "text/plain; charset=utf-8", json: "application/json", zip: "application/zip", jpg: "image/jpeg" };
 
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams;

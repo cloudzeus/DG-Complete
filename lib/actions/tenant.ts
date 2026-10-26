@@ -8,6 +8,7 @@ import { hashPassword } from "better-auth/crypto";
 import { audit } from "@/lib/audit";
 import { encrypt, encryptJson } from "@/lib/crypto";
 import { importChromeRecording } from "@/lib/dsl/import/chromeRecorder";
+import { closeSession, getSession, RecorderError, startSession } from "@/lib/recorder/live";
 import { sendWelcomeEmail } from "@/lib/email";
 import { validate, type FormState } from "@/lib/forms";
 import { prisma } from "@/lib/prisma";
@@ -181,6 +182,60 @@ export async function newWorkflowAction(tenantId: string, _p: FormState, fd: For
   if (v.data.recordingId) await withTenantTx(tenantId, (tx) => tx.recording.updateMany({ where: { id: v.data.recordingId }, data: { workflowId: wf.id, status: "COMPILED" } }));
   await audit({ actorId: user.id, action: "workflow.create", entity: "Workflow", entityId: wf.id, tenantId, meta: { name: v.data.name } });
   return done(tenantId, "/workflows", "Η ροή δημιουργήθηκε ως πρόχειρο.");
+}
+
+/** Starts a live recording in the app's own browser (docs/04 §10) and opens it. */
+export async function startLiveRecordingAction(tenantId: string, _p: FormState, fd: FormData): Result {
+  const user = await guard(tenantId, "tenant.workflows.edit");
+  const v = validate(z.object({ name: req("Όνομα"), targetId: req("Σύστημα‑στόχος") }), fd);
+  if ("state" in v) return v.state;
+  const target = await tenantDb(tenantId).targetSystem.findUnique({ where: { id: v.data.targetId }, select: { id: true, baseUrl: true, allowedOrigins: true } });
+  if (!target) return { ok: false, errors: { targetId: "Το σύστημα δεν βρέθηκε" } };
+  let id: string;
+  try {
+    id = await startSession({ tenantId, userId: user.id, targetId: target.id, baseUrl: target.baseUrl, allowedOrigins: target.allowedOrigins, name: v.data.name });
+  } catch (err) {
+    return { ok: false, message: err instanceof RecorderError ? err.message : "Ο browser καταγραφής δεν ξεκίνησε. Δοκιμάστε ξανά." };
+  }
+  redirect(`/t/${tenantId}/recordings/live/${id}`);
+}
+
+/** Live recording → new draft workflow; closes the browser. */
+export async function finishLiveRecordingAction(tenantId: string, sessionId: string, _p: FormState, fd: FormData): Result {
+  const user = await guard(tenantId, "tenant.workflows.edit");
+  const s = getSession(sessionId, tenantId, user.id);
+  if (!s) return { ok: false, message: "Η καταγραφή έληξε." };
+  if (s.steps.length < 2) return { ok: false, message: "Δεν έχουν καταγραφεί βήματα ακόμα." };
+  const name = String(fd.get("name") ?? "").trim() || s.name;
+  const inputSchema = {
+    type: "object",
+    properties: Object.fromEntries(s.inputs.map((i) => [i.key, { type: "string", title: i.label, ...(i.enum ? { enum: i.enum } : {}) }])),
+    required: s.inputs.filter((i) => i.required).map((i) => i.key),
+  };
+  const outputs = s.steps.filter((x) => x.type === "extract").map((x) => String(x.into).replace(/^output\./, ""));
+  const outputSchema = { type: "object", properties: Object.fromEntries(outputs.map((k) => [k, { type: "string" }])), required: [] as string[] };
+  const wf = await tenantDb(tenantId).workflow.create({
+    data: {
+      name,
+      slug: `${slugify(name)}-${randomBytes(2).toString("hex")}`,
+      targetSystemId: s.targetId,
+      createdById: user.id,
+      latestVersionNo: 1,
+      tags: ["live-recorder"],
+      versions: { create: { tenantId, versionNo: 1, definition: { dslVersion: 1, steps: s.steps, forms: s.forms }, inputSchema, outputSchema, createdById: user.id, changelog: "Καταγραφή στην εφαρμογή" } },
+    } as never,
+    select: { id: true },
+  });
+  await closeSession(sessionId);
+  await audit({ actorId: user.id, action: "workflow.record", entity: "Workflow", entityId: wf.id, tenantId, meta: { steps: s.steps.length, inputs: s.inputs.length } });
+  revalidatePath(`/t/${tenantId}/workflows`);
+  redirect(`/t/${tenantId}/workflows/${wf.id}?view=canvas`);
+}
+
+export async function cancelLiveRecordingAction(tenantId: string, sessionId: string): Result {
+  const user = await guard(tenantId, "tenant.workflows.edit");
+  if (getSession(sessionId, tenantId, user.id)) await closeSession(sessionId);
+  redirect(`/t/${tenantId}/recordings`);
 }
 
 /** Chrome DevTools Recorder JSON → new draft workflow (docs/04 §5). Password values are dropped. */
