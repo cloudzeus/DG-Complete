@@ -4,7 +4,7 @@ import { useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Ban, CheckCircle2, Eye, PauseCircle } from "lucide-react";
+import { Ban, CheckCircle2, Eye, PauseCircle, LogIn } from "lucide-react";
 import { toast } from "@/components/dg/notice";
 import { StatusPill, type Tone } from "@/components/admin/tone";
 import { DataTable } from "@/components/data-table/data-table";
@@ -46,6 +46,7 @@ function Actions({ row, canManage }: { row: TenantRow; canManage: boolean }) {
       disabled={pending}
       actions={[
         { label: "Προβολή", icon: Eye, onSelect: () => router.push(`/admin/tenants/${row.id}`) },
+        { label: "Είσοδος στον λογαριασμό", icon: LogIn, onSelect: () => router.push(`/t/${row.id}`) },
         {
           label: "Ενεργοποίηση",
           icon: CheckCircle2,
