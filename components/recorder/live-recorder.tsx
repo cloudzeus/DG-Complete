@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, ClipboardList, Loader2, MousePointerClick, ScanText, Undo2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, ClipboardList, Loader2, MousePointerClick, RotateCw, ScanText, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { STEP_TYPES } from "@/lib/labels";
@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 // are forwarded to it, each action becomes a step. Values typed here go to the page only.
 
 type Step = { id: string; type: string; label: string; value?: string; into?: string; form?: string };
-type State = { id: string; name: string; url: string; steps: Step[]; inputs: { key: string; label: string; type?: string }[]; forms?: Record<string, { title?: string }>; viewport: { width: number; height: number } };
+type State = { id: string; name: string; url: string; steps: Step[]; inputs: { key: string; label: string; type?: string }[]; forms?: Record<string, { title?: string }>; viewport: { width: number; height: number }; loadError?: { url: string; code: string; message: string } | null };
 type FieldKind = "input" | "username" | "password" | "skip";
 
 export function LiveRecorder({ tenantId, initial, finish, cancel }: { tenantId: string; initial: State; finish: React.ReactNode; cancel: React.ReactNode }) {
@@ -50,7 +50,7 @@ export function LiveRecorder({ tenantId, initial, finish, cancel }: { tenantId: 
           setState(body.state);
           setUrl(body.state.url);
           if (body.result?.blocked) setBlocked(body.result.blocked);
-          else if (body.result?.message) setNotice({ title: "Καταγραφή", text: body.result.message });
+          else if (body.result?.message && !body.state.loadError) setNotice({ title: "Καταγραφή", text: body.result.message });
           return body.result as { select?: ElementInfo; fields?: ElementInfo[] };
         } finally {
           setBusy(false);
@@ -157,6 +157,18 @@ export function LiveRecorder({ tenantId, initial, finish, cancel }: { tenantId: 
           </Button>
           <span className="text-xs text-muted-foreground">{mode === "extract" ? "Κάντε κλικ στο στοιχείο που θέλετε να επιστρέφεται (π.χ. αριθμός πρωτοκόλλου)." : "Κλικ και πληκτρολόγηση όπως σε κανονικό browser."}</span>
         </div>
+        {state.loadError && (
+          <div role="alert" className="flex flex-col gap-3 border-b border-border/70 bg-danger-50 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 space-y-1 text-sm">
+              <p className="flex items-center gap-2 font-semibold text-danger-500"><AlertTriangle aria-hidden className="size-4 shrink-0" /> Η σελίδα του συστήματος δεν άνοιξε</p>
+              <p className="break-all font-mono text-xs text-muted-foreground">{state.loadError.url} · {state.loadError.code}</p>
+              <p className="max-w-prose">{state.loadError.message}</p>
+            </div>
+            <Button type="button" size="sm" disabled={busy} onClick={() => void send({ type: "retry" })}>
+              <RotateCw aria-hidden /> Ξανά
+            </Button>
+          </div>
+        )}
         <div ref={keys} tabIndex={0} onKeyDown={onKeyDown} onPaste={(e) => (e.preventDefault(), flush(), void send({ type: "text", text: e.clipboardData.getData("text").slice(0, 2000) }))} className="outline-none focus-visible:ring-2 focus-visible:ring-sisyphus-500/40" aria-label="Παράθυρο του συστήματος‑στόχου">
           {/* eslint-disable-next-line @next/next/no-img-element -- live frame from the recorder session */}
           <img

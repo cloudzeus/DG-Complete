@@ -24,6 +24,7 @@ const ActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("undo") }),
   z.object({ type: z.literal("deleteStep"), id: z.string().min(1).max(40) }),
   z.object({ type: z.literal("back") }),
+  z.object({ type: z.literal("retry") }),
 ]);
 const Body = z.object({ tenantId: z.string().min(1), action: ActionSchema });
 

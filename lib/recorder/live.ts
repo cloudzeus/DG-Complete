@@ -44,7 +44,36 @@ type Session = {
   lastUrl: string;
   /** Selectors of repeated row fields: typing into them adds no extra step. */
   rowSelectors: string[];
+  /** The last page load failed (DNS, timeout, refused, certificate …) — shown with the reason and «Ξανά». */
+  loadError?: { url: string; code: string; message: string };
 };
+
+/** Chromium network error → what the user can do about it (Greek). */
+export function explainLoadError(raw: string): { code: string; message: string } {
+  const code = /net::(ERR_[A-Z_]+)/.exec(raw)?.[1] ?? (/Timeout/i.test(raw) ? "TIMEOUT" : "ERR_FAILED");
+  const geo = " Πολλά δημόσια συστήματα (ΟΠΣΚΕ, TaxisNet, gov.gr) δέχονται συνδέσεις μόνο από ελληνικές διευθύνσεις ή από εγκεκριμένες IP· τότε ο server της εφαρμογής χρειάζεται ελληνική έξοδο (proxy) ή έγκριση της IP του.";
+  if (code === "ERR_NAME_NOT_RESOLVED") return { code, message: "Η διεύθυνση δεν βρέθηκε (DNS). Ελέγξτε τη διεύθυνση του συστήματος στα «Συστήματα»." };
+  if (code === "ERR_BLOCKED_BY_CLIENT") return { code, message: "Η διεύθυνση δεν ανήκει στις επιτρεπτές του συστήματος ή είναι ιδιωτική διεύθυνση δικτύου." };
+  if (code.startsWith("ERR_CERT") || code === "ERR_SSL_PROTOCOL_ERROR") return { code, message: "Το πιστοποιητικό ασφαλείας (SSL) του συστήματος δεν είναι έγκυρο ή δεν υποστηρίζεται." };
+  if (code === "TIMEOUT" || code === "ERR_TIMED_OUT" || code === "ERR_CONNECTION_TIMED_OUT") return { code, message: `Το σύστημα δεν απάντησε σε 30″ στον server της εφαρμογής.${geo}` };
+  if (["ERR_CONNECTION_REFUSED", "ERR_CONNECTION_RESET", "ERR_CONNECTION_CLOSED", "ERR_EMPTY_RESPONSE", "ERR_ADDRESS_UNREACHABLE"].includes(code)) return { code, message: `Το σύστημα απέρριψε ή έκλεισε τη σύνδεση από τον server της εφαρμογής.${geo}` };
+  if (code.includes("PROXY") || code.includes("TUNNEL")) return { code, message: "Αποτυχία μέσω του proxy του server. Ελέγξτε τη ρύθμιση proxy." };
+  return { code, message: `Η σελίδα δεν φόρτωσε (${code}).${geo}` };
+}
+
+/** page.goto that records why a load failed instead of leaving a blank chrome-error page. */
+async function load(s: Pick<Session, "page" | "loadError">, url: string) {
+  try {
+    await s.page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    s.loadError = undefined;
+    return true;
+  } catch (err) {
+    const msg = (err as Error).message ?? "";
+    if (/ERR_ABORTED/.test(msg) && !s.page.url().startsWith("chrome-error:")) return true; // superseded by a redirect / download
+    s.loadError = { url, ...explainLoadError(msg) };
+    return false;
+  }
+}
 
 export const VIEWPORT = { width: 1280, height: 800 };
 const MAX_SESSIONS = 6;
@@ -74,9 +103,9 @@ export async function startSession(opts: { tenantId: string; userId: string; tar
   const session: Session = { id, ...opts, context, page, steps: [], inputs: [], taken: new Set(), lastActivity: Date.now(), forms: {}, allow: guard.allow, offered: new Set(), cur: "", lastUrl: "", rowSelectors: [] };
   ref.s = session;
   sessions.set(id, session);
-  await page.goto(opts.baseUrl, { waitUntil: "domcontentloaded", timeout: 30_000 }).catch(() => undefined);
+  const loaded = await load(session, opts.baseUrl);
   await newPage(session);
-  push(session, { type: "navigate", label: "Άνοιγμα σελίδας", url: rel(session, page.url()) });
+  push(session, { type: "navigate", label: "Άνοιγμα σελίδας", url: loaded ? rel(session, page.url()) : rel(session, opts.baseUrl) });
   return id;
 }
 
@@ -177,6 +206,7 @@ async function describe(page: Page, arg: { x?: number; y?: number; active?: bool
 }
 
 export type Action =
+  | { type: "retry" }
   | { type: "click"; x: number; y: number }
   | { type: "text"; text: string }
   | { type: "key"; key: string }
@@ -208,7 +238,7 @@ export async function act(s: Session, a: Action): Promise<ActionResult> {
     return {} as ActionResult;
   });
   if (s.blocked) await s.page.waitForTimeout(100);
-  if (!["capture", "captureApply", "undo", "inspect", "deleteStep"].includes(a.type)) await afterAction(s).catch(() => undefined);
+  if (!["capture", "captureApply", "undo", "inspect", "deleteStep", "retry"].includes(a.type)) await afterAction(s).catch(() => undefined);
   return s.blocked ? { ...r, blocked: s.blocked, message: undefined } : r;
 }
 
@@ -216,8 +246,20 @@ export async function act(s: Session, a: Action): Promise<ActionResult> {
 export async function allowAndContinue(s: Session, origin: string, url: string) {
   s.allow(origin);
   s.blocked = undefined;
-  await s.page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 }).catch(() => undefined);
+  await load(s, url);
   await afterAction(s).catch(() => undefined);
+}
+
+/** «Ξανά» after a failed load: same address, the recorded steps stay as they are. */
+export async function retryLoad(s: Session) {
+  const url = s.loadError?.url ?? s.baseUrl;
+  if (!(await load(s, url))) return;
+  if (s.steps.length === 1) {
+    // The first page never loaded: its (empty) group is replaced by the real one.
+    s.forms = {};
+    await newPage(s);
+    (s.steps[0] as { form?: string }).form = s.cur;
+  } else await afterAction(s).catch(() => undefined);
 }
 
 async function actInner(s: Session, a: Action): Promise<ActionResult> {
@@ -262,11 +304,14 @@ async function actInner(s: Session, a: Action): Promise<ActionResult> {
       return {};
     case "navigate": {
       const url = /^https?:\/\//.test(a.url) ? a.url : new URL(a.url, s.baseUrl).toString();
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+      if (!(await load(s, url))) return { message: s.loadError?.message };
       await afterAction(s); // the navigation opens the new page's group
       push(s, { type: "navigate", label: "Πλοήγηση", url: rel(s, page.url()) });
       return {};
     }
+    case "retry":
+      await retryLoad(s);
+      return s.loadError ? { message: s.loadError.message } : {};
     case "back":
       await page.goBack({ waitUntil: "domcontentloaded" }).catch(() => undefined);
       return {};
@@ -387,5 +432,6 @@ export async function frame(s: Session): Promise<Buffer> {
 }
 
 export function snapshot(s: Session) {
-  return { id: s.id, name: s.name, url: s.page.url(), steps: s.steps, inputs: s.inputs, forms: s.forms, viewport: VIEWPORT };
+  const url = s.page.url();
+  return { id: s.id, name: s.name, url: url.startsWith("chrome-error:") ? (s.loadError?.url ?? s.baseUrl) : url, steps: s.steps, inputs: s.inputs, forms: s.forms, viewport: VIEWPORT, loadError: s.loadError ?? null };
 }

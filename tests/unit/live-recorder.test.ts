@@ -17,3 +17,12 @@ describe("live recorder locators", () => {
     expect(candidatesFor(btn).slice(0, 2)).toEqual([{ kind: "testId", value: "save" }, { kind: "role", role: "button", name: "Αποθήκευση" }]);
   });
 });
+
+describe("explainLoadError", () => {
+  it("turns Chromium network errors into an actionable message", async () => {
+    const { explainLoadError } = await import("@/lib/recorder/live");
+    expect(explainLoadError("page.goto: net::ERR_NAME_NOT_RESOLVED at https://x").code).toBe("ERR_NAME_NOT_RESOLVED");
+    expect(explainLoadError("page.goto: Timeout 30000ms exceeded.").message).toMatch(/ελληνικές διευθύνσεις/);
+    expect(explainLoadError("net::ERR_CERT_AUTHORITY_INVALID").message).toMatch(/SSL/);
+  });
+});
