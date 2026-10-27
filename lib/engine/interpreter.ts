@@ -6,6 +6,7 @@ import { render, renderValue } from "@/lib/dsl/template";
 import { toInputKey } from "@/lib/dsl/import/chromeRecorder";
 import type { Locator, Step, WorkflowDefinition } from "@/lib/dsl/schema";
 import { EngineError, classify, type ErrorCode } from "./errors";
+import { buildHumanTask, type HumanTask } from "./human";
 import { describe, resolveLocator, toPlaywright } from "./locator";
 
 export type StepStatus = "SUCCEEDED" | "FAILED" | "SKIPPED";
@@ -40,6 +41,8 @@ export type Hooks = {
   /** Explicit `screenshot` step. */
   onScreenshot?(e: StepEvent, ctx: { page: Page; name: string; fullPage: boolean; sensitive: PwLocator[] }): Promise<void>;
   isCancelled?(): boolean;
+  /** Live assist (docs/22): resolves when the operator finished, rejects with E_HUMAN_TIMEOUT / E_CANCELLED. */
+  onHumanTask?(e: StepEvent, task: HumanTask): Promise<void>;
 };
 
 export type RunOptions = {
@@ -163,7 +166,7 @@ export class Interpreter {
       try {
         const info = await this.exec(step, path, scope, loop, (l) => (element = l));
         if (step.commitPoint) this.committed = true;
-        if (step.type !== "if" && step.type !== "forEach") await this.captchaCheck();
+        if (step.type !== "if" && step.type !== "forEach" && step.type !== "humanTask") await this.captchaCheck(step, path);
         await end({ status: "SUCCEEDED", ...info }, attempt);
         return;
       } catch (raw) {
@@ -394,8 +397,25 @@ export class Interpreter {
       case "screenshot":
         await this.opts.hooks?.onScreenshot?.({ step, path, seq: this.seq }, { page: this.page, name: step.name, fullPage: step.fullPage ?? false, sensitive: this.sensitive });
         return {};
-      case "humanTask":
-        throw new EngineError("E_HUMAN_TIMEOUT", `Απαιτείται ενέργεια χειριστή: ${tpl(step.instructions)}`);
+      case "humanTask": {
+        if (!this.opts.hooks?.onHumanTask) throw new EngineError("E_HUMAN_TIMEOUT", `Απαιτείται ενέργεια χειριστή: ${tpl(step.instructions)}`);
+        const task = buildHumanTask({
+          page: this.page,
+          sensitive: this.sensitive,
+          render: tpl,
+          stepId: step.id,
+          label: step.label || "Ενέργεια χειριστή",
+          reason: "humanTask",
+          instructions: tpl(step.instructions),
+          mode: step.mode,
+          timeoutSec: step.timeoutSec,
+          allow: step.allow,
+          fields: step.fields,
+          completeWhen: step.completeWhen,
+        });
+        await this.opts.hooks.onHumanTask({ step, path, seq: this.seq }, task);
+        return {};
+      }
       case "checkTargetErrors":
         await this.checkTargetErrors();
         return {};
@@ -437,10 +457,27 @@ export class Interpreter {
     return info;
   }
 
-  private async captchaCheck() {
-    if (await this.page.locator(CAPTCHA).count().catch(() => 0)) {
-      throw new EngineError("E_CAPTCHA_DETECTED", "Η σελίδα ζητά CAPTCHA — απαιτείται ενέργεια χειριστή.");
-    }
+  private async captchaCheck(step: Step, path: string) {
+    const present = async () => (await this.page.locator(CAPTCHA).count().catch(() => 0)) > 0;
+    if (!(await present())) return;
+    const hook = this.opts.hooks?.onHumanTask;
+    if (!hook) throw new EngineError("E_CAPTCHA_DETECTED", "Η σελίδα ζητά CAPTCHA — απαιτείται ενέργεια χειριστή.");
+    // docs/22 §6: a CAPTCHA becomes a `full` humanTask; done when it disappears or the operator says so.
+    const task = buildHumanTask({
+      page: this.page,
+      sensitive: this.sensitive,
+      render: (x) => x,
+      stepId: step.id,
+      label: "CAPTCHA",
+      reason: "captcha",
+      instructions: "Η σελίδα ζητά CAPTCHA. Λύστε το στην εικόνα και πατήστε «Ολοκληρώθηκε».",
+      mode: "full",
+      timeoutSec: 900,
+      allow: [],
+      fields: [],
+      done: async () => !(await present()),
+    });
+    await hook({ step, path, seq: this.seq }, task);
   }
 
   private async checkTargetErrors() {

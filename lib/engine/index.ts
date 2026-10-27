@@ -4,3 +4,4 @@ export * from "./errors";
 export * from "./guard";
 export * from "./interpreter";
 export * from "./locator";
+export * from "./human";

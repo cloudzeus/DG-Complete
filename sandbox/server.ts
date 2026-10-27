@@ -122,6 +122,56 @@ app.post("/invoices", async (c) => {
   return c.html(page("Καταχωρήθηκε", html`<p data-testid="invoice-id">Παραστατικό ${id}</p><p data-testid="lines-count">${lines} γραμμές</p>`));
 });
 
+// OTP (live assist, docs/22): the code is "sent by SMS" — shown on a second page, /otp/inbox.
+let otpCode = "";
+const loggedIn = (c: { req: { header: (n: string) => string | undefined } }) => !!c.req.header("cookie")?.includes("sandbox_session=1");
+
+app.get("/secure/otp", (c) => {
+  if (!loggedIn(c)) return c.redirect("/login");
+  if (!c.req.query("error") || !otpCode) otpCode = String(Math.floor(Math.random() * 900000 + 100000));
+  return c.html(
+    page(
+      "Κλειδάριθμος",
+      html`<h1>Επαλήθευση</h1>
+        <p>Στάλθηκε κλειδάριθμος με SMS στο κινητό του δικαιούχου (δείτε το <a href="/otp/inbox">/otp/inbox</a>).</p>
+        ${c.req.query("error") ? html`<p class="error" data-testid="otp-error">Λάθος κλειδάριθμος</p>` : ""}
+        <form method="post" action="/secure/otp">
+          <label for="otp">Κλειδάριθμος</label><input id="otp" name="otp" inputmode="numeric" autocomplete="one-time-code" />
+          <button type="submit">Συνέχεια</button>
+        </form>
+        <p><button type="button" id="other" onclick="document.body.dataset.other='1'">Άλλη ενέργεια</button></p>`,
+    ),
+  );
+});
+
+app.get("/otp/inbox", (c) => c.html(page("SMS", html`<h1>SMS</h1><p data-testid="otp-code">${otpCode || "—"}</p>`)));
+
+app.post("/secure/otp", async (c) => {
+  if (!loggedIn(c)) return c.redirect("/login");
+  const form = await c.req.parseBody();
+  if (!otpCode || String(form.otp ?? "").trim() !== otpCode) return c.redirect("/secure/otp?error=1");
+  otpCode = "";
+  c.header("Set-Cookie", "sandbox_otp=1; Path=/; HttpOnly; SameSite=Lax");
+  return c.redirect("/secure/dashboard");
+});
+
+app.get("/secure/dashboard", (c) => {
+  if (!loggedIn(c) || !c.req.header("cookie")?.includes("sandbox_otp=1")) return c.redirect("/secure/otp");
+  return c.html(page("Αιτήσεις", html`<h1>Αιτήσεις</h1><p data-testid="verified">Επαληθευμένος χρήστης</p><a href="/entries/new">Νέα καταχώριση</a>`));
+});
+
+// Fake CAPTCHA: the .g-recaptcha box disappears once «Δεν είμαι ρομπότ» is ticked.
+app.get("/captcha", (c) =>
+  c.html(
+    page(
+      "Έλεγχος",
+      html`<h1>Έλεγχος ασφαλείας</h1>
+        <div class="g-recaptcha" style="border:1px solid #ccc;padding:1rem"><label><input type="checkbox" id="robot" onclick="var b=this.closest('.g-recaptcha');b.outerHTML='<p data-testid=captcha-ok>Επιβεβαιώθηκε</p>'" /> Δεν είμαι ρομπότ</label></div>
+        <a href="/secure/dashboard" id="next">Συνέχεια</a>`,
+    ),
+  ),
+);
+
 app.get("/health", (c) => c.json({ ok: true }));
 
 serve({ fetch: app.fetch, port: PORT }, (info) => console.log(`[sandbox] http://localhost:${info.port}`));

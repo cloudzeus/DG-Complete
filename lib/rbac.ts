@@ -38,6 +38,8 @@ export const PERMISSION_DEFS = {
   "tenant.runs.execute": { label: "Εκτελέσεις (UI, Excel)", group: "Εκτέλεση" },
   "tenant.runs.retry": { label: "Επανάληψη / ακύρωση εκτελέσεων", group: "Εκτέλεση" },
   "tenant.runs.view": { label: "Προβολή εκτελέσεων", group: "Εκτέλεση" },
+  "tenant.runs.assist": { label: "Ενέργεια χειριστή (OTP) σε εκτελέσεις", group: "Εκτέλεση" },
+  "tenant.runs.assist.full": { label: "Πλήρης έλεγχος σελίδας (CAPTCHA)", group: "Εκτέλεση" },
   "tenant.artifacts.view": { label: "Προβολή στιγμιοτύπων", group: "Εκτέλεση" },
   "tenant.audit.view": { label: "Αρχείο ενεργειών", group: "Εντός tenant" },
 } as const;
@@ -46,7 +48,7 @@ export type Permission = keyof typeof PERMISSION_DEFS;
 export const ALL_PERMISSIONS = Object.keys(PERMISSION_DEFS) as Permission[];
 
 const VIEW: Permission[] = ["tenant.dashboards.view", "tenant.runs.view", "tenant.artifacts.view"];
-const OPERATE: Permission[] = [...VIEW, "tenant.runs.execute", "tenant.runs.retry"];
+const OPERATE: Permission[] = [...VIEW, "tenant.runs.execute", "tenant.runs.retry", "tenant.runs.assist"];
 const DESIGN: Permission[] = [
   ...OPERATE,
   "tenant.targets.manage",
@@ -64,6 +66,7 @@ const TENANT_ADMIN: Permission[] = [
   "tenant.webhooks.manage",
   "tenant.settings.manage",
   "tenant.credentials.reveal",
+  "tenant.runs.assist.full",
   "tenant.workflows.approve",
   "tenant.audit.view",
 ];

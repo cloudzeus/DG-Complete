@@ -127,7 +127,22 @@ const leaf = [
   z.object({ ...base, type: z.literal("switchTab"), match: z.union([z.literal("opener"), z.object({ urlContains: z.string().optional(), index: z.number().int().min(0).optional() })]) }),
   z.object({ ...base, type: z.literal("dialog"), action: z.enum(["accept", "dismiss"]).default("accept"), promptText: z.string().optional() }),
   z.object({ ...base, type: z.literal("screenshot"), name: z.string().default("screenshot"), fullPage: z.boolean().optional() }),
-  z.object({ ...base, type: z.literal("humanTask"), instructions: z.string(), timeoutSec: z.number().int().min(30).max(86_400).default(900) }),
+  // Live assist (docs/22 §6): the run pauses, an operator completes OTP / CAPTCHA from the run page.
+  z.object({
+    ...base,
+    type: z.literal("humanTask"),
+    instructions: z.string(),
+    timeoutSec: z.number().int().min(30).max(86_400).default(900),
+    // Values the operator types into a form of the app; the worker fills them (`fill`) itself.
+    fields: z
+      .array(z.object({ key: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,39}$/), label: z.string().max(80).optional(), type: z.enum(["string", "number"]).default("string"), fill: Locator.optional() }))
+      .max(10)
+      .default([]),
+    // `focus`: clicks and typing only inside these elements. `full`: the whole page (tenant.runs.assist.full).
+    allow: z.array(Locator).max(10).default([]),
+    mode: z.enum(["focus", "full"]).default("focus"),
+    completeWhen: z.object({ urlMatches: z.string().optional(), visible: Locator.optional(), hidden: Locator.optional() }).optional(),
+  }),
   z.object({ ...base, type: z.literal("checkTargetErrors") }),
 ] as const;
 

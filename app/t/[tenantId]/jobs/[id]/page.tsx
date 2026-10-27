@@ -26,6 +26,7 @@ export default async function JobPage({ params }: PageProps<"/t/[tenantId]/jobs/
   if (!job) notFound();
   const items = await listRuns(tenantId, { jobId: job.id, take: 200 });
   const canRetry = can(user, "tenant.runs.retry", tenantId);
+  const waiting = items.filter((r) => r.status === "NEEDS_ATTENTION");
 
   return (
     <>
@@ -54,6 +55,23 @@ export default async function JobPage({ params }: PageProps<"/t/[tenantId]/jobs/
         <KpiTile label="Αποτυχίες" value={fmtNum(job.failed)} />
         <KpiTile label="Σε αναμονή" value={fmtNum(Math.max(job.total - job.done, 0))} />
       </Grid>
+      {waiting.length > 0 && (
+        <Section title={`Αναμένουν ενέργεια · ${waiting.length}`} description="Γραμμές που σταμάτησαν σε OTP ή CAPTCHA. Ανοίξτε τη μία μετά την άλλη." className="mt-4">
+          <ul className="divide-y divide-border/70">
+            {waiting.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5">
+                <span className="min-w-0 text-sm">
+                  <span className="tabular-nums">Γραμμή {(r.itemIndex ?? 0) + 2}</span>
+                  <span className="text-muted-foreground"> · {r.attention?.label ?? "Ενέργεια χειριστή"}{r.attention ? ` · έως ${fmtDateTime(r.attention.deadline)}` : ""}</span>
+                </span>
+                <Button size="sm" asChild>
+                  <Link href={`/t/${tenantId}/runs/${r.id}`}>Ολοκλήρωση</Link>
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
       <Section title="Γραμμές" className="mt-4">
         <DataTable
           rows={items}

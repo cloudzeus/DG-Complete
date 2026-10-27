@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ImageOff, RotateCcw, XCircle } from "lucide-react";
 import { LiveRun } from "@/components/dg/live-run";
+import { AssistPanel } from "@/components/runs/assist-panel";
 import { fmtDateTime, fmtDuration } from "@/components/dg/format";
 import { FormDialog } from "@/components/dg/form-dialog";
 import { TextareaField } from "@/components/dg/fields";
@@ -44,7 +45,17 @@ export default async function RunPage({ params, searchParams }: PageProps<"/t/[t
   const active = ["QUEUED", "RUNNING", "RETRY_SCHEDULED", "NEEDS_ATTENTION", "HELD"].includes(run.status);
   const canRetry = can(user, "tenant.runs.retry", tenantId);
   const stalled = run.stalled;
-  const shot = run.artifacts.find((a) => a.kind === "SCREENSHOT_VIEWPORT") ?? run.artifacts.find((a) => a.kind.startsWith("SCREENSHOT"));
+  const metaOf = (a: { meta: unknown }) => (a.meta ?? {}) as { final?: boolean; assist?: "before" | "after" };
+  // The final page first, then an error screenshot; the live-assist before/after shots only as a fallback.
+  const shot =
+    run.artifacts.find((a) => metaOf(a).final) ??
+    run.artifacts.find((a) => a.kind === "SCREENSHOT_VIEWPORT" && !metaOf(a).assist) ??
+    run.artifacts.find((a) => a.kind.startsWith("SCREENSHOT") && !metaOf(a).assist) ??
+    run.artifacts.find((a) => a.kind.startsWith("SCREENSHOT"));
+  const fileLabel = (a: { kind: string; meta: unknown }) => {
+    const m = metaOf(a);
+    return m.assist === "before" ? "Πριν την ενέργεια χειριστή" : m.assist === "after" ? "Μετά την ενέργεια χειριστή" : m.final ? "Τελική σελίδα" : (ARTIFACT_LABEL[a.kind] ?? a.kind);
+  };
   const storage = run.artifacts.length ? await getStorage() : null;
   const files = storage ? await Promise.all(run.artifacts.map(async (a) => ({ ...a, url: await storage.signedUrl(a.storagePath, 600) }))) : [];
   const shotUrl = shot ? files.find((f) => f.id === shot.id)?.url : undefined;
@@ -68,10 +79,11 @@ export default async function RunPage({ params, searchParams }: PageProps<"/t/[t
           </>
         }
       />
+      {run.attention && can(user, "tenant.runs.assist", tenantId) && <AssistPanel key={`${run.attention.stepId}:${run.attention.deadline}`} tenantId={tenantId} runId={run.id} attention={run.attention} />}
       <dl className="mb-4 grid grid-cols-2 gap-3 rounded-lg border border-border/70 bg-card p-4 text-sm shadow-fluent-2 md:grid-cols-4">
         <div><dt className="eyebrow">Μπήκε στην ουρά</dt><dd className="tabular-nums">{fmtDateTime(run.createdAt)}</dd></div>
         <div><dt className="eyebrow">Διάρκεια</dt><dd className="tabular-nums">{fmtDuration(run.durationMs)}</dd></div>
-        <div><dt className="eyebrow">Μέθοδος</dt><dd><code className="font-mono text-xs">{run.methodKey}</code> · v{run.version}</dd></div>
+        <div><dt className="eyebrow">Μέθοδος</dt><dd>{run.methodKey === "—" ? "Χωρίς μέθοδο" : <code className="font-mono text-xs">{run.methodKey}</code>} · v{run.version}</dd></div>
         <div><dt className="eyebrow">Προέλευση</dt><dd>{RUN_TRIGGER[run.trigger] ?? run.trigger}</dd></div>
       </dl>
       {stalled && (
@@ -106,7 +118,7 @@ export default async function RunPage({ params, searchParams }: PageProps<"/t/[t
                   {files.map((f) => (
                     <li key={f.id}>
                       <a href={f.url} target="_blank" rel="noreferrer" className="text-sisyphus-600 underline-offset-2 hover:underline">
-                        {ARTIFACT_LABEL[f.kind] ?? f.kind}
+                        {fileLabel(f)}
                       </a>
                     </li>
                   ))}

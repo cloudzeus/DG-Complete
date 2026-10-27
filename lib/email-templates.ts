@@ -37,6 +37,9 @@ const V = {
   tenantsLow: { key: "tenantsLow", label: "Πελάτες χωρίς tokens", sample: "ΑΦΟΙ ΠΑΡΑΔΕΙΓΜΑ ΑΕ (0 tokens)" },
   pending: { key: "pending", label: "Αιτήματα tokens σε αναμονή", sample: "2" },
   week: { key: "week", label: "Εβδομάδα", sample: "29/9 – 5/10" },
+  flow: { key: "flow", label: "Ροή", sample: "Υποβολή αίτησης ΟΠΣΚΕ" },
+  task: { key: "task", label: "Τι χρειάζεται", sample: "Πληκτρολογήστε τον κλειδάριθμο που έλαβε ο δικαιούχος με SMS." },
+  minutes: { key: "minutes", label: "Λεπτά που απομένουν", sample: "15" },
   summary: {
     key: "summary",
     label: "Σύνοψη του Κίμωνα",
@@ -46,6 +49,22 @@ const V = {
 } satisfies Record<string, TemplateVar>;
 
 export const TEMPLATES: TemplateDef[] = [
+  {
+    key: "run_needs_attention",
+    name: "Εκτέλεση περιμένει χειριστή",
+    description: "Όταν μια εκτέλεση σταματά σε OTP ή CAPTCHA και χρειάζεται ενέργεια από τη σελίδα της (docs/22).",
+    vars: [V.name, V.tenant, V.flow, V.task, V.minutes, V.link],
+    subject: "Χρειάζεται ενέργεια: {{flow}}",
+    body: `Γεια σας {{name}},
+
+Η εκτέλεση της ροής **{{flow}}** ({{tenant}}) περιμένει χειριστή.
+
+{{task}}
+
+[[Άνοιγμα της εκτέλεσης|{{link}}]]
+
+Αν δεν ολοκληρωθεί μέσα σε {{minutes}} λεπτά, η εκτέλεση σταματά χωρίς χρέωση.`,
+  },
   {
     key: "password_reset",
     name: "Απώλεια κωδικού",

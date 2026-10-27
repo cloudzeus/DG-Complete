@@ -81,9 +81,16 @@ export function normalizeStep(s: Raw): Raw {
       delete out.output;
       break;
     }
-    case "humanTask":
+    case "humanTask": {
       out.instructions = s.instructions ?? s.value ?? s.label ?? "";
+      if (Array.isArray(s.fields)) out.fields = (s.fields as Raw[]).map((f) => ({ ...f, ...(f.fill !== undefined ? { fill: normalizeLocator(f.fill) } : {}) }));
+      if (Array.isArray(s.allow)) out.allow = s.allow.map((l) => normalizeLocator(l)).filter(Boolean);
+      const cw = s.completeWhen as Raw | undefined;
+      if (cw && typeof cw === "object") {
+        out.completeWhen = { ...cw, ...(cw.visible !== undefined ? { visible: normalizeLocator(cw.visible) } : {}), ...(cw.hidden !== undefined ? { hidden: normalizeLocator(cw.hidden) } : {}) };
+      }
       break;
+    }
     case "assert":
       if (s.expected === undefined && typeof s.value === "string") out.expected = s.value;
       break;

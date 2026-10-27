@@ -314,6 +314,9 @@ export async function publishedWorkflowOptions(tenantId: string) {
 
 // ───────────── Runs ─────────────
 
+/** What a NEEDS_ATTENTION run waits for (docs/22) — labels only, never values. */
+export type Attention = { stepId: string; seq: number; label: string; reason: "humanTask" | "captcha"; instructions: string; mode: "focus" | "full"; fields: { key: string; label: string }[]; deadline: string };
+
 export type RunListFilter = { q?: string; status?: string; methodId?: string; jobId?: string; take?: number };
 
 export async function listRuns(tenantId: string, f: RunListFilter = {}) {
@@ -330,7 +333,7 @@ export async function listRuns(tenantId: string, f: RunListFilter = {}) {
       take: f.take ?? 100,
       select: {
         id: true, methodId: true, status: true, externalRef: true, durationMs: true, queuedAt: true, trigger: true,
-        errorCode: true, errorMessage: true, errorStepId: true, itemIndex: true, jobId: true,
+        errorCode: true, errorMessage: true, errorStepId: true, itemIndex: true, jobId: true, attention: true,
       },
     }),
   );
@@ -346,6 +349,7 @@ export async function listRuns(tenantId: string, f: RunListFilter = {}) {
     createdAt: iso(r.queuedAt)!,
     trigger: r.trigger,
     itemIndex: r.itemIndex,
+    attention: (r.attention ?? null) as Attention | null,
     error: r.errorCode ? { code: r.errorCode, message: r.errorMessage ?? "", step: r.errorStepId ?? "" } : null,
   }));
 }
@@ -358,7 +362,7 @@ export async function getRun(tenantId: string, id: string) {
       where: { id },
       include: {
         steps: { orderBy: { seq: "asc" } },
-        artifacts: { where: { deletedAt: null }, orderBy: { createdAt: "asc" }, select: { id: true, kind: true, runStepId: true, storagePath: true, contentType: true, sizeBytes: true } },
+        artifacts: { where: { deletedAt: null }, orderBy: { createdAt: "asc" }, select: { id: true, kind: true, runStepId: true, storagePath: true, contentType: true, sizeBytes: true, meta: true } },
         workflowVersion: { select: { versionNo: true, workflow: { select: { name: true } } } },
       },
     });
@@ -382,6 +386,7 @@ export async function getRun(tenantId: string, id: string) {
       output: r.output,
       error: r.errorCode ? { code: r.errorCode, message: r.errorMessage ?? "", step: failedStep ? String(failedStep.seq).padStart(2, "0") : (r.errorStepId ?? "") } : null,
       targetMessage: r.targetMessage,
+      attention: r.status === "NEEDS_ATTENTION" ? ((r.attention ?? null) as Attention | null) : null,
       steps: r.steps.map((s) => ({
         no: String(s.seq).padStart(2, "0"),
         label: s.label,

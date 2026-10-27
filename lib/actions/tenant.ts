@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { hashPassword } from "better-auth/crypto";
 import { audit } from "@/lib/audit";
+import { cancelAssist } from "@/lib/assist/registry";
 import { encrypt, encryptJson } from "@/lib/crypto";
 import { importChromeRecording } from "@/lib/dsl/import/chromeRecorder";
 import { closeSession, getSession, RecorderError, startSession } from "@/lib/recorder/live";
@@ -729,23 +730,9 @@ export async function cancelRunAction(tenantId: string, runId: string, _p: FormS
     tx.run.updateMany({ where: { id: runId, status: { in: ["QUEUED", "RETRY_SCHEDULED", "NEEDS_ATTENTION", "HELD", "RUNNING"] } }, data: { status: "CANCELLED", finishedAt: new Date() } }),
   );
   if (!r.count) return { ok: false, message: "Η εκτέλεση δεν μπορεί να ακυρωθεί." };
+  cancelAssist(runId); // a run waiting for an operator stops at once (docs/22)
   await audit({ actorId: user.id, action: "run.cancel", entity: "Run", entityId: runId, tenantId, meta: { reason: String(fd.get("reason") ?? "") } });
   return done(tenantId, `/runs/${runId}`, "Η εκτέλεση ακυρώθηκε.");
-}
-
-/** OTP / human input: delivered to the waiting worker through pg_notify — never stored (docs/22). */
-export async function resumeRunAction(tenantId: string, runId: string, _p: FormState, fd: FormData): Result {
-  const user = await guard(tenantId, "tenant.runs.execute");
-  const v = validate(z.object({ otp: z.string().regex(/^\d{4,8}$/, "Ο κωδικός έχει 4–8 ψηφία") }), fd);
-  if ("state" in v) return v.state;
-  const run = await withTenantTx(tenantId, (tx) => tx.run.findUnique({ where: { id: runId }, select: { status: true, workerId: true } }));
-  if (run?.status !== "NEEDS_ATTENTION") return { ok: false, message: "Η εκτέλεση δεν περιμένει κωδικό." };
-  const secret = process.env.ASSIST_SHARED_SECRET ?? process.env.BETTER_AUTH_SECRET ?? "dev";
-  const sealed = encrypt(v.data.otp, `${tenantId}:${runId}:otp`);
-  const payload = JSON.stringify({ type: "human_input", runId, tenantId, sealed, sig: createHmac("sha256", secret).update(runId).digest("hex").slice(0, 16) });
-  await prisma.$executeRaw`select pg_notify('run_events', ${payload})`;
-  await audit({ actorId: user.id, action: "run.human_input", entity: "Run", entityId: runId, tenantId });
-  return done(tenantId, "/attention", "Ο κωδικός στάλθηκε· η εκτέλεση συνεχίζει.");
 }
 
 // ───────────── Jobs ─────────────

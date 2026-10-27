@@ -4,12 +4,11 @@ import { Inbox, ShieldAlert } from "lucide-react";
 import { EmptyState } from "@/components/dg/empty-state";
 import { fmtDateTime } from "@/components/dg/format";
 import { FormDialog } from "@/components/dg/form-dialog";
-import { TextField } from "@/components/dg/fields";
 import { PageHeader } from "@/components/dg/page-header";
 import { Section } from "@/components/dg/section";
 import { StatusBadge } from "@/components/dg/status-badge";
 import { Button } from "@/components/ui/button";
-import { cancelRunAction, resumeRunAction } from "@/lib/actions/tenant";
+import { cancelRunAction } from "@/lib/actions/tenant";
 import { listRuns } from "@/lib/data/tenant";
 import { RUN_STATUS } from "@/lib/labels";
 import { requireTenant } from "@/lib/tenant";
@@ -37,12 +36,13 @@ export default async function AttentionPage({ params }: PageProps<"/t/[tenantId]
               </div>
               <h2 className="text-xl font-semibold">{r.methodName}</h2>
               <p className="flex items-start gap-2 text-sm">
-                <ShieldAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning-500" /> {r.error?.message || "Το σύστημα ζητά ενέργεια χειριστή."}
+                <ShieldAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning-500" /> {r.attention?.instructions || r.error?.message || "Το σύστημα ζητά ενέργεια χειριστή."}
               </p>
+              {r.attention && <p className="text-xs text-muted-foreground">{r.attention.label} · έως {fmtDateTime(r.attention.deadline)}</p>}
               <div className="flex flex-wrap gap-2">
-                <FormDialog title="Κωδικός OTP" description="Ο κωδικός χρησιμοποιείται μία φορά και δεν αποθηκεύεται πουθενά." action={resumeRunAction.bind(null, tenantId, r.id)} submitLabel="Συνέχεια εκτέλεσης" size="sm" trigger={<Button size="sm">Εισαγωγή κωδικού</Button>}>
-                  <TextField name="otp" label="Κωδικός" required inputMode="numeric" autoComplete="one-time-code" placeholder="6 ψηφία" />
-                </FormDialog>
+                <Button size="sm" asChild>
+                  <Link href={`/t/${tenantId}/runs/${r.id}`}>{r.attention ? "Ολοκλήρωση από τη σελίδα" : "Άνοιγμα εκτέλεσης"}</Link>
+                </Button>
                 <FormDialog title="Ακύρωση εκτέλεσης" action={cancelRunAction.bind(null, tenantId, r.id)} destructive submitLabel="Ακύρωση εκτέλεσης" size="sm" trigger={<Button size="sm" variant="outline">Ακύρωση</Button>} />
               </div>
             </Section>

@@ -1138,6 +1138,8 @@ model Run {
   errorMessage      String?
   errorStepId       String?
   targetMessage     String?
+  // NEEDS_ATTENTION (docs/22): step, instructions, mode, fields (keys/labels only), deadline. Never values.
+  attention         Json?
   mayHaveCommitted  Boolean         @default(false)
   billedUnits       Int             @default(0) // μονάδες που χρεώθηκαν (docs/14)
   workerId          String?

@@ -62,6 +62,11 @@ function locatorsOf(s: Step): Locator[] {
   const out: Locator[] = [];
   if ("locator" in s && s.locator) out.push(s.locator);
   if (s.type === "if" && typeof s.condition === "object") out.push(s.condition.exists);
+  if (s.type === "humanTask") {
+    out.push(...s.allow, ...s.fields.flatMap((f) => (f.fill ? [f.fill] : [])));
+    if (s.completeWhen?.visible) out.push(s.completeWhen.visible);
+    if (s.completeWhen?.hidden) out.push(s.completeWhen.hidden);
+  }
   return out;
 }
 
@@ -120,6 +125,12 @@ export function validateForPublish(raw: unknown, ctx: { allowedOrigins?: string[
       if (loc.candidates.every((c) => c.kind === "xpath")) {
         issues.push({ severity: "warning", stepId: s.id, code: "XPATH_ONLY", message: "Το στοιχείο βρίσκεται μόνο με XPath — εύθραυστο σε αλλαγές της σελίδας." });
       }
+    }
+    if (s.type === "humanTask") {
+      if (s.mode === "focus" && !s.allow.length && !s.fields.some((f) => f.fill)) {
+        issues.push({ severity: "warning", stepId: s.id, code: "HUMAN_NO_TARGET", message: "Η ενέργεια χειριστή δεν ορίζει πεδία (fields με fill) ούτε επιτρεπτά στοιχεία (allow)· ο χειριστής θα μπορεί μόνο να πατήσει «Ολοκληρώθηκε»." });
+      }
+      for (const f of s.fields) if (!f.fill) issues.push({ severity: "warning", stepId: s.id, code: "HUMAN_FIELD_NO_FILL", message: `Το πεδίο «${f.label ?? f.key}» δεν έχει στοιχείο συμπλήρωσης (fill).` });
     }
     if (s.type === "if" && typeof s.condition === "string") expr(s, s.condition, loopVars, "condition");
     if (s.type === "forEach") expr(s, s.items, loopVars, "items");

@@ -50,6 +50,8 @@ sequenceDiagram
 
 ## 4. Τεχνικά
 
+> **Υλοποίηση (ADR‑026):** με τον worker μέσα στο web (ADR‑025) η προβολή γίνεται με polling εικόνας (`/api/assist/[runId]/frame`) και POST ενεργειών (`/api/assist/[runId]/action`) στο ίδιο process· το lock του χειριστή κρατιέται στη μνήμη. Τα παρακάτω (CDP screencast, WebSocket gateway) ισχύουν μόνο για ξεχωριστό worker και δεν έχουν υλοποιηθεί ακόμη.
+
 - **Πηγή εικόνας:** CDP `Page.startScreencast` (JPEG, quality 60, max 1280px, έως 5 fps) από τον worker. Μόνο για runs σε `NEEDS_ATTENTION` και μόνο όσο είναι ανοιχτό το panel.
 - **Μεταφορά:** WebSocket από τον browser του χειριστή προς ένα **assist gateway** στο web (`/api/assist/[runId]`), το οποίο ανοίγει εσωτερικό WebSocket (`WORKER_ASSIST_URL`, κοινό secret) προς τον worker που κρατά το session, μόνο στο ιδιωτικό δίκτυο (ADR‑022). Ο worker δεν εκτίθεται ποτέ απευθείας στο internet.
 - **Είσοδος:** τα γεγονότα ποντικιού/πληκτρολογίου μετατρέπονται σε `Input.dispatchMouseEvent` / `Input.insertText` στον worker, **αφού** ελεγχθεί ότι οι συντεταγμένες πέφτουν μέσα σε επιτρεπτό στοιχείο (bounding box των `allow` locators, ξαναϋπολογισμένο σε κάθε frame).
@@ -77,3 +79,5 @@ sequenceDiagram
 ```
 
 Ένα βήμα με `detectCaptcha: true` (default σε login flows) μετατρέπεται αυτόματα σε `humanTask` με `mode: "full"` όταν ανιχνευτεί CAPTCHA.
+
+**Όπως υλοποιήθηκε:** ο έλεγχος CAPTCHA γίνεται μετά από κάθε βήμα (και στη ροή σύνδεσης)· η εργασία ολοκληρώνεται όταν το CAPTCHA εξαφανιστεί ή ο χειριστής πατήσει «Ολοκληρώθηκε». Με `fields` χωρίς `completeWhen`, η αποστολή της φόρμας συμπληρώνει τα πεδία και η ροή συνεχίζει αμέσως (το επόμενο βήμα πατά π.χ. «Συνέχεια»). Με `completeWhen`, η εκτέλεση συνεχίζει μόλις ισχύσει (έλεγχος κάθε 1,5″). Το `completeWhen.urlMatches` δέχεται glob (`**`, `*`) ή απλό τμήμα διεύθυνσης. Τα `fields[].fill` και `allow` δέχονται και τη σύντομη μορφή locator (`label "Κλειδάριθμος"`).

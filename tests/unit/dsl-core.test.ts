@@ -102,3 +102,34 @@ describe("dsl", () => {
     expect(amka("01017512345")).toBe(false);
   });
 });
+
+describe("humanTask (docs/22 §6)", () => {
+  it("parses fields, allow, mode and completeWhen; warns when nothing can be typed", async () => {
+    const { parseDefinition, validateForPublish } = await import("@/lib/dsl");
+    const def = {
+      steps: [
+        { id: "s1", type: "humanTask", instructions: "OTP", fields: [{ key: "otp", label: "Κλειδάριθμος", fill: 'label "Κλειδάριθμος"' }], allow: ['role button "Συνέχεια"'], completeWhen: { urlMatches: "**/dashboard**" } },
+        { id: "s2", type: "humanTask", instructions: "Έλεγχος" },
+      ],
+    };
+    const p = parseDefinition(def);
+    expect(p.ok).toBe(true);
+    if (!p.ok) return;
+    const s1 = p.def.steps[0] as { mode: string; fields: { key: string }[]; allow: unknown[]; timeoutSec: number };
+    expect(s1.mode).toBe("focus");
+    expect(s1.fields[0].key).toBe("otp");
+    expect(s1.allow).toHaveLength(1);
+    expect(s1.timeoutSec).toBe(900);
+    const codes = validateForPublish(def).map((i) => `${i.stepId}:${i.code}`);
+    expect(codes).toContain("s2:HUMAN_NO_TARGET");
+    expect(codes.filter((c) => c.startsWith("s1:HUMAN"))).toEqual([]);
+  });
+
+  it("urlMatcher: globs and substrings", async () => {
+    const { urlMatcher } = await import("@/lib/engine/human");
+    expect(urlMatcher("**/dashboard**")("https://x.gr/app/dashboard?a=1")).toBe(true);
+    expect(urlMatcher("**/dashboard**")("https://x.gr/app/login")).toBe(false);
+    expect(urlMatcher("/secure/dashboard")("http://h/secure/dashboard")).toBe(true);
+    expect(urlMatcher("https://x.gr/*/done")("https://x.gr/a/b/done")).toBe(false);
+  });
+});

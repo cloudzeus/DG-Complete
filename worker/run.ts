@@ -17,12 +17,14 @@ import { RUNS_QUEUE } from "@/lib/runs/create";
 import { withTenantTx } from "@/lib/tenant-db";
 import { collectOnError, saveArtifact, type ArtifactCtx } from "./artifacts";
 import { newContext } from "./browser";
+import { waitForOperator } from "./assist";
 import { acquire, heartbeat, release, type LeaseKey } from "./leases";
 
 type Secrets = { username?: string; password?: string; totpSecret?: string; [k: string]: unknown };
 type LogRow = { level: LogLevel; source: string; message: string; data?: Record<string, unknown>; stepId?: string; ts: Date };
 
-const ATTENTION = new Set(["E_CAPTCHA_DETECTED", "E_HUMAN_TIMEOUT"]);
+// Without live assist (login flows) a CAPTCHA still parks the run; E_HUMAN_TIMEOUT is FAILED (docs/22 §3).
+const ATTENTION = new Set(["E_CAPTCHA_DETECTED"]);
 
 export async function processRun(runId: string, tenantId: string, workerId: string): Promise<string> {
   const run = await withTenantTx(tenantId, (tx) =>
@@ -157,6 +159,8 @@ export async function processRun(runId: string, tenantId: string, workerId: stri
         await saveArtifact(artifactCtx, c.fullPage ? "SCREENSHOT_FULL" : "SCREENSHOT_VIEWPORT", buf, "image/png", { runStepId: stepRows.get(e.seq), meta: { name: c.name } });
       },
       isCancelled: () => false,
+      onHumanTask: (e, task) =>
+        waitForOperator({ tenantId, run: { id: runId, createdByUserId: run.createdByUserId, workflowName: version.workflow.name }, tenantLease: leases[0], artifactCtx, log, emit }, e, task),
     };
 
     const loginSeq = !credential ? 0 : await ensureLogin({ tenantId, run, def, page, context, credentialId: credential.id, sessionTtlSec: target.sessionTtlSec, hadSession: !!session, baseUrl: target.baseUrl, secrets, log, hooks });
@@ -192,7 +196,9 @@ export async function processRun(runId: string, tenantId: string, workerId: stri
     if (err.code === "E_INTERNAL") log("ERROR", `Εσωτερικό σφάλμα: ${(raw as Error)?.message?.slice(0, 500)}`, undefined, err.extra.stepId, "system");
     const committed = interpreter?.mayHaveCommitted ?? false;
     const maxAttempts = run.trigger === "UI_TEST" ? 1 : (run.method?.maxAttempts ?? run.maxAttempts);
-    if (ATTENTION.has(err.code)) {
+    if (err.code === "E_CANCELLED") {
+      await finish({ tenantId, run, status: "CANCELLED", started, err, committed, tenant });
+    } else if (ATTENTION.has(err.code)) {
       await finish({ tenantId, run, status: "NEEDS_ATTENTION", started, err, committed, tenant });
     } else if (err.retryable && run.attempt < maxAttempts && !committed) {
       const delay = (run.method?.retryBackoffSec ?? 30) * 2 ** (run.attempt - 1) + Math.floor(Math.random() * 10);
@@ -282,7 +288,7 @@ async function ensureLogin(c: LoginCtx): Promise<number> {
     await login.run();
   } catch (err) {
     const e = classify(err);
-    if (e.code === "E_CAPTCHA_DETECTED") throw e;
+    if (e.code === "E_CAPTCHA_DETECTED" || e.code === "E_HUMAN_TIMEOUT" || e.code === "E_CANCELLED") throw e;
     throw new EngineError("E_AUTH_FAILED", `Η σύνδεση στο σύστημα απέτυχε: ${e.message}`, { stepId: e.extra.stepId, targetMessage: e.extra.targetMessage });
   }
   if (check && !(await loggedIn())) throw new EngineError("E_AUTH_FAILED", "Η σύνδεση δεν επιβεβαιώθηκε (το στοιχείο ελέγχου session δεν εμφανίστηκε).");
